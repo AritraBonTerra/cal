@@ -70,7 +70,8 @@ export interface EventInput {
 
 /*
  * For repeating events: change only this occurrence, this and all later ones, or the
- * whole series ("all" edits from the first occurrence).
+ * whole series. With "all", new start/end times given for one occurrence move every
+ * occurrence by the same amount.
  */
 export type EventSpan = "this" | "future" | "all";
 

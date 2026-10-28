@@ -9,6 +9,7 @@ import type {
 import { toOffsetIso } from "@cal/domain";
 import * as Calendar from "expo-calendar/legacy";
 import { AppState } from "react-native";
+import { fromExpoRule, toExpoRule } from "./rules";
 
 const iso = (value: string | Date) => toOffsetIso(new Date(value));
 
@@ -42,7 +43,14 @@ function toExternal(event: Calendar.Event): ExternalEvent {
     notes: event.notes || undefined,
     url: event.url || undefined,
     recurring: event.recurrenceRule !== null,
+    ...(event.recurrenceRule && { recurrence: fromExpoRule(event.recurrenceRule) }),
     busy: event.availability !== Calendar.Availability.FREE,
+    ...(!event.allDay && event.timeZone && { timeZone: event.timeZone }),
+    ...(event.alarms.length && {
+      alarms: event.alarms.flatMap((alarm) =>
+        alarm.relativeOffset === undefined ? [] : [-alarm.relativeOffset],
+      ),
+    }),
   };
 }
 
@@ -53,6 +61,17 @@ const toDetails = (input: Partial<EventInput>) => ({
   ...(input.allDay !== undefined && { allDay: input.allDay }),
   ...(input.location !== undefined && { location: input.location }),
   ...(input.notes !== undefined && { notes: input.notes }),
+  ...(input.url !== undefined && { url: input.url }),
+  ...(input.timeZone !== undefined && { timeZone: input.timeZone }),
+  ...(input.busy !== undefined && {
+    availability: input.busy ? Calendar.Availability.BUSY : Calendar.Availability.FREE,
+  }),
+  ...(input.alarms !== undefined && {
+    alarms: input.alarms.map((minutes) => ({ relativeOffset: -minutes })),
+  }),
+  ...(input.recurrence !== undefined && {
+    recurrenceRule: input.recurrence ? toExpoRule(input.recurrence) : null,
+  }),
 });
 
 // The device's calendars on iPhone and iPad, through expo-calendar (EventKit).
@@ -85,6 +104,27 @@ export const deviceCalendar: CalendarSource = {
 
   async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
     const { eventIdentifier, instanceStartDate } = parseId(id);
+    if (span === "all") {
+      // The whole series: edit its first event, and turn new times for this occurrence
+      // into a shift ("30 minutes later") so every occurrence moves, not just to this date.
+      const occurrence = await Calendar.getEventAsync(eventIdentifier, {
+        instanceStartDate: instanceStartDate?.toISOString(),
+      });
+      const first = await Calendar.getEventAsync(eventIdentifier);
+      const shift = (to: string | undefined, from: string | Date, base: string | Date) =>
+        to === undefined
+          ? undefined
+          : new Date(
+              new Date(base).getTime() + Date.parse(to) - new Date(from).getTime(),
+            ).toISOString();
+      const shifted = {
+        ...input,
+        start: shift(input.start, occurrence.startDate, first.startDate),
+        end: shift(input.end, occurrence.endDate, first.endDate),
+      };
+      await Calendar.updateEventAsync(eventIdentifier, toDetails(shifted), { futureEvents: true });
+      return toExternal(await Calendar.getEventAsync(eventIdentifier));
+    }
     const options = { instanceStartDate, futureEvents: span === "future" };
     const savedId = await Calendar.updateEventAsync(eventIdentifier, toDetails(input), options);
     // expo-calendar finds an occurrence by its current start, which may have just moved.
@@ -100,8 +140,8 @@ export const deviceCalendar: CalendarSource = {
   async deleteEvent(id: string, span: EventSpan) {
     const { eventIdentifier, instanceStartDate } = parseId(id);
     await Calendar.deleteEventAsync(eventIdentifier, {
-      instanceStartDate,
-      futureEvents: span === "future",
+      instanceStartDate: span === "all" ? undefined : instanceStartDate,
+      futureEvents: span !== "this",
     });
   },
 
