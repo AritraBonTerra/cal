@@ -1,0 +1,20 @@
+{
+  "name": "cal",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "biome check --write .",
+    "lint": "biome check .",
+    "typecheck": "bun --filter '*' typecheck",
+    "dev:backend": "bun --cwd packages/backend run dev",
+    "test": "bun --filter '*' test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.3",
+    "typescript": "7.0.2"
+  }
+}

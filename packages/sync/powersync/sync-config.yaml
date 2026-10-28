@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
+# Paste into the PowerSync dashboard (instance → Sync Streams), or deploy with the PowerSync CLI.
+# Keep the table list in sync with packages/backend/convex/syncTables.ts.
+config:
+  edition: 3
+
+streams:
+  user_data:
+    # Always synced for the signed-in user.
+    auto_subscribe: true
+    # Convex Auth JWT subject is `[32-char user id]|[session id]`.
+    queries:
+      - SELECT uuid AS id, * FROM areas WHERE owner_id = substring(auth.user_id(), 1, 32)
+      - SELECT uuid AS id, * FROM projects WHERE owner_id = substring(auth.user_id(), 1, 32)
+      - SELECT uuid AS id, * FROM tasks WHERE owner_id = substring(auth.user_id(), 1, 32)
+      - SELECT uuid AS id, * FROM time_blocks WHERE owner_id = substring(auth.user_id(), 1, 32)
+      - SELECT uuid AS id, * FROM habits WHERE owner_id = substring(auth.user_id(), 1, 32)
+      - SELECT uuid AS id, * FROM habit_entries WHERE owner_id = substring(auth.user_id(), 1, 32)
