@@ -4,7 +4,7 @@ import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Workspace } from "../../../src/ipad/Workspace";
 import { useIsWide } from "../../../src/lib/device";
-import { isSmartList, type ListId } from "../../../src/lib/lists";
+import { toListId } from "../../../src/lib/lists";
 import { useColors } from "../../../src/lib/theme";
 import { TaskList } from "../../../src/tasks/TaskList";
 
@@ -37,7 +37,7 @@ export default function ListRoute() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="New to-do"
-        onPress={() => router.push("/quick-entry")}
+        onPress={() => router.push({ pathname: "/quick-entry", params: { list } })}
         className="absolute right-5 bottom-5 h-14 w-14 items-center justify-center rounded-full bg-accent-solid active:opacity-80"
         style={{
           shadowColor: colors["accent-solid"],
@@ -53,10 +53,3 @@ export default function ListRoute() {
 }
 
 // Route ids are "today", "project:<uuid>" or "area:<uuid>"; anything else is Inbox.
-function toListId(id: string | undefined): ListId {
-  if (!id) return "inbox";
-  if (isSmartList(id)) return id;
-  if (id.startsWith("project:")) return `project:${id.slice("project:".length)}`;
-  if (id.startsWith("area:")) return `area:${id.slice("area:".length)}`;
-  return "inbox";
-}

@@ -19,7 +19,7 @@ export default function TodayRoute() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="New to-do"
-        onPress={() => router.push("/quick-entry")}
+        onPress={() => router.push({ pathname: "/quick-entry", params: { list: "today" } })}
         className="absolute right-5 bottom-5 h-14 w-14 items-center justify-center rounded-full bg-accent-solid active:opacity-80"
         style={{
           shadowColor: colors["accent-solid"],

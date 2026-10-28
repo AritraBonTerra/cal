@@ -99,3 +99,12 @@ export function newTaskIn(list: ListId, today: DayKey): Omit<NewRow<"tasks">, "t
     ? { ...base, when: "anytime", project_uuid: uuid }
     : { ...base, when: "anytime", area_uuid: uuid };
 }
+
+// A list id from a route param; anything unrecognized is the Inbox.
+export function toListId(id: string | undefined): ListId {
+  if (!id) return "inbox";
+  if (isSmartList(id)) return id;
+  if (id.startsWith("project:")) return `project:${id.slice("project:".length)}`;
+  if (id.startsWith("area:")) return `area:${id.slice("area:".length)}`;
+  return "inbox";
+}

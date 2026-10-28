@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
+import { type ListId, newTaskIn } from "../lib/lists";
 import { useColors } from "../lib/theme";
 import { formatDuration, formatRelativeDay, formatTime } from "../lib/time";
 import { HeaderAction, SheetHeader } from "../ui/controls";
@@ -25,7 +26,14 @@ const TOKEN_ICONS: Record<TokenKind, typeof Flag> = {
   project: Folder,
 };
 
-export function QuickEntrySheet({ initialText = "" }: { initialText?: string }) {
+export function QuickEntrySheet({
+  initialText = "",
+  list = "inbox",
+}: {
+  initialText?: string;
+  // Where the new to-do goes unless the text says otherwise.
+  list?: ListId;
+}) {
   const { data, today } = useApp();
   const colors = useColors();
   const actions = useActions();
@@ -55,11 +63,14 @@ export function QuickEntrySheet({ initialText = "" }: { initialText?: string }) 
     if (!entry.title) return;
     router.back();
     const { tokens: _tokens, title, start_at, ...fields } = entry;
+    // The list's defaults (Today, a project…), overridden by anything typed; a typed
+    // When replaces the list's day too.
+    const defaults = newTaskIn(list, today);
     const uuid = await actions.createTask({
+      ...defaults,
+      ...(fields.when && { when_date: undefined }),
       title,
-      position: -1,
       ...fields,
-      when: fields.when ?? "inbox",
     });
     if (start_at) {
       const end = new Date(start_at.getTime() + (entry.estimate_min ?? 30) * 60_000);

@@ -33,8 +33,9 @@ describe("nextFreeSlot", () => {
 });
 
 test("finds the free hour after a clash on a DST fall-back day", () => {
-  // Nov 1 2026 is 25 hours long where clocks fall back that night (e.g. New York).
+  // Nov 1 2026 is 25 hours long in New York, the zone `bun run test` uses here.
   const at = (hour: number) => new Date(2026, 10, 1, hour);
+  expect(at(0).getTimezoneOffset()).not.toBe(at(12).getTimezoneOffset());
   const slot = nextFreeSlot([{ start: at(9), end: at(17) }], at(8), 60);
   expect(slot?.start.getHours()).toBe(17);
 });
