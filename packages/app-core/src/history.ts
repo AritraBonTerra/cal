@@ -4,11 +4,13 @@ import type { DataSource } from "./data";
 
 type Fields = Record<string, SqlValue>;
 
-// A recorded write, kept as plain data so undo can replay its inverse later.
+// A recorded write, kept as data so undo can replay its inverse later. `external` is a
+// change outside Cal's tables (e.g. a device calendar event) with its own do/undo.
 type Op =
   | { kind: "insert"; table: SyncedTable; row: Fields }
   | { kind: "update"; table: SyncedTable; uuid: string; patch: Fields }
-  | { kind: "remove"; table: SyncedTable; uuid: string };
+  | { kind: "remove"; table: SyncedTable; uuid: string }
+  | { kind: "external"; run: () => Promise<void>; inverse: () => Promise<void> };
 
 interface Entry {
   label: string;
@@ -54,6 +56,15 @@ export class Writer {
     return true;
   }
 
+  /**
+   * Makes a change outside Cal's tables (`apply`) as part of this step, with `revert`
+   * to undo it, e.g. moving a device calendar event and moving it back.
+   */
+  async external(apply: () => Promise<void>, revert: () => Promise<void>) {
+    await apply();
+    this.inverses.push({ kind: "external", run: revert, inverse: apply });
+  }
+
   /*
    * Replays a recorded op. Deletes are final on the server, so a removed record comes
    * back under a new uuid; `aliases` maps the old uuid to the new one. Every write
@@ -61,6 +72,10 @@ export class Writer {
    * UI still holds keep pointing at the restored record.
    */
   async apply(op: Op) {
+    if (op.kind === "external") {
+      await this.external(op.run, op.inverse);
+      return true;
+    }
     if (op.kind === "remove") return this.remove(op.table, op.uuid);
     if (op.kind === "update") return this.update(op.table, op.uuid, op.patch);
     const { uuid, created_at, updated_at, ...fields } = op.row;

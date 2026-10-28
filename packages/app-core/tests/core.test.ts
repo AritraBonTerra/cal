@@ -89,6 +89,20 @@ describe("History", () => {
     expect(store.list("time_blocks")).toEqual([]);
   });
 
+  test("changes outside Cal's tables undo and redo in the same step", async () => {
+    const { history } = setup();
+    let start = "10:00";
+    const move = (to: string) => async () => {
+      start = to;
+    };
+    await history.transact("Move Event", (tx) => tx.external(move("11:00"), move("10:00")));
+    expect(start).toBe("11:00");
+    await history.undo();
+    expect(start).toBe("10:00");
+    await history.redo();
+    expect(start).toBe("11:00");
+  });
+
   test("undoing a create removes it; redo brings it back", async () => {
     const { store, history, actions } = setup();
     await actions.createTask({ title: "Plan", position: 0, when: "inbox" });
