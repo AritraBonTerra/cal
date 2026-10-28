@@ -184,6 +184,21 @@ describe("plan", () => {
     ]);
   });
 
+  test("a kept block that ends after its deadline is a risk", () => {
+    const late = new Date(2026, 9, 28, 23, 0);
+    const previous = [{ id: "a", start: at(28, 23, 30), end: at(29, 1, 30), reason: "" }];
+    const result = plan(
+      input({
+        now: late,
+        frozenMin: 90,
+        previous,
+        workingHours: {},
+        work: [{ id: "a", title: "A", remainingMin: 120, deadline: "2026-10-28" }],
+      }),
+    );
+    expect(result.risks).toEqual([{ deadline: "2026-10-28", workMin: 90, freeMin: 0, ids: ["a"] }]);
+  });
+
   test("the same inputs give the same plan", () => {
     const work = [
       { id: "x", title: "X", remainingMin: 90, priority: 2 },

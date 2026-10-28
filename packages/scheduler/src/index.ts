@@ -277,7 +277,21 @@ export function plan(input: PlanInput): Plan {
  * between them, e.g. "Thursday: 7h of work, 4h free". Reports the worst gap per deadline.
  */
 export function risks(input: PlanInput) {
-  const { free, remaining, windowOf } = prepare(input);
+  const { free, retained, windowOf, ...shared } = prepare(input);
+  // Kept work that runs past its own deadline still has to happen before it.
+  const remaining = new Map(shared.remaining);
+  for (const item of input.work) {
+    if (!item.deadline) continue;
+    const deadlineEnd = endOfDay(item.deadline);
+    const late = retained
+      .filter((placement) => placement.id === item.id)
+      .reduce(
+        (total, placement) =>
+          total + Math.max(0, placement.end - Math.max(placement.start, deadlineEnd)) / MINUTE,
+        0,
+      );
+    remaining.set(item.id, (remaining.get(item.id) ?? 0) + late);
+  }
   const due = input.work
     .filter((item) => item.deadline && (remaining.get(item.id) ?? 0) > 0)
     .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? "") || a.id.localeCompare(b.id));
