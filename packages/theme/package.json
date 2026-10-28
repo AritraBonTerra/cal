@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./theme.css"
+    "./theme.css": "./theme.css",
+    "./theme.native.css": "./theme.native.css"
   },
   "scripts": {
     "build:css": "bun scripts/build-css.ts",

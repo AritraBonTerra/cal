@@ -1,0 +1,79 @@
+/* Generated from packages/theme/src/tokens.ts by `bun run build:css`. Do not edit. */
+
+@theme {
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-body: 15px;
+  --text-body--line-height: 20px;
+  --text-title-3: 17px;
+  --text-title-3--line-height: 22px;
+  --text-title-2: 22px;
+  --text-title-2--line-height: 28px;
+  --text-title-1: 28px;
+  --text-title-1--line-height: 34px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 9999px;
+
+  --spacing-hour: 56px;
+  --spacing-gutter: 56px;
+  --spacing-day-header: 52px;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+      --color-canvas: #ffffff;
+      --color-sidebar: #f8f6f5;
+      --color-raised: #ffffff;
+      --color-hover: #f3f1f0;
+      --color-active: #edebe8;
+      --color-offhours: #fbfaf9;
+      --color-grid: #e7e6e4;
+      --color-edge: #dbd9d6;
+      --color-edge-strong: #c0bdba;
+      --color-ink: #211f1c;
+      --color-ink-2: #5d5a56;
+      --color-ink-3: #77746f;
+      --color-accent: #1570d1;
+      --color-accent-solid: #1570d1;
+      --color-accent-soft: #e4f0ff;
+      --color-now: #db2c2b;
+      --color-success: #1c8742;
+      --color-warning: #d98b09;
+      --color-white: #ffffff;
+    }
+    @variant dark {
+      --color-canvas: #141211;
+      --color-sidebar: #0f0e0c;
+      --color-raised: #1f1e1b;
+      --color-hover: #1e1d1b;
+      --color-active: #252421;
+      --color-offhours: #100f0d;
+      --color-grid: #242321;
+      --color-edge: #2f2d2b;
+      --color-edge-strong: #3f3d3a;
+      --color-ink: #edebe8;
+      --color-ink-2: #bab7b3;
+      --color-ink-3: #9a9894;
+      --color-accent: #6aa7f4;
+      --color-accent-solid: #1570d1;
+      --color-accent-soft: #182e4b;
+      --color-now: #f75e54;
+      --color-success: #5bbd74;
+      --color-warning: #eba941;
+      --color-white: #ffffff;
+    }
+  }
+}

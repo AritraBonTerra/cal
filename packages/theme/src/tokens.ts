@@ -52,6 +52,16 @@ export const type = {
   "title-1": { size: 26, line: 32 },
 } as const;
 
+// The same roles one step up for iPhone and iPad, in pt (research/07 §7.1).
+export const typeMobile = {
+  caption: { size: 12, line: 16 },
+  small: { size: 13, line: 18 },
+  body: { size: 15, line: 20 },
+  "title-3": { size: 17, line: 22 },
+  "title-2": { size: 22, line: 28 },
+  "title-1": { size: 28, line: 34 },
+} as const satisfies Record<keyof typeof type, { size: number; line: number }>;
+
 export const radius = { xs: 3, sm: 4, md: 6, lg: 10, xl: 14 } as const;
 
 // Grid geometry: an hour is 48px, so a 15-minute snap is 12px.
@@ -60,6 +70,14 @@ export const grid = {
   snapMinutes: 15,
   gutterWidth: 52,
   dayHeaderHeight: 44,
+} as const;
+
+// Touch grid geometry (research/07 §7.2): a 56pt hour makes each 15-minute snap 14pt.
+export const gridMobile = {
+  hourHeight: 56,
+  snapMinutes: 15,
+  gutterWidth: 56,
+  dayHeaderHeight: 52,
 } as const;
 
 // Durations in ms. Keyboard navigation and view switches are always `instant`.

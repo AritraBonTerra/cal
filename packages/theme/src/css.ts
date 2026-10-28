@@ -1,5 +1,5 @@
 import { toHex } from "./color";
-import { colors, grid, type Mode, motion, radius, type } from "./tokens";
+import { colors, grid, gridMobile, type Mode, motion, radius, type, typeMobile } from "./tokens";
 
 /*
  * Renders tokens.ts as CSS for the Mac app: every color as a `--cal-*` variable with
@@ -87,6 +87,57 @@ ${radiusTheme}
 ${colorTheme}
   --shadow-float: var(--cal-shadow-float);
   --shadow-drag: var(--cal-shadow-drag);
+}
+`;
+}
+
+/*
+ * The same tokens for the Expo app, in the shape Uniwind reads: the mobile type scale
+ * and radii in `@theme`, and every color under `@layer theme` once per color scheme, so
+ * `bg-canvas` or `text-ink-2` follow the device's light or dark setting.
+ */
+export function renderNativeCss() {
+  const textTheme = Object.entries(typeMobile)
+    .map(
+      ([name, { size, line }]) =>
+        `  --text-${name}: ${size}px;\n  --text-${name}--line-height: ${line}px;`,
+    )
+    .join("\n");
+  const radiusTheme = Object.entries(radius)
+    .map(([name, value]) => `  --radius-${name}: ${value}px;`)
+    .join("\n");
+  const scheme = (mode: Mode) =>
+    Object.entries(colors)
+      .map(([name, value]) => `      --color-${name}: ${toHex(value[mode])};`)
+      .join("\n");
+
+  return `/* Generated from packages/theme/src/tokens.ts by \`bun run build:css\`. Do not edit. */
+
+@theme {
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+${textTheme}
+
+${radiusTheme}
+  --radius-full: 9999px;
+
+  --spacing-hour: ${gridMobile.hourHeight}px;
+  --spacing-gutter: ${gridMobile.gutterWidth}px;
+  --spacing-day-header: ${gridMobile.dayHeaderHeight}px;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+${scheme("light")}
+    }
+    @variant dark {
+${scheme("dark")}
+    }
+  }
 }
 `;
 }

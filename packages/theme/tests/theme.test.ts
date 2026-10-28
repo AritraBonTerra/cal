@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { chipColors, chipColorsFromHex, contrast, fromHex, mix, oklch, toHex } from "../src";
-import { renderCss } from "../src/css";
+import {
+  chipColors,
+  chipColorsFromHex,
+  contrast,
+  fromHex,
+  mix,
+  oklch,
+  toHex,
+  type,
+  typeMobile,
+} from "../src";
+import { renderCss, renderNativeCss } from "../src/css";
 
 describe("color", () => {
   test("converts OKLCH to hex and back", () => {
@@ -50,4 +60,18 @@ describe("chips", () => {
 test("theme.css is up to date with tokens.ts", async () => {
   const file = await Bun.file(new URL("../theme.css", import.meta.url)).text();
   expect(file).toBe(renderCss());
+});
+
+test("theme.native.css is up to date with tokens.ts", async () => {
+  const file = await Bun.file(new URL("../theme.native.css", import.meta.url)).text();
+  expect(file).toBe(renderNativeCss());
+});
+
+test("the mobile scale is one step up from the Mac scale and never below 11", () => {
+  expect(Object.keys(typeMobile)).toEqual(Object.keys(type));
+  for (const role of Object.keys(type) as (keyof typeof type)[]) {
+    expect(typeMobile[role].size).toBeGreaterThan(type[role].size);
+    expect(typeMobile[role].line).toBeGreaterThanOrEqual(typeMobile[role].size);
+  }
+  expect(typeMobile.caption.size).toBeGreaterThanOrEqual(11);
 });
