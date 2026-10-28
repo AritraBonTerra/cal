@@ -68,6 +68,8 @@ export class LocalStore {
       if (this.meta("schema") !== schema) {
         this.setMeta("schema", schema);
         this.db.run("DELETE FROM _server");
+        this.db.run("DELETE FROM _parked_server");
+        this.db.run("DELETE FROM _meta WHERE key LIKE 'seq:%'");
         this.setMeta("seq", "0");
       }
       if (!this.meta("device")) this.setMeta("device", this.newId());
@@ -219,9 +221,9 @@ export class LocalStore {
 
   /**
    * Binds the store to a signed-in user. The first sign-in keeps records made while
-   * signed out, which then upload to that user. Switching to a different user clears
-   * the local copy (the server still has it) and parks the previous user's unsent
-   * writes, which come back when that user signs in here again.
+   * signed out, which then upload to that user. Switching to a different user parks the
+   * previous user's data here (server copies, pull position, unsent writes) and clears
+   * what's shown; it all comes back when that user signs in again, even offline.
    */
   setUser(userId: string) {
     const previous = this.user;
@@ -232,25 +234,32 @@ export class LocalStore {
           "INSERT INTO _parked (user, op, tbl, uuid, data) SELECT ?, op, tbl, uuid, data FROM _outbox ORDER BY id",
           [previous],
         );
+        this.db.run(
+          "INSERT OR REPLACE INTO _parked_server (user, tbl, uuid, seq, row) SELECT ?, tbl, uuid, seq, row FROM _server",
+          [previous],
+        );
+        this.setMeta(`seq:${previous}`, String(this.seq));
         this.db.run("DELETE FROM _outbox");
-        for (const table of tableNames) this.db.run(`DELETE FROM ${quote(table)}`);
         this.db.run("DELETE FROM _server");
-        this.setMeta("seq", "0");
+        for (const table of tableNames) this.db.run(`DELETE FROM ${quote(table)}`);
       }
-      const parked = this.db.all(
-        "SELECT op, tbl, uuid, data FROM _parked WHERE user = ? ORDER BY id",
+
+      this.db.run(
+        "INSERT INTO _server (tbl, uuid, seq, row) SELECT tbl, uuid, seq, row FROM _parked_server WHERE user = ?",
         [userId],
       );
-      for (const entry of parked) {
-        this.db.run("INSERT INTO _outbox (op, tbl, uuid, data) VALUES (?, ?, ?, ?)", [
-          parseOp(entry.op),
-          parseTable(entry.tbl),
-          String(entry.uuid),
-          typeof entry.data === "string" ? entry.data : null,
-        ]);
-      }
+      this.db.run(
+        "INSERT INTO _outbox (op, tbl, uuid, data) SELECT op, tbl, uuid, data FROM _parked WHERE user = ? ORDER BY id",
+        [userId],
+      );
+      this.db.run("DELETE FROM _parked_server WHERE user = ?", [userId]);
       this.db.run("DELETE FROM _parked WHERE user = ?", [userId]);
-      for (const entry of parked) this.rebuild(parseTable(entry.tbl), String(entry.uuid));
+      this.setMeta("seq", previous ? (this.meta(`seq:${userId}`) ?? "0") : String(this.seq));
+      this.db.run("DELETE FROM _meta WHERE key = ?", [`seq:${userId}`]);
+      const records = this.db.all(
+        "SELECT tbl, uuid FROM _server UNION SELECT tbl, uuid FROM _outbox",
+      );
+      for (const record of records) this.rebuild(parseTable(record.tbl), String(record.uuid));
       this.setMeta("user", userId);
     });
     if (previous) this.emit({ tables: new Set(tableNames), local: false });
@@ -378,9 +387,13 @@ function migrate(db: SqlDatabase) {
     db.run(
       "CREATE TABLE IF NOT EXISTS _server (tbl TEXT NOT NULL, uuid TEXT NOT NULL, seq INTEGER NOT NULL, row TEXT, PRIMARY KEY (tbl, uuid))",
     );
-    // Unsent writes of a user who isn't signed in here right now (see setUser).
+    // Unsent writes and server copies of users who aren't signed in here right now
+    // (see setUser); their pull positions are `seq:<user>` in _meta.
     db.run(
       "CREATE TABLE IF NOT EXISTS _parked (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, op TEXT NOT NULL, tbl TEXT NOT NULL, uuid TEXT NOT NULL, data TEXT)",
+    );
+    db.run(
+      "CREATE TABLE IF NOT EXISTS _parked_server (user TEXT NOT NULL, tbl TEXT NOT NULL, uuid TEXT NOT NULL, seq INTEGER NOT NULL, row TEXT, PRIMARY KEY (user, tbl, uuid))",
     );
     db.run("CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)");
     db.run(

@@ -399,6 +399,27 @@ describe("sync between devices", () => {
     expect(phone.store.get("tasks", unsent)?.title).toBe("Written offline");
   });
 
+  test("switching away and back while offline keeps synced records and edits to them", async () => {
+    const { signUp, device, settle } = await world();
+    const first = await signUp();
+    const second = await signUp();
+    const mac = device("mac", first);
+    mac.start();
+    const uuid = mac.store.insert("tasks", newTask("Plan"));
+    await settle(mac);
+
+    mac.remote.setOnline(false);
+    mac.store.update("tasks", uuid, { notes: "Edited offline" });
+    mac.engine.start(second.userId);
+    mac.engine.start(first.userId);
+    expect(mac.store.get("tasks", uuid)).toMatchObject({ title: "Plan", notes: "Edited offline" });
+
+    mac.remote.setOnline(true);
+    await settle(mac);
+    expect(mac.store.pendingCount()).toBe(0);
+    expect(mac.store.get("tasks", uuid)?.notes).toBe("Edited offline");
+  });
+
   test("a reply that arrives after switching users doesn't reach the new user's data", async () => {
     const { signUp, device, settle } = await world();
     const first = await signUp();
