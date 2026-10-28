@@ -39,9 +39,12 @@ export class Session {
   private needsSignIn = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retries = 0;
+  // Bumped on sign-in and sign-out, so a token refresh still in flight from an earlier
+  // session can't bring it back or overwrite the new one.
+  private generation = 0;
 
   constructor(
-    url: string,
+    private readonly url: string,
     private readonly store: LocalStore,
     private readonly file: string,
     private readonly notify: { auth(state: AuthState): void; sync(status: SyncStatus): void },
@@ -81,6 +84,7 @@ export class Session {
       params: { email, password, flow },
     });
     if (!result.tokens) throw new Error("Sign-in didn't return a session.");
+    this.generation++;
     this.saved = { ...result.tokens, userId: claims(result.tokens.token).userId, email };
     this.needsSignIn = false;
     this.save();
@@ -89,18 +93,22 @@ export class Session {
     return this.state();
   }
 
+  // Signs out here at once, even offline; ending the session on the server is best effort.
   async signOut() {
+    const token = this.saved?.token;
+    this.generation++;
     this.engine.stop();
     clearTimeout(this.retry);
-    try {
-      await this.client.action(api.auth.signOut, {});
-    } catch {
-      // Offline or already expired: the session just lapses on the server.
-    }
     this.client.client.clearAuth();
     this.saved = undefined;
     this.needsSignIn = false;
     rmSync(this.file, { force: true });
+    if (token) {
+      const http = new ConvexHttpClient(this.url);
+      http.setAuth(token);
+      // Offline or already expired: the session just lapses on the server.
+      http.action(api.auth.signOut, {}).catch(() => undefined);
+    }
     this.notify.auth(this.state());
     this.notify.sync(this.status());
     return this.state();
@@ -138,6 +146,7 @@ export class Session {
   // The current JWT, refreshed when it's about to expire or the server rejected it.
   private async token(force: boolean) {
     const saved = this.saved;
+    const generation = this.generation;
     if (!saved) return null;
     const fresh = claims(saved.token).exp * 1000 > Date.now() + 60_000;
     if (fresh && !force) return saved.token;
@@ -149,6 +158,7 @@ export class Session {
     } catch {
       return null;
     }
+    if (generation !== this.generation) return null;
     if (!tokens) {
       // The refresh token was revoked or expired: only signing in again helps.
       this.needsSignIn = true;

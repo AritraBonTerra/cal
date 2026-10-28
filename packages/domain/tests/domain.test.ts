@@ -36,6 +36,12 @@ describe("dates", () => {
     expect(logicalToday(new Date(2026, 9, 28, 4, 0), 4)).toBe("2026-10-28");
   });
 
+  test("the day boundary is wall-clock time, also on DST change days", () => {
+    // In zones with DST these days are 23 and 25 hours long.
+    expect(logicalToday(new Date(2026, 2, 8, 4, 30), 4)).toBe("2026-03-08");
+    expect(logicalToday(new Date(2026, 10, 1, 3, 30), 4)).toBe("2026-10-31");
+  });
+
   test("offset ISO strings parse back to the same instant", () => {
     const date = new Date(2026, 9, 28, 10, 40);
     expect(Date.parse(toOffsetIso(date))).toBe(date.getTime());

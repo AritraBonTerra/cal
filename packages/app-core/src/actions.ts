@@ -35,8 +35,9 @@ export function createActions(history: History, now: () => Date = () => new Date
     // Deletes a task and its time blocks. Deleting a block never deletes its task.
     deleteTask: (uuid: string) =>
       history.transact("Delete To-Do", async (tx) => {
-        for (const block of await blocksOf(uuid)) await tx.remove("time_blocks", block.uuid);
-        return tx.remove("tasks", uuid);
+        const id = tx.resolve(uuid);
+        for (const block of await blocksOf(id)) await tx.remove("time_blocks", block.uuid);
+        return tx.remove("tasks", id);
       }),
 
     // Sets When: a day (optionally this evening), or one of the undated lists.
@@ -100,8 +101,9 @@ export function createActions(history: History, now: () => Date = () => new Date
       entrySource: HabitEntry["source"] = "manual",
     ) =>
       history.transact(value ? "Log Habit" : "Uncheck Habit", async (tx) => {
+        const habit = tx.resolve(habitUuid);
         const entries = (await source.list("habit_entries")).filter(
-          (entry) => entry.habit_uuid === habitUuid && entry.date === date,
+          (entry) => entry.habit_uuid === habit && entry.date === date,
         );
         for (const entry of entries) await tx.remove("habit_entries", entry.uuid);
         if (value) {

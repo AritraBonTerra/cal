@@ -78,19 +78,21 @@ export function parseQuickEntry(
     const end = match.index + match[0].length + date.text.length;
     if (take("deadline", match.index, end)) entry.deadline = toDayKey(date.start.date());
   }
+  // Dates first, so "tonight at 8pm" stays one phrase and keeps its time.
+  for (const date of chrono.parse(text, now, { forwardDate: true })) {
+    const evening = new RegExp(EVENING.source, "i").test(date.text);
+    if (!take(evening ? "evening" : "when", date.index, date.index + date.text.length)) continue;
+    const start = date.start.date();
+    entry.when_date = toDayKey(start);
+    entry.when = evening ? "evening" : "date";
+    if (date.start.isCertain("hour")) entry.start_at = start;
+    break;
+  }
   for (const match of text.matchAll(EVENING)) {
     if (take("evening", match.index, match.index + match[0].length)) {
       entry.when = "evening";
       entry.when_date = toDayKey(now);
     }
-  }
-  for (const date of chrono.parse(text, now, { forwardDate: true })) {
-    if (!take("when", date.index, date.index + date.text.length)) continue;
-    const start = date.start.date();
-    entry.when_date = toDayKey(start);
-    entry.when = entry.when === "evening" ? "evening" : "date";
-    if (date.start.isCertain("hour")) entry.start_at = start;
-    break;
   }
   for (const match of text.matchAll(LATER)) {
     if (entry.when) break;

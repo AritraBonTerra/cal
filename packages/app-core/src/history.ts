@@ -28,7 +28,7 @@ export class Writer {
   ) {}
 
   async insert<T extends SyncedTable>(table: T, row: NewRow<T>) {
-    const uuid = await this.source.insert(table, row);
+    const uuid = await this.source.insert(table, this.remap(row));
     this.inverses.push({ kind: "remove", table, uuid });
     return uuid;
   }
@@ -39,7 +39,7 @@ export class Writer {
     if (!current) return false;
     const previous: Fields = {};
     for (const key of Object.keys(patch)) previous[key] = toSql(current[key]);
-    const changed = await this.source.update(table, id, patch);
+    const changed = await this.source.update(table, id, this.remap(patch));
     if (changed) this.inverses.push({ kind: "update", table, uuid: id, patch: previous });
     return changed;
   }
@@ -56,30 +56,35 @@ export class Writer {
 
   /*
    * Replays a recorded op. Deletes are final on the server, so a removed record comes
-   * back under a new uuid; `aliases` maps the old uuid to the new one, both for later
-   * ops and for references (`*_uuid` fields) in records restored after it.
+   * back under a new uuid; `aliases` maps the old uuid to the new one. Every write
+   * resolves uuids and `*_uuid` references through it, so older undo steps and ids the
+   * UI still holds keep pointing at the restored record.
    */
   async apply(op: Op) {
     if (op.kind === "remove") return this.remove(op.table, op.uuid);
-    if (op.kind === "update") return this.update(op.table, op.uuid, this.remap(op.patch));
+    if (op.kind === "update") return this.update(op.table, op.uuid, op.patch);
     const { uuid, created_at, updated_at, ...fields } = op.row;
-    const restored = await this.insert(op.table, this.remap(fields) as NewRow<SyncedTable>);
+    // Recorded rows are plain data; the store checks field types again on insert.
+    const restored = await this.insert(op.table, fields as NewRow<SyncedTable>);
     if (typeof uuid === "string") this.aliases.set(uuid, restored);
     return true;
   }
 
-  private resolve(uuid: string): string {
+  // The current uuid of a record that may have been restored under a new one.
+  resolve(uuid: string): string {
     const next = this.aliases.get(uuid);
     return next === undefined ? uuid : this.resolve(next);
   }
 
-  private remap(fields: Fields): Fields {
-    return Object.fromEntries(
+  private remap<R extends object>(fields: R): R {
+    const remapped = Object.fromEntries(
       Object.entries(fields).map(([key, value]) => [
         key,
         key.endsWith("_uuid") && typeof value === "string" ? this.resolve(value) : value,
       ]),
     );
+    // Same keys, and string values stay strings.
+    return remapped as R;
   }
 }
 

@@ -74,6 +74,21 @@ describe("History", () => {
     expect(store.get("tasks", task?.uuid ?? "")?.title).toBe("Renamed via old id");
   });
 
+  test("ids from before an undo still reach the restored record", async () => {
+    const { store, history, actions } = setup();
+    const uuid = await actions.createTask({ title: "Plan", position: 0, when: "inbox" });
+    await history.undo();
+    await history.redo();
+    const [task] = store.list("tasks");
+    expect(task?.uuid).not.toBe(uuid);
+
+    await actions.scheduleTask(uuid, new Date(2026, 9, 28, 9), new Date(2026, 9, 28, 10));
+    expect(store.list("time_blocks")[0]?.task_uuid).toBe(task?.uuid);
+    await actions.deleteTask(uuid);
+    expect(store.list("tasks")).toEqual([]);
+    expect(store.list("time_blocks")).toEqual([]);
+  });
+
   test("undoing a create removes it; redo brings it back", async () => {
     const { store, history, actions } = setup();
     await actions.createTask({ title: "Plan", position: 0, when: "inbox" });

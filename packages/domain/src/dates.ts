@@ -68,7 +68,7 @@ export const dayRange = (start: DayKey, count: number) =>
  * yesterday, so late-night work counts toward the day you started it.
  */
 export const logicalToday = (now: Date, dayStartHour = 0) =>
-  toDayKey(new Date(now.getTime() - dayStartHour * 3_600_000));
+  now.getHours() < dayStartHour ? addDays(toDayKey(now), -1) : toDayKey(now);
 
 // The local instant `minutes` after midnight on `key` (may cross into the next day).
 export function atMinute(key: DayKey, minutes: number) {

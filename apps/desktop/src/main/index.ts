@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { storeSource } from "@cal/app-core";
 import { LocalStore } from "@cal/sync";
 import {
@@ -59,12 +60,31 @@ const session = new Session(CONVEX_URL, store, join(app.getPath("userData"), "se
 data.subscribe((tables) => broadcast(channels.dataChanged, tables));
 calendar.onChange(() => broadcast(channels.calendarChanged, null));
 
+const rendererFile = join(import.meta.dirname, "../renderer/index.html");
+
+// Whether `url` is Cal's own window content, the only page allowed to use the bridge.
+function isAppUrl(url: string) {
+  const dev = process.env.ELECTRON_RENDERER_URL;
+  if (dev) return url.startsWith(new URL(dev).origin);
+  return url.startsWith(pathToFileURL(rendererFile).href);
+}
+
+// Registers an IPC handler that refuses calls from any page other than Cal's own.
+function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isAppUrl(event.senderFrame?.url ?? "")) throw new Error("Untrusted sender");
+    return fn(...(args as A));
+  });
+}
+
 // Read synchronously by the preload script before the window's code runs.
 ipcMain.on(channels.config, (event) => {
-  event.returnValue = { fixture, now: fixture ? FIXTURE_NOW.getTime() : undefined };
+  event.returnValue = isAppUrl(event.senderFrame?.url ?? "")
+    ? { fixture, now: fixture ? FIXTURE_NOW.getTime() : undefined }
+    : null;
 });
 
-ipcMain.handle(channels.data, (_event, call: DataCall) => {
+handle(channels.data, (call: DataCall) => {
   switch (call.method) {
     case "list":
       return data.list(...call.args);
@@ -79,7 +99,7 @@ ipcMain.handle(channels.data, (_event, call: DataCall) => {
   }
 });
 
-ipcMain.handle(channels.auth, (_event, call: AuthCall) => {
+handle(channels.auth, (call: AuthCall) => {
   switch (call.method) {
     case "state":
       return session.state();
@@ -90,9 +110,9 @@ ipcMain.handle(channels.auth, (_event, call: AuthCall) => {
   }
 });
 
-ipcMain.handle(channels.syncStatus, () => session.status());
+handle(channels.syncStatus, () => session.status());
 
-ipcMain.handle(channels.calendar, (_event, call: CalendarCall) => {
+handle(channels.calendar, (call: CalendarCall) => {
   switch (call.method) {
     case "access":
       return calendar.access();
@@ -128,13 +148,23 @@ function createWindow() {
     },
   });
   window.once("ready-to-show", () => window.show());
-  // Links open in the browser, never inside the app.
+  // The window only ever shows Cal; web links open in the browser instead.
+  const openOutside = (url: string) => {
+    if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
+  };
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    openOutside(url);
     return { action: "deny" };
   });
+  const stayInApp = (details: { url: string; preventDefault(): void }) => {
+    if (isAppUrl(details.url)) return;
+    details.preventDefault();
+    openOutside(details.url);
+  };
+  window.webContents.on("will-navigate", stayInApp);
+  window.webContents.on("will-redirect", stayInApp);
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+  else void window.loadFile(rendererFile);
   return window;
 }
 
