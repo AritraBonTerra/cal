@@ -268,6 +268,19 @@ Each milestone produces something usable.
 | M7    | **Polish and reach**    | Direct Google API (invites, Meet links, colors), availability as text (`S`), calendar sets, ICS subscriptions, over-the-air updates.                                                                                                                                                                                                                                                                |
 | Later |                         | Better duration estimates from history, local search in the scheduler, Outlook through Graph, Apple Health auto-completion from the iPhone.                                                                                                                                                                                                                                                         |
 
+### Status (2026-10-28)
+
+Built and reviewed:
+- **M0:** monorepo, Convex schema and auth, our own sync (`@cal/sync`, proven against the dev deployment: an offline edit survives a restart and reaches another device), app-core, theme, commands and ⌘K, undo, fixtures, screenshot capture.
+- **M1:** N-day, week and month views, navigation keys, drag to create, move and resize, now line, all-day lanes.
+- **M2:** every Mac calendar read and edited through `calkit`, refreshed on change.
+- **M3:** smart lists, areas and projects, Quick Entry with natural language.
+- **M4:** drag tasks onto and off the grid, several blocks per task, block completion, `X`.
+- **M4.5:** the iPhone and iPad app on the same packages.
+- **M5 and M6 (engine only):** habit day strip and stats; the scheduler's `plan()` with reasons, risks and stability.
+
+Still to do: repeating tasks, headings, tags and checklists; Replan (`P`) and the workload bar; the scheduler's "Plan my day" preview UI; `.` date jump, time zone overlay, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey and widgets; habit heatmap; iPad hardware keyboard shortcuts (needs a native module); M7.
+
 ## 8. Not in v1
 
 - Collaboration, shared projects, team scheduling
