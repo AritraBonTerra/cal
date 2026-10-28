@@ -1,5 +1,6 @@
 import { useTable } from "@cal/app-core";
-import type { Project } from "@cal/domain";
+import { latestEntries, type Project } from "@cal/domain";
+import { useMemo } from "react";
 
 /*
  * The app tables every view reads, in one hook so `loaded` means all of them. Rows are
@@ -12,13 +13,14 @@ export function useData() {
   const areas = useTable("areas");
   const habits = useTable("habits");
   const entries = useTable("habit_entries");
+  const latest = useMemo(() => latestEntries(entries.rows), [entries.rows]);
   return {
     tasks: tasks.rows,
     blocks: blocks.rows,
     projects: projects.rows,
     areas: areas.rows,
     habits: habits.rows,
-    entries: entries.rows,
+    entries: latest,
     loaded: [tasks, blocks, projects, areas, habits, entries].every((table) => table.loaded),
   };
 }

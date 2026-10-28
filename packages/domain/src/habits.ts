@@ -23,6 +23,25 @@ export function scheduledWeekdays(habit: Habit) {
     .filter((day) => day >= 0);
 }
 
+/**
+ * One entry per habit and day, the most recently updated. Logging replaces a day's
+ * entry, but two devices logging the same day offline each create one and sync keeps
+ * both, so everything that reads entries goes through this.
+ */
+export function latestEntries(entries: readonly HabitEntry[]) {
+  const latest = new Map<string, HabitEntry>();
+  for (const entry of entries) {
+    const key = `${entry.habit_uuid}|${entry.date}`;
+    const current = latest.get(key);
+    const newer =
+      !current ||
+      entry.updated_at > current.updated_at ||
+      (entry.updated_at === current.updated_at && entry.uuid > current.uuid);
+    if (newer) latest.set(key, entry);
+  }
+  return [...latest.values()];
+}
+
 // Whether a logged value counts as done: any check, or reaching a measure's target.
 export const isDone = (habit: Habit, value: number) =>
   habit.kind === "check" ? value > 0 : value >= (habit.target ?? 1);
@@ -53,7 +72,7 @@ export function dayStatuses(
   today: DayKey,
 ) {
   const done = new Set(
-    entries
+    latestEntries(entries)
       .filter((entry) => entry.habit_uuid === habit.uuid && isDone(habit, entry.value))
       .map((entry) => entry.date),
   );
@@ -103,7 +122,7 @@ export function habitStats(
   entries: readonly HabitEntry[],
   today: DayKey,
 ): HabitStats {
-  const own = entries.filter((entry) => entry.habit_uuid === habit.uuid);
+  const own = latestEntries(entries).filter((entry) => entry.habit_uuid === habit.uuid);
   const first =
     [toDayKey(new Date(habit.created_at)), ...own.map((entry) => entry.date)].sort()[0] ?? today;
   const statuses = dayStatuses(habit, own, first, today);

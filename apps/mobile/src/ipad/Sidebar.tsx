@@ -120,8 +120,12 @@ export function Sidebar({ pane, onSelect }: { pane: Pane; onSelect: (pane: Pane)
           <Text className="text-small text-ink-3">Sign in to sync</Text>
         </Pressable>
       ) : (
-        <View
-          className="mx-3 min-h-11 flex-row items-center gap-2 rounded-md px-2"
+        // An expired session can only be fixed by signing in again, so the row opens it.
+        <Pressable
+          accessibilityRole={sync.needsSignIn ? "button" : undefined}
+          disabled={!sync.needsSignIn}
+          onPress={() => router.push("/sign-in")}
+          className="mx-3 min-h-11 flex-row items-center gap-2 rounded-md px-2 active:bg-hover"
           style={{ marginBottom: insets.bottom + 8 }}
         >
           <View
@@ -137,7 +141,7 @@ export function Sidebar({ pane, onSelect }: { pane: Pane; onSelect: (pane: Pane)
               {syncLabel(sync)}
             </Text>
           </View>
-        </View>
+        </Pressable>
       )}
     </View>
   );

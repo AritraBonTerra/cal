@@ -30,6 +30,15 @@ export function DaysPager({ width, height }: { width: number; height: number }) 
   const shown = useRef(anchor);
   const listRef = useRef<FlatList<number>>(null);
 
+  // A new day count or width remounts the list on its middle page, so that page must be
+  // the day on screen now, not the old base (set during render to avoid a wrong frame).
+  const layout = `${count}:${width}`;
+  const [lastLayout, setLastLayout] = useState(layout);
+  if (layout !== lastLayout) {
+    setLastLayout(layout);
+    setBase(shown.current);
+  }
+
   // Rebase when the anchor moved for a reason other than a swipe here.
   useEffect(() => {
     if (anchor === shown.current) return;

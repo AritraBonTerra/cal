@@ -146,6 +146,19 @@ export class History {
     return this.serial(() => this.replay(this.redos, this.undos));
   }
 
+  /**
+   * Forgets every undo and redo step, e.g. when another account signs in: replaying a
+   * step would write the previous account's data into the new one.
+   */
+  clear() {
+    return this.serial(async () => {
+      this.undos.length = 0;
+      this.redos = [];
+      this.aliases.clear();
+      this.emit();
+    });
+  }
+
   // The label of the step ⌘Z / ⇧⌘Z would reverse, for menus and toasts.
   get nextUndo() {
     return this.undos.at(-1)?.label;

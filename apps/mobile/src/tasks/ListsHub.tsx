@@ -95,7 +95,13 @@ export function ListsHub() {
             onPress={() => router.push("/sign-in")}
           />
         ) : (
-          <View className="min-h-14 flex-row items-center gap-3 px-4 py-2">
+          // An expired session can only be fixed by signing in again, so the row opens it.
+          <Pressable
+            accessibilityRole={sync.needsSignIn ? "button" : undefined}
+            disabled={!sync.needsSignIn}
+            onPress={() => router.push("/sign-in")}
+            className="min-h-14 flex-row items-center gap-3 px-4 py-2 active:bg-hover"
+          >
             <View
               className={`h-2.5 w-2.5 rounded-full ${
                 sync.connected && !sync.needsSignIn ? "bg-success" : "bg-warning"
@@ -109,7 +115,7 @@ export function ListsHub() {
                 {syncLabel(sync)}
               </Text>
             </View>
-          </View>
+          </Pressable>
         )}
       </View>
     </ScrollView>

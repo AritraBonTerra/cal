@@ -103,6 +103,15 @@ describe("History", () => {
     expect(start).toBe("11:00");
   });
 
+  test("clear forgets every step", async () => {
+    const { store, history, actions } = setup();
+    await actions.createTask({ title: "Plan", position: 0, when: "inbox" });
+    await history.clear();
+    expect(history.nextUndo).toBeUndefined();
+    await history.undo();
+    expect(store.list("tasks")).toHaveLength(1);
+  });
+
   test("undoing a create removes it; redo brings it back", async () => {
     const { store, history, actions } = setup();
     await actions.createTask({ title: "Plan", position: 0, when: "inbox" });

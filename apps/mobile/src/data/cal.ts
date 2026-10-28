@@ -62,6 +62,8 @@ export const session = new Session(CONVEX_URL, store, keychain, {
 if (!fixture) session.init();
 
 export const cal = createCal(storeSource(store));
+// Undo steps belong to the account that made them; see History.clear.
+onAuthChange(() => void cal.history.clear());
 
 // Subscribes to sign-in changes; returns an unsubscribe.
 export function onAuthChange(listener: Listener<ReturnType<Session["state"]>>) {

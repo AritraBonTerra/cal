@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { addDays, dayStatuses, type Habit, type HabitEntry, habitStats } from "../src";
+import {
+  addDays,
+  dayStatuses,
+  type Habit,
+  type HabitEntry,
+  habitStats,
+  latestEntries,
+} from "../src";
 
 const today = "2026-10-28";
 const created = new Date(2026, 9, 1).getTime();
@@ -84,6 +91,17 @@ describe("habitStats", () => {
     const mwf = habit({ rrule: "FREQ=DAILY;BYDAY=MO,WE,FR" });
     const statuses = dayStatuses(mwf, [], "2026-10-26", "2026-10-27");
     expect([...statuses.values()]).toEqual(["missed", "off"]);
+  });
+
+  test("two entries for one day, from two devices, count once (the newest)", () => {
+    const both = entries([today, today]).map((entry, index) => ({
+      ...entry,
+      uuid: index === 0 ? "mac" : "phone",
+      value: index === 0 ? 1 : 0,
+      updated_at: index === 0 ? 5 : 9,
+    }));
+    expect(latestEntries(both).map((entry) => entry.uuid)).toEqual(["phone"]);
+    expect(habitStats(habit(), both, today).total).toBe(0);
   });
 
   test("a measured habit is done only at its target", () => {
