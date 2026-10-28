@@ -6,7 +6,9 @@ import { ClockProvider, now } from "./lib/clock";
 import "./styles.css";
 
 // Actions stamp completions with the window's clock, which is fixed in fixture mode.
-const cal = createCal(window.cal.data, now);
+// Device settings live in localStorage, except in fixture mode, where every launch must
+// start from the same defaults for screenshots.
+const cal = createCal(window.cal.data, now, window.cal.config.fixture ? undefined : localStorage);
 // Undo steps belong to the account that made them; see History.clear.
 window.cal.auth.onChange(() => void cal.history.clear());
 

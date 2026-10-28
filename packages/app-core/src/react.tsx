@@ -11,6 +11,13 @@ import { type Actions, createActions } from "./actions";
 import { type Command, CommandRegistry } from "./commands";
 import type { DataSource } from "./data";
 import { History } from "./history";
+import {
+  type AccountSettings,
+  type DeviceSettings,
+  type DeviceStore,
+  readAccountSettings,
+  Settings,
+} from "./settings";
 import { LiveTables } from "./tables";
 
 export interface Cal {
@@ -19,11 +26,28 @@ export interface Cal {
   history: History;
   actions: Actions;
   commands: CommandRegistry;
+  settings: Settings;
 }
 
+// Device settings kept in memory only, for tests and tools.
+const memoryStore = (): DeviceStore => {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+};
+
 // Wires the app's data layer around one DataSource. Create once per window. `now` is
-// the app's clock, which actions use for timestamps and "today" (fixed in fixture mode).
-export function createCal(source: DataSource, now?: () => Date): Cal {
+// the app's clock, which actions use for timestamps and "today" (fixed in fixture mode);
+// `device` is where this device's settings live.
+export function createCal(
+  source: DataSource,
+  now?: () => Date,
+  device: DeviceStore = memoryStore(),
+): Cal {
   const history = new History(source);
   return {
     source,
@@ -31,6 +55,7 @@ export function createCal(source: DataSource, now?: () => Date): Cal {
     history,
     actions: createActions(history, now),
     commands: new CommandRegistry(),
+    settings: new Settings(source, device),
   };
 }
 
@@ -92,4 +117,26 @@ export function useCommandList(includeDisabled = false) {
     () => commands.version,
   );
   return commands.list(includeDisabled);
+}
+
+/**
+ * Current settings, live: `account` follows every device (synced), `device` stays on this
+ * one. Set them with `setAccount(key, value)` / `setDevice(key, value)`.
+ */
+export function useSettings() {
+  const { settings } = useCal();
+  const { rows } = useTable("settings");
+  const account: AccountSettings = useMemo(() => readAccountSettings(rows), [rows]);
+  const device: DeviceSettings = useSyncExternalStore(
+    (listener) => settings.subscribeDevice(listener),
+    () => settings.device,
+  );
+  return {
+    account,
+    device,
+    setAccount: <K extends keyof AccountSettings>(key: K, value: AccountSettings[K]) =>
+      settings.setAccount(key, value),
+    setDevice: <K extends keyof DeviceSettings>(key: K, value: DeviceSettings[K]) =>
+      settings.setDevice(key, value),
+  };
 }

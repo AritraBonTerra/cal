@@ -4,6 +4,7 @@ import { LocalStore, Session, type SessionStorage } from "@cal/sync";
 import { randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseSync } from "expo-sqlite";
+import { SQLiteStorage } from "expo-sqlite/kv-store";
 import { deviceCalendar } from "./calendar";
 import { openDatabase } from "./db";
 
@@ -65,7 +66,16 @@ export const session = new Session(CONVEX_URL, store, keychain, {
 });
 if (!fixture) session.init();
 
-export const cal = createCal(storeSource(store), now);
+// Device settings in their own small SQLite key-value store (in memory for fixtures).
+const deviceSettings = fixture ? undefined : new SQLiteStorage("cal-settings.db");
+export const cal = createCal(
+  storeSource(store),
+  now,
+  deviceSettings && {
+    getItem: (key) => deviceSettings.getItemSync(key),
+    setItem: (key, value) => deviceSettings.setItemSync(key, value),
+  },
+);
 // Undo steps belong to the account that made them; see History.clear.
 onAuthChange(() => void cal.history.clear());
 

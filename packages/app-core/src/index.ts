@@ -18,6 +18,18 @@ export {
   useCommandList,
   useCommands,
   useHistory,
+  useSettings,
   useTable,
 } from "./react";
+export {
+  type AccountSettings,
+  accountDefaults,
+  type DeviceSettings,
+  type DeviceStore,
+  deviceDefaults,
+  readAccountSettings,
+  readDeviceSettings,
+  Settings,
+  type ZoneColumn,
+} from "./settings";
 export { LiveTables } from "./tables";

@@ -37,4 +37,5 @@ export default defineSchema({
   habit_entries: defineTable({ ...syncedTables.habit_entries, owner_id }).index("by_uuid", [
     "uuid",
   ]),
+  settings: defineTable({ ...syncedTables.settings, owner_id }).index("by_uuid", ["uuid"]),
 });
