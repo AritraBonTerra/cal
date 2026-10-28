@@ -2,7 +2,7 @@ import { useActions } from "@cal/app-core";
 import { addDays, type DayKey, toDayKey, weekday } from "@cal/domain";
 import { mix, colors as tokens } from "@cal/theme";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   type AnimatedRef,
@@ -98,6 +98,16 @@ export function TimeGrid({
     },
   );
 
+  // Drop the override once the store shows the dropped times (or the block is gone),
+  // so later changes, e.g. from another device, show through.
+  useEffect(() => {
+    if (!moved) return;
+    const item = items.find((each) => each.id === moved.id);
+    const landed =
+      item?.start.getTime() === moved.start.getTime() && item.end.getTime() === moved.end.getTime();
+    if (!item || landed) setMoved(null);
+  }, [items, moved]);
+
   const shown =
     moved && items.some((item) => item.id === moved.id)
       ? items.map((item) =>
@@ -120,7 +130,7 @@ export function TimeGrid({
       start.getTime() + item.end.getTime() - item.start.getTime() + lengthDelta * 60_000,
     );
     setMoved({ id: item.id, start, end });
-    void actions.moveBlock(item.block.uuid, start, end);
+    actions.moveBlock(item.block.uuid, start, end).catch(() => setMoved(null));
   };
 
   const create = (day: DayKey, event: GestureResponderEvent) => {

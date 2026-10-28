@@ -102,7 +102,7 @@ export function TaskSheet({ task, section }: { task: Task; section?: "when" | "d
           onEndEditing={(event) => {
             const notes = event.nativeEvent.text.trim();
             if (notes !== (task.notes ?? ""))
-              void actions.updateTask(task.uuid, { notes: notes || undefined });
+              void actions.updateTask(task.uuid, { notes: notes || null });
           }}
           className="ml-9 mt-1 min-h-11 py-1 text-body text-ink"
           multiline

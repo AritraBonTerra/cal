@@ -23,13 +23,20 @@ export function DaysPager({ width, height }: { width: number; height: number }) 
   const anchor = useView((state) => state.anchor);
   const count = useView((state) => state.count);
   const [base, setBase] = useState(anchor);
-  const swiped = useRef(anchor);
+  // Bumped on every jump from outside, so the list starts over even when the jump
+  // lands back on `base` (swipe away, then tap Today).
+  const [jumps, setJumps] = useState(0);
+  // The day the list is showing, as far as this pager knows.
+  const shown = useRef(anchor);
   const listRef = useRef<FlatList<number>>(null);
 
   // Rebase when the anchor moved for a reason other than a swipe here.
   useEffect(() => {
-    if (anchor !== swiped.current && anchor !== base) setBase(anchor);
-  }, [anchor, base]);
+    if (anchor === shown.current) return;
+    shown.current = anchor;
+    setBase(anchor);
+    setJumps((value) => value + 1);
+  }, [anchor]);
 
   // The first page opens on now (today) or the working morning, shared by every page.
   const [initialY] = useState(() => {
@@ -40,12 +47,20 @@ export function DaysPager({ width, height }: { width: number; height: number }) 
   const scrollY = useSharedValue(initialY);
   const activePage = useSharedValue(MIDDLE);
 
+  // Every key change remounts the list on its middle page; the page that publishes
+  // vertical scroll must follow, or scrolling stops syncing between pages.
+  const listKey = `${count}:${base}:${width}:${jumps}`;
+  useEffect(() => {
+    void listKey;
+    activePage.set(MIDDLE);
+  }, [listKey, activePage]);
+
   const onPageSettled = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / width);
     activePage.set(index);
     const next: DayKey = addDays(base, (index - MIDDLE) * count);
     if (next === anchor) return;
-    swiped.current = next;
+    shown.current = next;
     view.set({ anchor: next });
   };
 
@@ -53,7 +68,7 @@ export function DaysPager({ width, height }: { width: number; height: number }) 
     <FlatList
       // Pages are laid out in points of `width`: a new width (the iPad sidebar opening)
       // would leave the list on a far-off page, so it starts over.
-      key={`${count}:${base}:${width}`}
+      key={listKey}
       ref={listRef}
       data={offsets}
       horizontal

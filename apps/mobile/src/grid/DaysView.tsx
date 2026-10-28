@@ -1,4 +1,4 @@
-import { addDays, type DayKey, dayRange, fromDayKey, toDayKey, toOffsetIso } from "@cal/domain";
+import { addDays, type DayKey, dayRange, fromDayKey, toOffsetIso } from "@cal/domain";
 import { useState } from "react";
 import { Text, View } from "react-native";
 import Animated, { type SharedValue, useAnimatedRef } from "react-native-reanimated";
@@ -47,11 +47,13 @@ export function DaysView({ start, count, scrollY, initialY, activePage, page }: 
           end: new Date(event.end),
         }),
       ),
+    // Every block overlapping the visible days, so an overnight block shows on both.
     ...data.blocks
-      .filter((block) => {
-        const day = toDayKey(new Date(block.start_at));
-        return day >= first && day <= last;
-      })
+      .filter(
+        (block) =>
+          Date.parse(block.start_at) < fromDayKey(addDays(last, 1)).getTime() &&
+          Date.parse(block.end_at) > fromDayKey(first).getTime(),
+      )
       .map((block): Item => {
         const task = data.tasks.find((each) => each.uuid === block.task_uuid);
         const project = data.projects.find((each) => each.uuid === task?.project_uuid);

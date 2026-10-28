@@ -86,8 +86,15 @@ export const deviceCalendar: CalendarSource = {
   async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
     const { eventIdentifier, instanceStartDate } = parseId(id);
     const options = { instanceStartDate, futureEvents: span === "future" };
-    await Calendar.updateEventAsync(eventIdentifier, toDetails(input), options);
-    return toExternal(await Calendar.getEventAsync(eventIdentifier, options));
+    const savedId = await Calendar.updateEventAsync(eventIdentifier, toDetails(input), options);
+    // expo-calendar finds an occurrence by its current start, which may have just moved.
+    const readStart =
+      instanceStartDate && (input.start ? new Date(input.start) : instanceStartDate);
+    return toExternal(
+      await Calendar.getEventAsync(savedId || eventIdentifier, {
+        instanceStartDate: readStart?.toISOString(),
+      }),
+    );
   },
 
   async deleteEvent(id: string, span: EventSpan) {
