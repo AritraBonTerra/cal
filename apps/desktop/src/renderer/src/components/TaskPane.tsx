@@ -9,11 +9,12 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import { useEffect } from "react";
 import { useApp } from "../lib/app";
 import { geometry, useDrag } from "../lib/drag";
 import { isSmartList, listTitle, tasksIn } from "../lib/lists";
 import { formatRelativeDay } from "../lib/time";
-import { useUi } from "../lib/ui";
+import { select, useUi } from "../lib/ui";
 import { TaskRow } from "./TaskRow";
 import { Keycaps } from "./ui";
 
@@ -38,6 +39,14 @@ export function TaskPane() {
   const dragging = useDrag((state) => state.task);
   const pointer = useDrag((state) => state.pointer);
   const rows = tasksIn(list, data.tasks, today);
+  const selection = useUi((state) => state.selection);
+  const editing = useUi((state) => state.editing);
+  // A selected task that left the list (completed, moved) is dropped, so Space and ⌘⌫
+  // never act on a row that isn't on screen. A row still loading its new title is kept.
+  useEffect(() => {
+    if (selection?.kind !== "task" || editing === selection.uuid || !data.loaded) return;
+    if (!rows.some((task) => task.uuid === selection.uuid)) select(null);
+  }, [selection, editing, rows, data.loaded]);
   const evening = list === "today" ? rows.filter((task) => isThisEvening(task, today)) : [];
   const main = rows.filter((task) => !evening.includes(task));
   const Icon = isSmartList(list) ? ICONS[list] : null;

@@ -2,6 +2,7 @@ import { useActions } from "@cal/app-core";
 import {
   addDays,
   addMonths,
+  type DayKey,
   dayRange,
   daysInMonth,
   startOfMonth,
@@ -39,8 +40,7 @@ export function WhenPicker({ task }: { task: Task }) {
     closeOverlay();
   };
 
-  const first = startOfWeek(month);
-  const days = dayRange(first, 42);
+  const days = monthGridDays(month);
   const current = task.when_date;
 
   return (
@@ -105,7 +105,7 @@ export function WhenPicker({ task }: { task: Task }) {
           ))}
         </div>
         <div className="grid grid-cols-7 text-center text-caption tnum">
-          {days.slice(0, daysInMonth(month) + weekday(month) > 36 ? 42 : 35).map((day) => {
+          {days.map((day) => {
             const inMonth = day.slice(0, 7) === month.slice(0, 7);
             const isToday = day === today;
             const chosen = day === current;
@@ -147,6 +147,13 @@ export function WhenPicker({ task }: { task: Task }) {
       </div>
     </div>
   );
+}
+
+// The Monday-first grid holding `month`: five rows, or six when the month needs them.
+export function monthGridDays(month: DayKey) {
+  const offset = (weekday(month) + 6) % 7;
+  const rows = offset + daysInMonth(month) > 35 ? 6 : 5;
+  return dayRange(startOfWeek(month), rows * 7);
 }
 
 function Option({

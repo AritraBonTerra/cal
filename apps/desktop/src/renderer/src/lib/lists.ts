@@ -1,5 +1,6 @@
 import {
   type Area,
+  addDays,
   byPosition,
   type DayKey,
   inList,
@@ -82,7 +83,8 @@ export function newTaskIn(list: ListId, today: DayKey): Omit<NewRow<"tasks">, "t
     case "today":
       return { ...base, when: "date", when_date: today };
     case "upcoming":
-      return { ...base, when: "date", when_date: today };
+      // Tomorrow, the first day Upcoming shows, so the new row appears where you are.
+      return { ...base, when: "date", when_date: addDays(today, 1) };
     case "anytime":
       return { ...base, when: "anytime" };
     case "someday":

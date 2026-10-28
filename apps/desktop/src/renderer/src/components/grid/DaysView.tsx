@@ -1,10 +1,9 @@
-import { toDayKey } from "@cal/domain";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { AllDayRow } from "./AllDayRow";
 import { DayHeaders } from "./DayHeaders";
 import { HabitStrip } from "./HabitStrip";
-import { GUTTER, type Item } from "./model";
+import { GUTTER, type Item, withinDays } from "./model";
 import { TimeGrid } from "./TimeGrid";
 
 /*
@@ -41,11 +40,11 @@ export function DaysView() {
           end: new Date(event.end),
         }),
       ),
+    // Blocks that touch the visible days, so one running past midnight shows on both.
     ...data.blocks
-      .filter((block) => {
-        const day = toDayKey(new Date(block.start_at));
-        return day >= first && day <= last;
-      })
+      .filter((block) =>
+        withinDays({ start: new Date(block.start_at), end: new Date(block.end_at) }, first, last),
+      )
       .map((block): Item => {
         const task = data.tasks.find((each) => each.uuid === block.task_uuid);
         const project = data.projects.find((each) => each.uuid === task?.project_uuid);

@@ -77,6 +77,16 @@ await page.mouse.up();
 await page.waitForTimeout(300);
 check("resize block to 5–6:30 PM", (await created.textContent())?.includes("5–6:30 PM") ?? false);
 
+// 3b. Escape mid-move cancels without writing
+box = await boxOf(created);
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await page.mouse.down();
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 48, { steps: 5 });
+await page.keyboard.press("Escape");
+await page.mouse.up();
+await page.waitForTimeout(300);
+check("Escape cancels a block move", (await created.textContent())?.includes("5–6:30 PM") ?? false);
+
 // 4. select and delete with Backspace
 await created.click();
 await page.keyboard.press("Backspace");
@@ -88,11 +98,19 @@ await page.keyboard.press("Meta+z");
 await page.waitForTimeout(300);
 check("⌘Z restores the block", (await blocks()) === before + 1);
 
-// 6. drag a task row onto Fri 13:00
+// 6. drag a task row onto Fri 13:00; first with Escape, which must not schedule
 before = await blocks();
 const row = page.locator("li", { hasText: "Review Sam's PR" }).first();
 const rb = await boxOf(row);
 c = await col("2026-10-30");
+await page.mouse.move(rb.x + 100, rb.y + 10);
+await page.mouse.down();
+await page.mouse.move(rb.x + 120, rb.y + 20, { steps: 3 });
+await page.mouse.move(c.x + c.width / 2, y(13 * 60), { steps: 8 });
+await page.keyboard.press("Escape");
+await page.mouse.up();
+await page.waitForTimeout(300);
+check("Escape cancels a task drag", (await blocks()) === before);
 await page.mouse.move(rb.x + 100, rb.y + 10);
 await page.mouse.down();
 await page.mouse.move(rb.x + 120, rb.y + 20, { steps: 3 });
@@ -170,6 +188,62 @@ await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 48, { step
 await page.mouse.up();
 await page.waitForTimeout(400);
 check("device event moves", (await retro.textContent())?.includes("4–5 PM") ?? false);
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(400);
+check("⌘Z moves the event back", (await retro.textContent())?.includes("3–4 PM") ?? false);
+await page.keyboard.press("Meta+Shift+z");
+await page.waitForTimeout(400);
+check("⇧⌘Z moves it again", (await retro.textContent())?.includes("4–5 PM") ?? false);
+
+// 13b. drag to create from Wed 19:00 to Thu 20:00 keeps the anchor day
+before = await blocks();
+const wed = await col("2026-10-28");
+const thu = await col("2026-10-29");
+await page.mouse.move(wed.x + wed.width / 2, y(19 * 60));
+await page.mouse.down();
+await page.mouse.move(wed.x + wed.width / 2, y(19 * 60 + 30), { steps: 4 });
+await page.mouse.move(thu.x + thu.width / 2, y(20 * 60), { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(100);
+await page.keyboard.type("Overnight");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+const inColumn = (day: string) =>
+  page.locator(`[data-column='${day}'] [data-item^='block:'] > div`, { hasText: "Overnight" });
+check(
+  "drag across days makes one block spanning both",
+  (await blocks()) === before + 2 &&
+    (await inColumn("2026-10-28").count()) === 1 &&
+    (await inColumn("2026-10-29").count()) === 1,
+);
+check(
+  "its label runs from the anchor day",
+  (await inColumn("2026-10-28").textContent())?.includes("7–8 PM") ?? false,
+);
+// Only the next day in view: the block still shows there.
+await page.keyboard.press("1");
+await page.waitForTimeout(150);
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(150);
+check(
+  "overnight block shows on the next day alone",
+  (await page.locator("[data-column]").count()) === 1 &&
+    (await inColumn("2026-10-29").count()) === 1,
+);
+await page.keyboard.press("m");
+await page.waitForTimeout(200);
+check(
+  "month view continues it with its end time",
+  (await page.locator("button", { hasText: "Overnight" }).filter({ hasText: "–8 PM" }).count()) ===
+    1,
+);
+await page.keyboard.press("0");
+await page.keyboard.press("t");
+await page.waitForTimeout(200);
+await inColumn("2026-10-28").click();
+await page.keyboard.press("Backspace");
+await page.waitForTimeout(300);
+check("Backspace removes the overnight block", (await blocks()) === before);
 
 // 14. nav keys and palette
 await page.keyboard.press("ArrowRight");
@@ -180,6 +254,48 @@ await page.keyboard.type("14");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(100);
 check("palette shows 14 days", (await page.locator("[data-column]").count()) === 14);
+
+// 15. X from another week still schedules around today's meetings
+const spec = page.locator("li", { hasText: "Write launch spec" }).first();
+await spec.click();
+await page.keyboard.press("x");
+await page.waitForTimeout(400);
+await page.keyboard.press("t");
+await page.waitForTimeout(200);
+const specBlocks = page.locator("[data-item^='block:'] > div", { hasText: "Write launch spec" });
+// A half-hour chip is too short for a time label, so check where it sits: 12:00 is 576px.
+const tops = await specBlocks.evaluateAll((chips) =>
+  chips.map((chip) => (chip instanceof HTMLElement ? chip.style.top : "")),
+);
+check("X from another week schedules after today's 1:1", tops.includes(`${12 * 48}px`));
+
+// 16. a completed task leaves the list and loses its selection
+const rent = page.locator("li", { hasText: "Pay rent" }).first();
+await rent.click();
+await page.keyboard.press(" ");
+await page.waitForTimeout(300);
+await page.keyboard.press(" ");
+await page.waitForTimeout(300);
+check(
+  "Space on a hidden row does nothing",
+  (await page.locator("li", { hasText: "Pay rent" }).count()) === 0,
+);
+
+// 17. switching lists drops the selection; ⌘N in Upcoming lands in Upcoming
+await page.locator("li", { hasText: "Typed task" }).first().click();
+await page.keyboard.press("Meta+3");
+await page.waitForTimeout(200);
+check("switching lists drops the selection", (await page.locator("[data-selected]").count()) === 0);
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Upcoming task");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+check(
+  "⌘N in Upcoming shows the new to-do",
+  (await page.locator("li", { hasText: "Upcoming task" }).count()) === 1 &&
+    (await page.locator("h2", { hasText: "Upcoming" }).count()) === 1,
+);
 
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

@@ -1,5 +1,5 @@
-import { useActions } from "@cal/app-core";
-import { addDays, type DayKey, daysBetween, toDayKey, toOffsetIso, weekday } from "@cal/domain";
+import { useActions, useCal } from "@cal/app-core";
+import { type DayKey, daysBetween, toDayKey, toOffsetIso, weekday } from "@cal/domain";
 import { mix, colors as tokens } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -19,13 +19,17 @@ import { select, ui, useUi } from "../../lib/ui";
 import { BlockChip, EventChip, frameStyle } from "./chips";
 import {
   DAY_MINUTES,
+  dragged,
+  dragSpan,
   GUTTER,
   HOUR,
   type Item,
   instant,
   minutesOf,
   pixelsFor,
+  type Segment,
   SNAP,
+  type Span,
   segments,
   snap,
 } from "./model";
@@ -34,11 +38,12 @@ import {
  * The hour grid: a scrolling body with the hour gutter and one column per day. All
  * pointer work happens here with plain pointer events: drag on empty space to create a
  * block, drag a chip to move it, drag its edge to resize, and drop a block on the to-do
- * pane to remove it. Fifteen-minute snapping, off with ⇧.
+ * pane to remove it. Fifteen-minute snapping, off with ⇧. Escape or a cancelled pointer
+ * drops the gesture without writing anything.
  */
 
 type Gesture =
-  | { kind: "create"; day: DayKey; anchor: number; start: number; end: number; moved: boolean }
+  | { kind: "create"; anchor: Date; start: Date; end: Date; moved: boolean }
   | {
       kind: "move" | "resize";
       item: Item;
@@ -50,7 +55,11 @@ type Gesture =
       moved: boolean;
     };
 
-interface Draft {
+// The block being typed into after a create gesture; may run past midnight.
+type Draft = Span;
+
+// The half-hour outline under a resting pointer, in minutes of one day.
+interface Hover {
   day: DayKey;
   start: number;
   end: number;
@@ -69,13 +78,14 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
   const { today, mode, palette, calendars, refreshEvents } = useApp();
   const now = useNow();
   const actions = useActions();
+  const { history } = useCal();
   const selection = useUi((state) => state.selection);
   const flashDay = useUi((state) => state.flashDay);
   const ghost = useDrag((state) => state.ghost);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const live = useRef<Gesture | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [hover, setHover] = useState<Draft | null>(null);
+  const [hover, setHover] = useState<Hover | null>(null);
 
   const setLive = (next: Gesture | null) => {
     live.current = next;
@@ -150,15 +160,8 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
         moved: false,
       });
     } else if (column) {
-      const start = snap(point.minute - SNAP / 2);
-      setLive({
-        kind: "create",
-        day: point.day,
-        anchor: start,
-        start,
-        end: start + SNAP,
-        moved: false,
-      });
+      const anchor = instant(point.day, snap(point.minute - SNAP / 2));
+      setLive({ kind: "create", anchor, ...dragSpan(anchor, anchor), moved: false });
       select(null);
     } else return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -186,15 +189,10 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     if (!point) return;
     const step = event.shiftKey ? 1 : SNAP;
     if (current.kind === "create") {
-      const minute = snap(point.minute, step);
-      const moved = current.moved || Math.abs(minute - current.anchor) >= SNAP;
-      setLive({
-        ...current,
-        day: point.day,
-        start: Math.min(current.anchor, minute),
-        end: Math.max(current.anchor + SNAP, minute),
-        moved,
-      });
+      const pointer = instant(point.day, snap(point.minute, step));
+      const moved =
+        current.moved || Math.abs(pointer.getTime() - current.anchor.getTime()) >= SNAP * 60_000;
+      setLive({ ...current, ...dragSpan(current.anchor, pointer), moved });
       return;
     }
     const deltaMinutes = point.minute - current.originMinute;
@@ -203,31 +201,43 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       current.moved || Math.abs(pixelsFor(deltaMinutes)) >= DRAG_THRESHOLD || deltaDays !== 0;
     if (!moved) return;
     const { item } = current;
-    if (current.kind === "move") {
-      const startDay = addDays(toDayKey(item.start), deltaDays);
-      const startMinute = snap(minutesOf(item.start) + deltaMinutes, step);
-      const start = instant(startDay, startMinute);
-      const end = new Date(start.getTime() + (item.end.getTime() - item.start.getTime()));
-      setLive({ ...current, start, end, moved });
-      if (item.kind === "block") drag.set({ removing: overTaskPane(event.clientX, event.clientY) });
-    } else if (current.edge === "end") {
-      const minute = snap(minutesOf(item.end) + deltaMinutes, step);
-      const end = instant(toDayKey(item.end), Math.max(minutesOf(item.start) + SNAP, minute));
-      setLive({ ...current, end, moved });
-    } else {
-      const minute = snap(minutesOf(item.start) + deltaMinutes, step);
-      const start = instant(toDayKey(item.start), Math.min(minutesOf(item.end) - SNAP, minute));
-      setLive({ ...current, start, moved });
+    const kind = current.kind === "move" ? "move" : current.edge;
+    setLive({ ...current, ...dragged(item, kind, deltaDays, deltaMinutes, step), moved });
+    if (kind === "move" && item.kind === "block") {
+      drag.set({ removing: overTaskPane(event.clientX, event.clientY) });
     }
   };
+
+  // Drops the gesture and anything it was showing, without writing.
+  const cancel = () => {
+    setLive(null);
+    setHover(null);
+    if (drag.get().removing) drag.set({ removing: false });
+  };
+
+  useEffect(() => {
+    if (!gesture) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancel();
+    };
+    // Capture phase, so the key never reaches the command registry (Deselect).
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
 
   const onPointerUp = () => {
     const current = live.current;
     setLive(null);
     if (!current) return;
     if (current.kind === "create") {
-      const end = current.moved ? current.end : Math.min(DAY_MINUTES, current.start + CLICK_LENGTH);
-      setDraft({ day: current.day, start: current.start, end });
+      // A click makes a half-hour block, cut short at midnight like the old grid.
+      const dayEnd = instant(toDayKey(current.start), DAY_MINUTES);
+      const end = current.moved
+        ? current.end
+        : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + CLICK_LENGTH * 60_000));
+      setDraft({ start: current.start, end });
       return;
     }
     const { item } = current;
@@ -244,13 +254,18 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       } else void actions.moveBlock(item.block.uuid, current.start, current.end);
       return;
     }
-    void window.cal.calendar
-      .updateEvent(
-        item.event.id,
-        { start: toOffsetIso(current.start), end: toOffsetIso(current.end) },
-        "this",
-      )
-      .then(refreshEvents);
+    // Device events live outside Cal's tables, so the move is recorded as an external
+    // History step: ⌘Z puts the event back, ⇧⌘Z moves it again.
+    const previous = { start: toOffsetIso(item.start), end: toOffsetIso(item.end) };
+    const next = { start: toOffsetIso(current.start), end: toOffsetIso(current.end) };
+    const place = (times: typeof next) =>
+      window.cal.calendar.updateEvent(item.event.id, times, "this").then(refreshEvents);
+    void history.transact(current.kind === "move" ? "Move Event" : "Resize Event", (tx) =>
+      tx.external(
+        () => place(next),
+        () => place(previous),
+      ),
+    );
   };
 
   // Items drawn where the gesture has them, plus the original slot shown as an outline.
@@ -263,6 +278,9 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
   const byDay = segments(shown, days);
   const original =
     gesture && gesture.kind !== "create" && gesture.moved ? segments([gesture.item], days) : null;
+  // The create gesture and the draft, cut per day like items are.
+  const creating = gesture?.kind === "create" ? segments([gesture], days) : null;
+  const drafting = draft ? segments([draft], days) : null;
   const nowMinute = minutesOf(now);
   const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
   const nowTop = pixelsFor(nowMinute);
@@ -274,7 +292,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={cancel}
       onPointerLeave={() => setHover(null)}
       data-dense
     >
@@ -312,13 +330,17 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
         );
         const isToday = day === today;
         const weekend = weekday(day) === 0 || weekday(day) === 6;
-        const dayDraft = draft?.day === day ? draft : null;
-        const dayGhost =
+        const dayDraft = drafting?.get(day)?.[0] ?? null;
+        // A task dragged from the list, or the create gesture's part of this day.
+        const dayGhost: Segment<Span> | null =
           ghost?.day === day
-            ? ghost
-            : gesture?.kind === "create" && gesture.day === day
-              ? gesture
-              : null;
+            ? {
+                item: { start: instant(day, ghost.start), end: instant(day, ghost.end) },
+                day,
+                start: ghost.start,
+                end: ghost.end,
+              }
+            : (creating?.get(day)?.[0] ?? null);
         const dayHover = !gesture && !draft && hover?.day === day ? hover : null;
         return (
           <div
@@ -398,7 +420,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
                   height: pixelsFor(dayGhost.end - dayGhost.start) - 1,
                 }}
               >
-                <GhostLabel day={day} start={dayGhost.start} end={dayGhost.end} />
+                <GhostLabel span={dayGhost.item} />
               </div>
             )}
             {dayHover && (
@@ -414,9 +436,9 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
                 </span>
               </div>
             )}
-            {dayDraft && (
+            {dayDraft && day === toDayKey(dayDraft.item.start) && (
               <DraftChip
-                draft={dayDraft}
+                draft={dayDraft.item}
                 onDone={() => setDraft(null)}
                 style={frameStyle({
                   top: pixelsFor(dayDraft.start),
@@ -425,6 +447,15 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
                   width: 1,
                   z: 25,
                 })}
+              />
+            )}
+            {dayDraft && day !== toDayKey(dayDraft.item.start) && (
+              <div
+                className="pointer-events-none absolute inset-x-0.5 z-20 rounded-sm border border-dashed border-accent bg-accent-soft"
+                style={{
+                  top: pixelsFor(dayDraft.start),
+                  height: pixelsFor(dayDraft.end - dayDraft.start) - 1,
+                }}
               />
             )}
             {days.includes(today) && (
@@ -451,13 +482,13 @@ const selectItem = (item: Item) =>
       : { kind: "event", id: item.event.id },
   );
 
-function GhostLabel({ day, start, end }: { day: DayKey; start: number; end: number }) {
+function GhostLabel({ span }: { span: Span }) {
   const title = useDrag((state) => state.task?.title);
   return (
     <div className="flex flex-col">
       {title && <span className="truncate">{title}</span>}
       <span className="text-caption font-normal tnum">
-        {formatTime(instant(day, start))}–{formatTime(instant(day, end))}
+        {formatTime(span.start)}–{formatTime(span.end)}
       </span>
     </div>
   );
@@ -486,14 +517,10 @@ function DraftChip({
       title: text,
       position: -1,
       when: "date",
-      when_date: draft.day,
-      estimate_min: draft.end - draft.start,
+      when_date: toDayKey(draft.start),
+      estimate_min: Math.round((draft.end.getTime() - draft.start.getTime()) / 60_000),
     });
-    await actions.scheduleTask(
-      uuid,
-      instant(draft.day, draft.start),
-      instant(draft.day, draft.end),
-    );
+    await actions.scheduleTask(uuid, draft.start, draft.end);
   };
 
   return (
@@ -516,7 +543,7 @@ function DraftChip({
         className="w-full bg-transparent text-small font-medium leading-4 text-ink outline-none placeholder:text-ink-3"
       />
       <div className="truncate text-caption text-ink-2 tnum">
-        {formatTime(instant(draft.day, draft.start))}–{formatTime(instant(draft.day, draft.end))}
+        {formatTime(draft.start)}–{formatTime(draft.end)}
       </div>
     </div>
   );

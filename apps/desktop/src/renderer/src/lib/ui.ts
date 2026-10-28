@@ -111,4 +111,11 @@ export function toggleOverlay(overlay: Overlay) {
 
 export const closeOverlay = () => ui.set({ overlay: null });
 
-export const showList = (list: ListId) => ui.set({ list, tasks: true });
+// Switching lists drops a task selection, since the row it points at is no longer shown.
+export const showList = (list: ListId) =>
+  ui.set((state) => ({
+    list,
+    tasks: true,
+    selection: state.selection?.kind === "task" ? null : state.selection,
+    editing: null,
+  }));

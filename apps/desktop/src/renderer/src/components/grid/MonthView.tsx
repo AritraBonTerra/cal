@@ -5,6 +5,7 @@ import { graphite } from "../../lib/calendars";
 import { assignLanes } from "../../lib/layout";
 import { dayNumber, formatTime, formatWeekday } from "../../lib/time";
 import { select, showDays, useUi } from "../../lib/ui";
+import { withinDays } from "./model";
 
 const LINE = 20;
 const NUMBER_ROW = 26;
@@ -122,12 +123,19 @@ function Cell({
 }) {
   const { events, data, today, palette, mode, calendars } = useApp();
   const selection = useUi((state) => state.selection);
+  // Timed items touching this day. One that began the day before continues here and
+  // is labelled with when it ends.
+  const onDay = (start: string, end: string) =>
+    withinDays({ start: new Date(start), end: new Date(end) }, day, day);
+  const label = (start: Date, end: Date) =>
+    toDayKey(start) === day ? formatTime(start) : `–${formatTime(end)}`;
   const timed = [
     ...events
-      .filter((event) => !event.allDay && toDayKey(new Date(event.start)) === day)
+      .filter((event) => !event.allDay && onDay(event.start, event.end))
       .map((event) => ({
         key: `event:${event.id}`,
         start: new Date(event.start),
+        time: label(new Date(event.start), new Date(event.end)),
         title: event.title,
         color: (palette.get(event.calendarId) ?? graphite(mode)).bar,
         text: (palette.get(event.calendarId) ?? graphite(mode)).title,
@@ -138,10 +146,11 @@ function Cell({
         writable: calendars.find((c) => c.id === event.calendarId)?.writable ?? false,
       })),
     ...data.blocks
-      .filter((block) => toDayKey(new Date(block.start_at)) === day)
+      .filter((block) => onDay(block.start_at, block.end_at))
       .map((block) => ({
         key: `block:${block.uuid}`,
         start: new Date(block.start_at),
+        time: label(new Date(block.start_at), new Date(block.end_at)),
         title: data.tasks.find((task) => task.uuid === block.task_uuid)?.title ?? "Block",
         color: "var(--cal-edge-strong)",
         text: "var(--cal-ink)",
@@ -187,7 +196,7 @@ function Cell({
               className={`h-2 w-2 shrink-0 ${item.block ? "rounded-xs border" : "rounded-full"}`}
               style={item.block ? { borderColor: item.color } : { background: item.color }}
             />
-            <span className="shrink-0 text-ink-3 tnum">{formatTime(item.start)}</span>
+            <span className="shrink-0 text-ink-3 tnum">{item.time}</span>
             <span className={`truncate ${item.done ? "text-ink-3 line-through" : "text-ink"}`}>
               {item.title}
             </span>

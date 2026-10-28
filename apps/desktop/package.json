@@ -8,10 +8,11 @@
     "dev": "bun scripts/prepare.ts && env -u ELECTRON_RUN_AS_NODE electron-vite dev",
     "build": "bun scripts/prepare.ts && electron-vite build",
     "start": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
-    "typecheck": "tsc -p . && tsc -p scripts",
+    "typecheck": "tsc -p . && tsc -p scripts && tsc -p tests",
     "prepare:dev": "bun scripts/prepare.ts",
     "screenshots": "bun scripts/screenshot.ts",
-    "smoke": "bun scripts/smoke.ts"
+    "smoke": "bun scripts/smoke.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@cal/app-core": "workspace:*",

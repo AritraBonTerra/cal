@@ -11,7 +11,7 @@ import { Flag } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
-import { DRAG_THRESHOLD, drag, geometry } from "../lib/drag";
+import { DRAG_THRESHOLD, drag, geometry, useDrag } from "../lib/drag";
 import { formatDuration, formatRelativeDay } from "../lib/time";
 import { select, ui, useUi } from "../lib/ui";
 import { Checkbox } from "./ui";
@@ -52,6 +52,24 @@ export function TaskRow({ task }: { task: Task }) {
   } else if (scheduled > 0) meta.push({ text: `${formatDuration(scheduled)} scheduled` });
 
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
+  const dragging = useDrag((state) => state.task?.uuid === task.uuid);
+
+  // Drops the drag without scheduling: a cancelled pointer, or Escape mid-drag.
+  const cancel = () => {
+    press.current = null;
+    clearDrag();
+  };
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      press.current = null;
+      clearDrag();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [dragging]);
 
   const onPointerDown = (event: React.PointerEvent<HTMLLIElement>) => {
     if (event.button !== 0 || editing) return;
@@ -93,7 +111,7 @@ export function TaskRow({ task }: { task: Task }) {
     press.current = null;
     if (!state?.dragging) return;
     const { ghost } = drag.get();
-    drag.set({ task: null, ghost: null, pointer: null });
+    clearDrag();
     if (ghost) {
       const day = ghost.day;
       const start = new Date(`${day}T00:00`);
@@ -110,7 +128,7 @@ export function TaskRow({ task }: { task: Task }) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={cancel}
       onDoubleClick={() => ui.set({ editing: task.uuid })}
     >
       <div
@@ -164,6 +182,8 @@ export function TaskRow({ task }: { task: Task }) {
     </li>
   );
 }
+
+const clearDrag = () => drag.set({ task: null, ghost: null, pointer: null });
 
 // Inline title editing: Enter saves, Escape reverts, and an empty new to-do is removed.
 function TitleEditor({ task }: { task: Task }) {
