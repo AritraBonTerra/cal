@@ -11,6 +11,7 @@
     },
     "apps/desktop": {
       "name": "@cal/desktop",
+      "version": "0.1.0",
       "devDependencies": {
         "@cal/app-core": "workspace:*",
         "@cal/backend": "workspace:*",
@@ -84,6 +85,7 @@
       "dependencies": {
         "@cal/backend": "workspace:*",
         "@cal/domain": "workspace:*",
+        "@cal/nlp": "workspace:*",
         "@cal/sync": "workspace:*",
       },
       "devDependencies": {

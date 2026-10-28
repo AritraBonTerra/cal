@@ -1,10 +1,20 @@
 import { useActions } from "@cal/app-core";
 import { parseQuickEntry, type TokenKind } from "@cal/nlp";
-import { CalendarDays, Flag, Folder, Hourglass, Moon, Zap } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  Clock,
+  Flag,
+  Folder,
+  Hash,
+  Hourglass,
+  Moon,
+  Repeat,
+  Zap,
+} from "lucide-react";
 import { useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
-import { formatDuration, formatRelativeDay, formatTime } from "../lib/time";
 import { closeOverlay } from "../lib/ui";
 import { Keycaps, Overlay } from "./ui";
 
@@ -14,60 +24,45 @@ import { Keycaps, Overlay } from "./ui";
  * given). Tokens: tomorrow · tonight · !fri · ~45m · p1 · /project.
  */
 
-const TOKEN_ICONS: Record<TokenKind, typeof Flag> = {
+const TOKEN_ICONS: Partial<Record<TokenKind, typeof Flag>> = {
   when: CalendarDays,
+  date_range: CalendarDays,
+  time: Clock,
+  time_range: Clock,
   evening: Moon,
+  later: CalendarDays,
   deadline: Flag,
   estimate: Hourglass,
+  duration: Hourglass,
   priority: Zap,
-  project: Folder,
+  list: Folder,
+  tag: Hash,
+  recurrence: Repeat,
+  reminder: Bell,
 };
 
 export function QuickEntry() {
-  const { data, today } = useApp();
+  const { data } = useApp();
   const actions = useActions();
   const [text, setText] = useState("");
-  const entry = parseQuickEntry(text, now(), data.projects);
-  const project = data.projects.find((each) => each.uuid === entry.project_uuid);
-
-  const chips: { kind: TokenKind; label: string }[] = [];
-  if (entry.when === "evening") chips.push({ kind: "evening", label: "This Evening" });
-  else if (entry.when === "date" && entry.when_date) {
-    chips.push({
-      kind: "when",
-      label: entry.start_at
-        ? `${formatRelativeDay(entry.when_date, today)} ${formatTime(entry.start_at)}`
-        : formatRelativeDay(entry.when_date, today),
-    });
-  } else if (entry.when)
-    chips.push({ kind: "when", label: entry.when === "someday" ? "Someday" : "Anytime" });
-  if (entry.deadline)
-    chips.push({ kind: "deadline", label: `Due ${formatRelativeDay(entry.deadline, today)}` });
-  if (entry.estimate_min)
-    chips.push({ kind: "estimate", label: formatDuration(entry.estimate_min) });
-  if (entry.priority) chips.push({ kind: "priority", label: `P${entry.priority}` });
-  if (project) chips.push({ kind: "project", label: project.title });
+  const entry = parseQuickEntry(text, {
+    now: now(),
+    surface: "quick",
+    kind: "task",
+    projects: data.projects,
+  });
+  const chips = entry.tokens.filter((token) => token.applied && token.kind !== "mode");
 
   const submit = async () => {
     if (!entry.title) return;
     closeOverlay();
-    const { tokens: _tokens, title, start_at, ...fields } = entry;
-    const uuid = await actions.createTask({
-      title,
-      position: -1,
-      ...fields,
-      when: fields.when ?? "inbox",
-    });
-    if (start_at) {
-      const end = new Date(start_at.getTime() + (entry.estimate_min ?? 30) * 60_000);
-      await actions.scheduleTask(uuid, start_at, end);
-    }
+    await actions.createFromEntry(entry);
   };
 
   // The input's text is transparent; a mirror underneath draws the same text with highlights.
   const pieces: { text: string; kind?: TokenKind }[] = [];
   let cursor = 0;
-  for (const token of entry.tokens) {
+  for (const token of entry.tokens.filter((each) => each.applied)) {
     if (token.start > cursor) pieces.push({ text: text.slice(cursor, token.start) });
     pieces.push({ text: text.slice(token.start, token.end), kind: token.kind });
     cursor = token.end;
@@ -117,11 +112,11 @@ export function QuickEntry() {
             <span className="text-ink-2">/project</span>
           </span>
         )}
-        {chips.map(({ kind, label }) => {
-          const Icon = TOKEN_ICONS[kind];
+        {chips.map(({ kind, label, start }) => {
+          const Icon = TOKEN_ICONS[kind] ?? CalendarDays;
           return (
             <span
-              key={kind}
+              key={start}
               className="flex h-6 items-center gap-1 rounded-md bg-hover px-2 text-small font-medium text-ink-2 tnum"
             >
               <Icon size={12} strokeWidth={1.5} absoluteStrokeWidth />

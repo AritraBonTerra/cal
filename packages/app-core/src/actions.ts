@@ -9,6 +9,7 @@ import {
   type TimeBlock,
   toOffsetIso,
 } from "@cal/domain";
+import type { TaskEntry } from "@cal/nlp";
 import type { NewRow, RowPatch } from "@cal/sync";
 import type { History } from "./history";
 
@@ -25,6 +26,44 @@ export function createActions(history: History, now: () => Date = () => new Date
   return {
     createTask: (task: NewRow<"tasks">) =>
       history.transact("New To-Do", (tx) => tx.insert("tasks", task)),
+
+    /**
+     * Adds a to-do from a Quick Entry parse, over the defaults of the list it was typed
+     * in (a typed When replaces the list's day), plus a block when a time was given.
+     */
+    createFromEntry: (entry: TaskEntry, defaults: Partial<NewRow<"tasks">> = {}) =>
+      history.transact("New To-Do", async (tx) => {
+        const typed: Partial<NewRow<"tasks">> = {
+          ...(entry.when && { when: entry.when, when_date: entry.when_date }),
+          ...(entry.deadline && { deadline: entry.deadline }),
+          ...(entry.estimate_min !== undefined && { estimate_min: entry.estimate_min }),
+          ...(entry.priority !== undefined && { priority: entry.priority }),
+          ...(entry.project_uuid && { project_uuid: entry.project_uuid }),
+          ...(entry.rrule && {
+            recurrence_rule: entry.rrule,
+            recurrence_mode: entry.repeat === "after_completion" ? "after_completion" : "fixed",
+          }),
+        };
+        const uuid = await tx.insert("tasks", {
+          position: -1,
+          when: "inbox",
+          ...defaults,
+          ...typed,
+          title: entry.title,
+        });
+        if (entry.start_at) {
+          const start = new Date(entry.start_at);
+          const end = new Date(start.getTime() + (entry.estimate_min ?? 30) * 60_000);
+          await tx.insert("time_blocks", {
+            task_uuid: uuid,
+            start_at: toOffsetIso(start),
+            end_at: toOffsetIso(end),
+            time_zone: localTimeZone(),
+            source: "manual",
+          });
+        }
+        return uuid;
+      }),
 
     updateTask: (uuid: string, patch: RowPatch<"tasks">, label = "Edit To-Do") =>
       history.transact(label, (tx) => tx.update("tasks", uuid, patch)),

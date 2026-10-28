@@ -12,6 +12,7 @@
   "dependencies": {
     "@cal/backend": "workspace:*",
     "@cal/domain": "workspace:*",
+    "@cal/nlp": "workspace:*",
     "@cal/sync": "workspace:*"
   },
   "peerDependencies": {
