@@ -9,8 +9,14 @@
       "!assets",
       "!**/.agents",
       "!**/.claude",
-      "!**/skills-lock.json"
+      "!**/skills-lock.json",
+      "!packages/theme/theme.css"
     ]
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   },
   "formatter": {
     "indentStyle": "space",

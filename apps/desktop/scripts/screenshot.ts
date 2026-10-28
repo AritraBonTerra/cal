@@ -41,6 +41,8 @@ for (const scene of scenes.filter((each) => !wanted.length || wanted.includes(ea
     await page.keyboard.press(key);
     await page.waitForTimeout(120);
   }
+  if (scene.text) await page.keyboard.type(scene.text, { delay: 10 });
+  if (scene.click) await page.click(scene.click);
   await page.waitForTimeout(300);
   const path = join(outDir, `${scene.name}.png`);
   await page.screenshot({ path });

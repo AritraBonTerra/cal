@@ -138,6 +138,27 @@ describe("commands", () => {
     expect(ran).toEqual(["view", "global"]);
   });
 
+  test("disabled commands are inert and hidden unless asked for", () => {
+    const registry = new CommandRegistry();
+    let enabled = false;
+    const ran: string[] = [];
+    registry.register([
+      {
+        id: "delete",
+        title: "Delete",
+        keys: ["backspace"],
+        enabled: () => enabled,
+        run: () => ran.push("delete"),
+      },
+    ]);
+    expect(registry.handle(key("Backspace"), true)).toBe(false);
+    expect(registry.list()).toHaveLength(0);
+    expect(registry.list(true).map((command) => command.id)).toEqual(["delete"]);
+    enabled = true;
+    expect(registry.handle(key("Backspace"), true)).toBe(true);
+    expect(ran).toEqual(["delete"]);
+  });
+
   test("palette search matches word starts and ranks title prefixes first", () => {
     const run = () => {};
     const commands = [

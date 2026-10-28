@@ -82,12 +82,13 @@ export function useCommands(build: () => readonly Command[], deps: readonly unkn
   useEffect(() => commands.register(list), [commands, list]);
 }
 
-// Every enabled command, re-read when registrations change (for ⌘K and `?`).
-export function useCommandList() {
+// Every enabled command, re-read when registrations change (for ⌘K); the `?` sheet
+// passes `includeDisabled` to list shortcuts that only apply with a selection.
+export function useCommandList(includeDisabled = false) {
   const { commands } = useCal();
   useSyncExternalStore(
     (listener) => commands.subscribe(listener),
     () => commands.version,
   );
-  return commands.list();
+  return commands.list(includeDisabled);
 }

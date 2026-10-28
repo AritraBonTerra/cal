@@ -10,7 +10,8 @@
     "start": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
     "typecheck": "tsc -p . && tsc -p scripts",
     "prepare:dev": "bun scripts/prepare.ts",
-    "screenshots": "bun scripts/screenshot.ts"
+    "screenshots": "bun scripts/screenshot.ts",
+    "smoke": "bun scripts/smoke.ts"
   },
   "dependencies": {
     "@cal/app-core": "workspace:*",
@@ -19,6 +20,7 @@
     "@cal/domain": "workspace:*",
     "@cal/nlp": "workspace:*",
     "@cal/sync": "workspace:*",
+    "@cal/theme": "workspace:*",
     "convex": "1.48.0",
     "lucide-react": "1.63.0",
     "react": "19.3.1",

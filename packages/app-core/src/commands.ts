@@ -83,6 +83,7 @@ const SYMBOLS: Record<string, string> = {
   enter: "↵",
   escape: "Esc",
   backspace: "⌫",
+  delete: "⌦",
   " ": "Space",
 };
 
@@ -118,13 +119,14 @@ export class CommandRegistry {
     };
   }
 
-  // Every enabled command once by id, for the palette and shortcut sheet.
-  list() {
+  // Every enabled command once by id, for the palette; `includeDisabled` lists them all
+  // for the shortcut sheet.
+  list(includeDisabled = false) {
     const seen = new Set<string>();
     const all: Command[] = [];
     for (const { commands } of this.layers) {
       for (const command of commands) {
-        if (seen.has(command.id) || command.enabled?.() === false) continue;
+        if (seen.has(command.id) || (!includeDisabled && command.enabled?.() === false)) continue;
         seen.add(command.id);
         all.push(command);
       }
