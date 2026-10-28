@@ -123,6 +123,55 @@ function freeTime(input: PlanInput, frozenUntil: number, step: number) {
     .filter((slot) => slot.end > slot.start);
 }
 
+/*
+ * What plan() and risks() share: free time (minus the frozen window, busy time, and
+ * last run's placements kept in the frozen window), each item's work left after those
+ * kept placements, and the window each item may be placed in.
+ */
+function prepare(input: PlanInput) {
+  const step = input.stepMin ?? 15;
+  const now = input.now.getTime();
+  const frozenUntil = now + (input.frozenMin ?? 90) * MINUTE;
+  const retained = (input.previous ?? []).filter(
+    (placement) => placement.start < frozenUntil && placement.end > now,
+  );
+  const free = subtract(freeTime(input, frozenUntil, step), retained);
+  const remaining = new Map(input.work.map((item) => [item.id, item.remainingMin]));
+  for (const placement of retained) {
+    const left = (remaining.get(placement.id) ?? 0) - (placement.end - placement.start) / MINUTE;
+    remaining.set(placement.id, Math.max(0, left));
+  }
+  const horizonEnd = endOfDay(addDays(toDayKey(input.now), input.horizonDays - 1));
+  const windowOf = (item: WorkItem) => ({
+    from: item.startDay ? Math.max(startOfDay(item.startDay), frozenUntil) : frozenUntil,
+    to: item.deadline ? endOfDay(item.deadline) : horizonEnd,
+  });
+  return { step, frozenUntil, retained, free, remaining, windowOf };
+}
+
+/*
+ * Whether a piece of `length` minutes is allowed with `left` minutes of work to go: at
+ * most maxChunk, at least minChunk (or all that's left), and never leaving a remainder
+ * too small to place on its own.
+ */
+function validPiece(length: number, left: number, minChunk: number, maxChunk: number) {
+  const rest = left - length;
+  return (
+    length > 0 &&
+    length <= Math.min(left, maxChunk) &&
+    length >= Math.min(left, minChunk) &&
+    !(rest > 0 && rest < minChunk)
+  );
+}
+
+// The longest valid piece that fits in `room` minutes, if any.
+function pieceFor(room: number, left: number, minChunk: number, maxChunk: number) {
+  let length = Math.min(left, maxChunk, room);
+  const rest = left - length;
+  if (rest > 0 && rest < minChunk) length = left - minChunk;
+  return validPiece(length, left, minChunk, maxChunk) ? length : undefined;
+}
+
 /**
  * Plans `work` into free time. Order: least slack first (free time before the deadline
  * minus the work left), then priority, then id. Each piece goes in the cheapest slot,
@@ -130,24 +179,12 @@ function freeTime(input: PlanInput, frozenUntil: number, step: number) {
  * earlier times. Previous placements in the frozen window stay as they are.
  */
 export function plan(input: PlanInput): Plan {
-  const step = input.stepMin ?? 15;
-  const frozenUntil = input.now.getTime() + (input.frozenMin ?? 90) * MINUTE;
-  const frozen = (input.previous ?? []).filter((placement) => placement.start < frozenUntil);
-  const placements: Placement[] = frozen.filter((placement) => placement.end > input.now.getTime());
-  let free = freeTime(input, frozenUntil, step);
-  const horizonEnd = endOfDay(addDays(toDayKey(input.now), input.horizonDays - 1));
+  const { step, frozenUntil, retained, remaining, windowOf, ...shared } = prepare(input);
+  let free = shared.free;
+  const stepMs = step * MINUTE;
+  const now = input.now.getTime();
+  const placements: Placement[] = [...retained];
 
-  const remaining = new Map(input.work.map((item) => [item.id, item.remainingMin]));
-  for (const placement of frozen) {
-    if (placement.end <= input.now.getTime()) continue;
-    const left = (remaining.get(placement.id) ?? 0) - (placement.end - placement.start) / MINUTE;
-    remaining.set(placement.id, Math.max(0, left));
-  }
-
-  const windowOf = (item: WorkItem) => ({
-    from: item.startDay ? Math.max(startOfDay(item.startDay), frozenUntil) : frozenUntil,
-    to: item.deadline ? endOfDay(item.deadline) : horizonEnd,
-  });
   const slackOf = (item: WorkItem) => {
     if (!item.deadline) return Number.POSITIVE_INFINITY;
     const { from, to } = windowOf(item);
@@ -171,60 +208,52 @@ export function plan(input: PlanInput): Plan {
 
     while (left > 0) {
       const want = Math.min(left, maxChunk);
-      const need = Math.min(left, minChunk);
-      let best:
-        | { slot: Interval; start: number; length: number; cost: number; kept: boolean }
-        | undefined;
+      let best: { start: number; length: number; cost: number; kept: boolean } | undefined;
+      const consider = (start: number, length: number, kept: boolean) => {
+        const end = start + length * MINUTE;
+        const late = end > to && item.deadline ? (end - to) / MINUTE : 0;
+        const cost =
+          (kept ? 0 : 50) + late * 1_000 + (start - now) / (60 * MINUTE) + (want - length) * 0.5;
+        if (!best || cost < best.cost) best = { start, length, cost, kept };
+      };
       for (const slot of free) {
-        const start = Math.max(slot.start, from);
-        const room = (slot.end - start) / MINUTE;
-        if (room < need) continue;
-        const length = Math.min(want, room);
+        const start = Math.ceil(Math.max(slot.start, from) / stepMs) * stepMs;
+        const length = pieceFor((slot.end - start) / MINUTE, left, minChunk, maxChunk);
+        if (length === undefined) continue;
         const end = start + length * MINUTE;
         const kept = previous.some(
           (placement) => placement.start === start && placement.end === end,
         );
-        const late = end > to && item.deadline ? (end - to) / MINUTE : 0;
-        const cost =
-          (kept ? 0 : 50) +
-          late * 1_000 +
-          (start - input.now.getTime()) / (60 * MINUTE) +
-          (want - length) * 0.5;
-        if (!best || cost < best.cost) best = { slot, start, length, cost, kept };
+        consider(start, length, kept);
       }
       // Also try last run's exact slots, which may sit mid-interval.
       for (const placement of previous) {
-        const slot = free.find(
+        const length = (placement.end - placement.start) / MINUTE;
+        const fits = free.some(
           (each) => each.start <= placement.start && each.end >= placement.end,
         );
-        const length = (placement.end - placement.start) / MINUTE;
-        if (!slot || placement.start < from || length > want || length < need) continue;
-        const late = placement.end > to && item.deadline ? (placement.end - to) / MINUTE : 0;
-        const cost =
-          late * 1_000 +
-          (placement.start - input.now.getTime()) / (60 * MINUTE) +
-          (want - length) * 0.5;
-        if (!best || cost < best.cost) {
-          best = { slot, start: placement.start, length, cost, kept: true };
-        }
+        if (!fits || placement.start < from || !validPiece(length, left, minChunk, maxChunk))
+          continue;
+        consider(placement.start, length, true);
       }
-      if (!best) break;
+      const chosen: { start: number; length: number; kept: boolean } | undefined = best;
+      if (!chosen) break;
 
-      const end = best.start + best.length * MINUTE;
+      const end = chosen.start + chosen.length * MINUTE;
       const parts = [
-        best.kept ? "Kept from the last plan" : "Earliest free slot",
+        chosen.kept ? "Kept from the last plan" : "Earliest free slot",
         item.startDay ? `after ${item.startDay}` : undefined,
         item.deadline ? `due ${item.deadline}` : undefined,
         Number.isFinite(slack) ? `${formatMin(Math.max(0, Math.round(slack)))} slack` : undefined,
       ];
       placements.push({
         id: item.id,
-        start: best.start,
+        start: chosen.start,
         end,
         reason: parts.filter(Boolean).join("; "),
       });
-      free = subtract(free, [{ start: best.start, end }]);
-      left -= best.length;
+      free = subtract(free, [{ start: chosen.start, end }]);
+      left -= chosen.length;
     }
 
     if (left > 0) {
@@ -239,33 +268,39 @@ export function plan(input: PlanInput): Plan {
   }
 
   placements.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
-  return { placements, unplaced, risks: risks(input, frozenUntil, step) };
+  return { placements, unplaced, risks: risks(input) };
 }
 
 /**
- * Earliest-deadline-first capacity check: for each deadline, all work due by then
- * against the free time before it, e.g. "Thursday: 7h of work, 4h free".
+ * Earliest-deadline-first capacity check, with start days: for each deadline, the work
+ * that must happen between some start point and that deadline, against the free time
+ * between them, e.g. "Thursday: 7h of work, 4h free". Reports the worst gap per deadline.
  */
-export function risks(
-  input: PlanInput,
-  frozenUntil = input.now.getTime(),
-  step = input.stepMin ?? 15,
-) {
-  const free = freeTime(input, frozenUntil, step);
+export function risks(input: PlanInput) {
+  const { free, remaining, windowOf } = prepare(input);
   const due = input.work
-    .filter((item) => item.deadline)
-    .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? ""));
+    .filter((item) => item.deadline && (remaining.get(item.id) ?? 0) > 0)
+    .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? "") || a.id.localeCompare(b.id));
+  const releases = [...new Set(due.map((item) => windowOf(item).from))].sort((a, b) => a - b);
+  const deadlines = [...new Set(due.map((item) => item.deadline ?? ""))];
+
   const found: Risk[] = [];
-  let workMin = 0;
-  const ids: string[] = [];
-  for (let index = 0; index < due.length; index++) {
-    const item = due[index];
-    if (!item?.deadline) continue;
-    workMin += item.remainingMin;
-    ids.push(item.id);
-    if (due[index + 1]?.deadline === item.deadline) continue;
-    const freeMin = minutesIn(free, frozenUntil, endOfDay(item.deadline));
-    if (workMin > freeMin) found.push({ deadline: item.deadline, workMin, freeMin, ids: [...ids] });
+  for (const deadline of deadlines) {
+    const to = endOfDay(deadline);
+    let worst: Risk | undefined;
+    for (const release of releases) {
+      const items = due.filter(
+        (item) => (item.deadline ?? "") <= deadline && windowOf(item).from >= release,
+      );
+      if (items.length === 0) continue;
+      const workMin = items.reduce((total, item) => total + (remaining.get(item.id) ?? 0), 0);
+      const freeMin = minutesIn(free, release, to);
+      if (workMin <= freeMin) continue;
+      if (!worst || workMin - freeMin > worst.workMin - worst.freeMin) {
+        worst = { deadline, workMin, freeMin, ids: items.map((item) => item.id) };
+      }
+    }
+    if (worst) found.push(worst);
   }
   return found;
 }

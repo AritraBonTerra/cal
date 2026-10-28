@@ -113,11 +113,83 @@ describe("plan", () => {
     ]);
   });
 
+  test("a kept block that runs past the frozen window still blocks its time", () => {
+    const later = new Date(2026, 9, 28, 8, 30);
+    const previous = [{ id: "a", start: at(28, 9, 30), end: at(28, 11), reason: "" }];
+    const result = plan(
+      input({
+        now: later,
+        frozenMin: 90,
+        previous,
+        work: [
+          { id: "a", title: "A", remainingMin: 90 },
+          { id: "b", title: "B", remainingMin: 60 },
+        ],
+      }),
+    );
+    expect(times(result)).toEqual([
+      ["a", "09:30", "11:00", 28],
+      ["b", "11:00", "12:00", 28],
+    ]);
+    expect(result.risks).toEqual([]);
+  });
+
+  test("never leaves a last piece smaller than the minimum chunk", () => {
+    const result = plan(
+      input({
+        work: [{ id: "a", title: "A", remainingMin: 130, minChunkMin: 30, maxChunkMin: 120 }],
+      }),
+    );
+    expect(times(result)).toEqual([
+      ["a", "09:00", "10:40", 28],
+      ["a", "10:45", "11:15", 28],
+    ]);
+  });
+
+  test("pieces start on the step grid", () => {
+    const result = plan(
+      input({
+        work: [
+          { id: "a", title: "A", remainingMin: 50 },
+          { id: "b", title: "B", remainingMin: 30 },
+        ],
+      }),
+    );
+    expect(times(result)).toEqual([
+      ["a", "09:00", "09:50", 28],
+      ["b", "10:00", "10:30", 28],
+    ]);
+  });
+
+  test("risks account for start days", () => {
+    const result = plan(
+      input({
+        workingHours: {
+          3: [{ startMin: 9 * 60, endMin: 17 * 60 }],
+          4: [{ startMin: 9 * 60, endMin: 10 * 60 }],
+        },
+        work: [
+          {
+            id: "a",
+            title: "A",
+            remainingMin: 120,
+            startDay: "2026-10-29",
+            deadline: "2026-10-29",
+          },
+        ],
+      }),
+    );
+    expect(result.risks).toEqual([
+      { deadline: "2026-10-29", workMin: 120, freeMin: 60, ids: ["a"] },
+    ]);
+  });
+
   test("the same inputs give the same plan", () => {
     const work = [
       { id: "x", title: "X", remainingMin: 90, priority: 2 },
       { id: "y", title: "Y", remainingMin: 45, priority: 1 },
       { id: "z", title: "Z", remainingMin: 200, deadline: "2026-10-30" },
+      { id: "w", title: "W", remainingMin: 3000, deadline: "2026-10-30" },
     ];
     expect(plan(input({ work }))).toEqual(plan(input({ work: [...work].reverse() })));
   });

@@ -70,7 +70,20 @@ describe("habitStats", () => {
   test("fixed weekdays only count on scheduled days", () => {
     const mwf = habit({ rrule: "FREQ=WEEKLY;BYDAY=MO,WE,FR" });
     const statuses = dayStatuses(mwf, entries(["2026-10-26"]), "2026-10-26", "2026-10-28");
-    expect([...statuses.values()]).toEqual(["done", "covered", "open"]);
+    expect([...statuses.values()]).toEqual(["done", "off", "open"]);
+  });
+
+  test("unscheduled days don't add strength or forgive misses", () => {
+    const mondays = habit({ rrule: "FREQ=WEEKLY;BYDAY=MO" });
+    expect(habitStats(mondays, [], today).score).toBe(0);
+    // Done Oct 5 and 26, missed the Mondays between: two misses in a row.
+    expect(habitStats(mondays, entries(["2026-10-05", "2026-10-26"]), today).streak).toBe(1);
+  });
+
+  test("BYDAY limits a daily rule too", () => {
+    const mwf = habit({ rrule: "FREQ=DAILY;BYDAY=MO,WE,FR" });
+    const statuses = dayStatuses(mwf, [], "2026-10-26", "2026-10-27");
+    expect([...statuses.values()]).toEqual(["missed", "off"]);
   });
 
   test("a measured habit is done only at its target", () => {

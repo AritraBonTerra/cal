@@ -7,16 +7,16 @@ import type { Habit, HabitEntry } from "./tasks";
  * never resets.
  */
 
-// How a day stands for a habit: done (logged), covered (quota or interval already met,
-// or not a scheduled day), missed, or still open (today, not yet done).
-export type DayStatus = "done" | "covered" | "missed" | "open";
+// How a day stands for a habit: done (logged), covered (a quota or interval already
+// met), off (a fixed habit's unscheduled day), missed, or open (today, not yet done).
+export type DayStatus = "done" | "covered" | "off" | "missed" | "open";
 
 const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
-// The weekdays a fixed habit is scheduled on, from its RRULE (daily if none given).
+// The weekdays a fixed habit is scheduled on: its RRULE's BYDAY, or every day.
 export function scheduledWeekdays(habit: Habit) {
   const byDay = habit.rrule?.match(/BYDAY=([A-Z,]+)/)?.[1];
-  if (!byDay || habit.rrule?.includes("FREQ=DAILY")) return [0, 1, 2, 3, 4, 5, 6];
+  if (!byDay) return [0, 1, 2, 3, 4, 5, 6];
   return byDay
     .split(",")
     .map((code) => WEEKDAYS.indexOf(code))
@@ -27,7 +27,10 @@ export function scheduledWeekdays(habit: Habit) {
 export const isDone = (habit: Habit, value: number) =>
   habit.kind === "check" ? value > 0 : value >= (habit.target ?? 1);
 
-// Expected completions per day, for Loop's score multiplier.
+/*
+ * Expected completions per scored day, for Loop's score multiplier. Fixed habits are
+ * scored only on their scheduled days, so each of those counts as one expected check.
+ */
 function frequency(habit: Habit) {
   switch (habit.schedule) {
     case "quota":
@@ -35,7 +38,7 @@ function frequency(habit: Habit) {
     case "interval":
       return 1 / Math.max(1, habit.interval_days ?? 1);
     case "fixed":
-      return scheduledWeekdays(habit).length / 7;
+      return 1;
   }
 }
 
@@ -61,8 +64,11 @@ export function dayStatuses(
       statuses.set(day, "done");
       continue;
     }
+    if (habit.schedule === "fixed" && !fixedDays.includes(weekday(day))) {
+      statuses.set(day, "off");
+      continue;
+    }
     let covered = false;
-    if (habit.schedule === "fixed") covered = !fixedDays.includes(weekday(day));
     if (habit.schedule === "quota") {
       const window = habit.quota_period === "month" ? 30 : 7;
       let count = 0;
@@ -105,7 +111,7 @@ export function habitStats(
 
   let score = 0;
   for (const status of statuses.values()) {
-    if (status === "open") continue;
+    if (status === "open" || status === "off") continue;
     score = score * multiplier + (status === "missed" ? 0 : 1) * (1 - multiplier);
   }
 
@@ -119,7 +125,7 @@ export function habitStats(
       missedBefore = true;
       continue;
     }
-    if (status !== "open") missedBefore = false;
+    if (status === "done" || status === "covered") missedBefore = false;
   }
 
   return { score, streak, total: own.filter((entry) => isDone(habit, entry.value)).length };
