@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "@cal/theme/theme.css";
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    user-select: none;
+    cursor: default;
+  }
+  body {
+    margin: 0;
+    background: var(--cal-canvas);
+    color: var(--cal-ink);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  input,
+  textarea {
+    user-select: text;
+    cursor: text;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+  }
+  /* Keyboard focus only: a 2px accent ring, inset inside dense lists and the grid. */
+  :focus-visible {
+    outline: 2px solid var(--cal-accent);
+    outline-offset: 2px;
+  }
+  [data-dense] :focus-visible {
+    outline-offset: -2px;
+  }
+  ::selection {
+    background: var(--cal-accent-soft);
+  }
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The window's drag region: the toolbar band, minus anything clickable inside it. */
+@utility drag-region {
+  -webkit-app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* 45° hatch for past unfinished blocks and tentative events (6px period, opaque). */
+@utility hatched {
+  background-image: repeating-linear-gradient(-45deg, var(--cal-grid) 0 1px, transparent 1px 6px);
+}
+
+/* Popovers and sheets enter in 150ms ease-out from scale(0.97); never on reduced motion. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@keyframes flash-out {
+  to {
+    opacity: 0;
+  }
+}
+@utility pop-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: pop-in 150ms var(--ease-out);
+  }
+}
+@utility sheet-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: sheet-in 220ms var(--ease-out);
+  }
+}
+@utility flash-out {
+  animation: flash-out 600ms var(--ease-out) forwards;
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 150ms;
+  }
+}
+
+/* Thin, auto-hiding scrollbars like the rest of the Mac. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cal-edge);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,3 @@
+# Expo/CocoaPods autolinking is unreliable with bun's isolated store, so hoist (research/05 §6).
+[install]
+linker = "hoisted"

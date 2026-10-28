@@ -1,0 +1,18 @@
+{
+  "name": "@cal/domain",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "TZ=America/New_York bun test",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  },
+  "dependencies": {
+    "@cal/backend": "workspace:*"
+  }
+}

@@ -1,0 +1,117 @@
+/* Generated from packages/theme/src/tokens.ts by `bun run build:css`. Do not edit. */
+
+:root {
+  color-scheme: light dark;
+  --cal-canvas: #ffffff;
+  --cal-sidebar: #f8f6f5;
+  --cal-raised: #ffffff;
+  --cal-hover: #f3f1f0;
+  --cal-active: #edebe8;
+  --cal-offhours: #fbfaf9;
+  --cal-grid: #e7e6e4;
+  --cal-edge: #dbd9d6;
+  --cal-edge-strong: #c0bdba;
+  --cal-ink: #211f1c;
+  --cal-ink-2: #5d5a56;
+  --cal-ink-3: #77746f;
+  --cal-accent: #1570d1;
+  --cal-accent-solid: #1570d1;
+  --cal-accent-soft: #e4f0ff;
+  --cal-now: #db2c2b;
+  --cal-success: #1c8742;
+  --cal-warning: #d98b09;
+  --cal-white: #ffffff;
+  --cal-shadow-float: 0 0 0 0.5px oklch(0 0 0 / 0.08), 0 4px 12px -2px oklch(0 0 0 / 0.08), 0 16px 32px -8px oklch(0 0 0 / 0.12);
+  --cal-shadow-drag: 0 2px 4px oklch(0 0 0 / 0.1), 0 8px 20px -4px oklch(0 0 0 / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+  --cal-canvas: #141211;
+  --cal-sidebar: #0f0e0c;
+  --cal-raised: #1f1e1b;
+  --cal-hover: #1e1d1b;
+  --cal-active: #252421;
+  --cal-offhours: #100f0d;
+  --cal-grid: #242321;
+  --cal-edge: #2f2d2b;
+  --cal-edge-strong: #3f3d3a;
+  --cal-ink: #edebe8;
+  --cal-ink-2: #bab7b3;
+  --cal-ink-3: #9a9894;
+  --cal-accent: #6aa7f4;
+  --cal-accent-solid: #1570d1;
+  --cal-accent-soft: #182e4b;
+  --cal-now: #f75e54;
+  --cal-success: #5bbd74;
+  --cal-warning: #eba941;
+  --cal-white: #ffffff;
+  --cal-shadow-float: 0 0 0 0.5px oklch(1 0 0 / 0.08), 0 4px 12px -2px oklch(0 0 0 / 0.4), 0 16px 32px -8px oklch(0 0 0 / 0.5);
+  --cal-shadow-drag: 0 2px 4px oklch(0 0 0 / 0.3), 0 8px 20px -4px oklch(0 0 0 / 0.5);
+  }
+}
+
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --ease-*: initial;
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Inter Variable", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-title-3: 15px;
+  --text-title-3--line-height: 20px;
+  --text-title-2: 20px;
+  --text-title-2--line-height: 25px;
+  --text-title-1: 26px;
+  --text-title-1--line-height: 32px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 9999px;
+
+  --spacing-hour: 48px;
+  --spacing-gutter: 52px;
+  --spacing-day-header: 44px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@theme inline {
+  --color-canvas: var(--cal-canvas);
+  --color-sidebar: var(--cal-sidebar);
+  --color-raised: var(--cal-raised);
+  --color-hover: var(--cal-hover);
+  --color-active: var(--cal-active);
+  --color-offhours: var(--cal-offhours);
+  --color-grid: var(--cal-grid);
+  --color-edge: var(--cal-edge);
+  --color-edge-strong: var(--cal-edge-strong);
+  --color-ink: var(--cal-ink);
+  --color-ink-2: var(--cal-ink-2);
+  --color-ink-3: var(--cal-ink-3);
+  --color-accent: var(--cal-accent);
+  --color-accent-solid: var(--cal-accent-solid);
+  --color-accent-soft: var(--cal-accent-soft);
+  --color-now: var(--cal-now);
+  --color-success: var(--cal-success);
+  --color-warning: var(--cal-warning);
+  --color-white: var(--cal-white);
+  --shadow-float: var(--cal-shadow-float);
+  --shadow-drag: var(--cal-shadow-drag);
+}

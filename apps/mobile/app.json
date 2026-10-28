@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Cal",
+    "slug": "cal",
+    "scheme": "cal",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "dev.aritra.cal",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCalendarsFullAccessUsageDescription": "Cal shows and edits the events in your calendars."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-calendar",
+        { "calendarPermission": "Cal shows and edits the events in your calendars." }
+      ]
+    ],
+    "experiments": { "typedRoutes": true }
+  }
+}
