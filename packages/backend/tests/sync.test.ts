@@ -42,7 +42,8 @@ async function setup() {
     // Uploads one batch as `device`, one of this user's devices.
     const upload = (device: string, ...ops: Op[]) =>
       client.mutation(api.sync.upload, { device, ops });
-    return { userId, upload };
+    const pull = (after: number) => client.query(api.sync.pull, { after });
+    return { userId, upload, pull };
   };
   // Task rows without Convex bookkeeping, for comparing outcomes across runs.
   const tasks = () =>
@@ -153,6 +154,24 @@ describe("sync:upload", () => {
     expect(await tasks()).toHaveLength(0);
   });
 
+  test("returns the server's current records, including when the write lost", async () => {
+    const { upload } = await setup();
+    await upload("a", put("t1"), put("t2"));
+    await upload("b", patch("t1", { title: "Newer", updated_at: 30 }), del("t2"));
+    const records = await upload(
+      "a",
+      patch("t1", { title: "Older", updated_at: 20 }),
+      patch("t2", { title: "Gone", updated_at: 40 }),
+    );
+    expect(
+      records.map(({ uuid, row }) => [uuid, row && "title" in row ? row.title : null]),
+    ).toEqual([
+      ["t1", "Newer"],
+      ["t2", null],
+    ]);
+    expect(records[0]?.row).not.toHaveProperty("owner_id");
+  });
+
   test("rejects writes without a valid updated_at", async () => {
     const { upload } = await setup();
     const { updated_at, ...noTimestamp } = task();
@@ -188,5 +207,70 @@ describe("sync:upload", () => {
   test("schema validation rejects rows with missing required fields", async () => {
     const { upload } = await setup();
     await expect(upload("a", put("t1", { title: "No position", updated_at: 1 }))).rejects.toThrow();
+  });
+});
+
+describe("sync:pull", () => {
+  test("returns changed records in change order, with deletions as null rows", async () => {
+    const { upload, pull } = await setup();
+    await upload("a", put("t1"), put("t2"));
+    await upload("a", patch("t1", { title: "Edited", updated_at: 2 }), del("t2"));
+    const page = await pull(0);
+    expect(page.more).toBe(false);
+    expect(
+      page.changes.map(({ uuid, row }) => [uuid, row && "title" in row ? row.title : null]),
+    ).toEqual([
+      ["t1", "Edited"],
+      ["t2", null],
+    ]);
+    expect(page.changes[0]?.row).not.toHaveProperty("owner_id");
+    expect(await pull(page.seq)).toEqual({ changes: [], seq: page.seq, more: false });
+  });
+
+  test("a later page holds only what changed after the cursor", async () => {
+    const { upload, pull } = await setup();
+    await upload("a", put("t1"), put("t2"));
+    const { seq } = await pull(0);
+    await upload("b", patch("t2", { notes: "From B", updated_at: 5 }));
+    const page = await pull(seq);
+    expect(page.changes.map(({ uuid, row }) => [uuid, row && "notes" in row && row.notes])).toEqual(
+      [["t2", "From B"]],
+    );
+  });
+
+  test("writes that change no values don't produce changes", async () => {
+    const { upload, pull } = await setup();
+    await upload("a", put("t1"));
+    const { seq } = await pull(0);
+    await upload("a", put("t1"));
+    await upload("c", patch("t1", { title: "Stale", updated_at: 0 }));
+    expect((await pull(seq)).changes).toEqual([]);
+  });
+
+  test("pages through more records than fit in one page", async () => {
+    const { upload, pull } = await setup();
+    const ids = Array.from({ length: 450 }, (_, i) => `t${i}`);
+    await upload("a", ...ids.map((id) => put(id)));
+    const seen: string[] = [];
+    let after = 0;
+    for (;;) {
+      const page = await pull(after);
+      seen.push(...page.changes.map((change) => change.uuid));
+      after = page.seq;
+      if (!page.more) break;
+    }
+    expect(seen).toEqual(ids);
+  });
+
+  test("returns only the caller's records", async () => {
+    const { upload, signIn } = await setup();
+    await upload("a", put("t1"));
+    const other = await signIn();
+    expect((await other.pull(0)).changes).toEqual([]);
+  });
+
+  test("rejects unauthenticated pulls", async () => {
+    const { t } = await setup();
+    await expect(t.query(api.sync.pull, { after: 0 })).rejects.toThrow("NOT_AUTHENTICATED");
   });
 });

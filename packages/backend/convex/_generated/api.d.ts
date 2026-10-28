@@ -10,7 +10,6 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
-import type * as powersync_checkpoints from "../powersync_checkpoints.js";
 import type * as sync from "../sync.js";
 import type * as syncTables from "../syncTables.js";
 
@@ -23,7 +22,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
-  powersync_checkpoints: typeof powersync_checkpoints;
   sync: typeof sync;
   syncTables: typeof syncTables;
 }>;

@@ -24,6 +24,14 @@
     },
     "packages/sync": {
       "name": "@cal/sync",
+      "dependencies": {
+        "@cal/backend": "workspace:*",
+        "convex": "1.48.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "convex-test": "0.0.66",
+      },
     },
   },
   "packages": {

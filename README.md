@@ -6,8 +6,8 @@ A keyboard-first calendar, task manager, habit tracker, and auto-scheduler for M
 
 ## Layout
 
-- `packages/backend`: Convex schema and functions. `sync:upload` applies PowerSync upload batches.
-- `packages/sync`: PowerSync endpoint and sync rules (`powersync/sync-config.yaml`).
+- `packages/backend`: Convex schema and functions. `sync:upload` applies a device's queued writes; `sync:pull` pages changes to devices.
+- `packages/sync`: the device side of sync: local SQLite store, outbox, and the engine that talks to Convex.
 
 ## Development
 
