@@ -1,0 +1,190 @@
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { api } from "@cal/backend/api";
+import { convexRemote, type LocalStore, SyncEngine } from "@cal/sync";
+import { ConvexClient, ConvexHttpClient } from "convex/browser";
+import { safeStorage } from "electron";
+import type { AuthState, SignInFlow, SyncStatus } from "../shared/api";
+
+interface Saved {
+  token: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+}
+
+type Tokens = { token: string; refreshToken: string };
+
+// Seconds-since-epoch expiry and `sub` from a JWT, without verifying it (the server does).
+function claims(token: string) {
+  const payload = token.split(".")[1] ?? "";
+  const json: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  const record = typeof json === "object" && json !== null ? json : {};
+  const exp = "exp" in record && typeof record.exp === "number" ? record.exp : 0;
+  const sub = "sub" in record && typeof record.sub === "string" ? record.sub : "";
+  // Convex Auth subjects are `userId|sessionId`.
+  return { exp, userId: sub.split("|")[0] ?? "" };
+}
+
+/**
+ * The signed-in session: Convex Auth tokens (kept encrypted on disk with Electron's
+ * safeStorage), the Convex connection, and the sync engine. The app works fully
+ * offline; once signed in, the session survives restarts and retries refreshing its
+ * token until the network is back.
+ */
+export class Session {
+  private readonly http: ConvexHttpClient;
+  private readonly client: ConvexClient;
+  private readonly engine: SyncEngine;
+  private saved: Saved | undefined;
+  private needsSignIn = false;
+  private retry: ReturnType<typeof setTimeout> | undefined;
+  private retries = 0;
+
+  constructor(
+    url: string,
+    private readonly store: LocalStore,
+    private readonly file: string,
+    private readonly notify: { auth(state: AuthState): void; sync(status: SyncStatus): void },
+  ) {
+    this.http = new ConvexHttpClient(url);
+    this.client = new ConvexClient(url);
+    this.engine = new SyncEngine(store, convexRemote(this.client), {
+      onError: (error) => console.warn("[sync]", error),
+    });
+    this.client.subscribeToConnectionState(() => this.notify.sync(this.status()));
+    store.subscribe(() => this.notify.sync(this.status()));
+  }
+
+  // Restores a saved session, if any, and starts syncing.
+  init() {
+    this.saved = this.load();
+    if (this.saved) this.connect();
+  }
+
+  state(): AuthState {
+    return this.saved
+      ? { status: "signedIn", userId: this.saved.userId, email: this.saved.email }
+      : { status: "signedOut" };
+  }
+
+  status(): SyncStatus {
+    return {
+      pending: this.store.pendingCount(),
+      connected: this.client.connectionState().isWebSocketConnected,
+      needsSignIn: this.needsSignIn,
+    };
+  }
+
+  async signIn(email: string, password: string, flow: SignInFlow) {
+    const result = await this.http.action(api.auth.signIn, {
+      provider: "password",
+      params: { email, password, flow },
+    });
+    if (!result.tokens) throw new Error("Sign-in didn't return a session.");
+    this.saved = { ...result.tokens, userId: claims(result.tokens.token).userId, email };
+    this.needsSignIn = false;
+    this.save();
+    this.connect();
+    this.notify.auth(this.state());
+    return this.state();
+  }
+
+  async signOut() {
+    this.engine.stop();
+    clearTimeout(this.retry);
+    try {
+      await this.client.action(api.auth.signOut, {});
+    } catch {
+      // Offline or already expired: the session just lapses on the server.
+    }
+    this.client.client.clearAuth();
+    this.saved = undefined;
+    this.needsSignIn = false;
+    rmSync(this.file, { force: true });
+    this.notify.auth(this.state());
+    this.notify.sync(this.status());
+    return this.state();
+  }
+
+  async close() {
+    this.engine.stop();
+    clearTimeout(this.retry);
+    await this.client.close();
+  }
+
+  private connect() {
+    const saved = this.saved;
+    if (!saved) return;
+    this.client.setAuth(
+      ({ forceRefreshToken }) => this.token(forceRefreshToken),
+      (authenticated) => this.onAuth(authenticated),
+    );
+    this.engine.start(saved.userId);
+  }
+
+  private onAuth(authenticated: boolean) {
+    if (authenticated) {
+      this.retries = 0;
+      this.engine.resume();
+    } else if (this.saved && !this.needsSignIn) {
+      // Most likely offline while the token expired: try again with backoff.
+      clearTimeout(this.retry);
+      const delay = Math.min(5_000 * 2 ** this.retries++, 120_000);
+      this.retry = setTimeout(() => this.connect(), delay);
+    }
+    this.notify.sync(this.status());
+  }
+
+  // The current JWT, refreshed when it's about to expire or the server rejected it.
+  private async token(force: boolean) {
+    const saved = this.saved;
+    if (!saved) return null;
+    const fresh = claims(saved.token).exp * 1000 > Date.now() + 60_000;
+    if (fresh && !force) return saved.token;
+    let tokens: Tokens | null | undefined;
+    try {
+      ({ tokens } = await this.http.action(api.auth.signIn, {
+        refreshToken: saved.refreshToken,
+      }));
+    } catch {
+      return null;
+    }
+    if (!tokens) {
+      // The refresh token was revoked or expired: only signing in again helps.
+      this.needsSignIn = true;
+      this.notify.sync(this.status());
+      return null;
+    }
+    this.saved = { ...saved, ...tokens };
+    this.save();
+    return tokens.token;
+  }
+
+  private load(): Saved | undefined {
+    if (!existsSync(this.file) || !safeStorage.isEncryptionAvailable()) return undefined;
+    try {
+      const json: unknown = JSON.parse(safeStorage.decryptString(readFileSync(this.file)));
+      if (typeof json !== "object" || json === null) return undefined;
+      const field = (key: string) =>
+        key in json && typeof Reflect.get(json, key) === "string"
+          ? String(Reflect.get(json, key))
+          : "";
+      const saved = {
+        token: field("token"),
+        refreshToken: field("refreshToken"),
+        userId: field("userId"),
+        email: field("email"),
+      };
+      return saved.refreshToken && saved.userId ? saved : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private save() {
+    if (!this.saved || !safeStorage.isEncryptionAvailable()) return;
+    writeFileSync(this.file, safeStorage.encryptString(JSON.stringify(this.saved)), {
+      mode: 0o600,
+    });
+  }
+}
