@@ -31,3 +31,10 @@ describe("nextFreeSlot", () => {
     expect(nextFreeSlot([{ start: at(9), end: at(18) }], at(8), 15)).toBeUndefined();
   });
 });
+
+test("finds the free hour after a clash on a DST fall-back day", () => {
+  // Nov 1 2026 is 25 hours long where clocks fall back that night (e.g. New York).
+  const at = (hour: number) => new Date(2026, 10, 1, hour);
+  const slot = nextFreeSlot([{ start: at(9), end: at(17) }], at(8), 60);
+  expect(slot?.start.getHours()).toBe(17);
+});

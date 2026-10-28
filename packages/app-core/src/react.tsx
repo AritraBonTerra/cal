@@ -21,14 +21,15 @@ export interface Cal {
   commands: CommandRegistry;
 }
 
-// Wires the app's data layer around one DataSource. Create once per window.
-export function createCal(source: DataSource): Cal {
+// Wires the app's data layer around one DataSource. Create once per window. `now` is
+// the app's clock, which actions use for timestamps and "today" (fixed in fixture mode).
+export function createCal(source: DataSource, now?: () => Date): Cal {
   const history = new History(source);
   return {
     source,
     tables: new LiveTables(source),
     history,
-    actions: createActions(history),
+    actions: createActions(history, now),
     commands: new CommandRegistry(),
   };
 }

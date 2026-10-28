@@ -30,6 +30,10 @@ export const fixture = process.env.EXPO_PUBLIC_CAL_FIXTURE === "1";
 // A fixed "now" in fixture mode; the clock starts here and runs normally.
 export const startNow = fixture ? FIXTURE_NOW.getTime() : undefined;
 
+const offset = startNow === undefined ? 0 : startNow - Date.now();
+// The app's current instant, including the fixture offset. For event handlers and actions.
+export const now = () => new Date(Date.now() + offset);
+
 /*
  * The app's data layer, created once: the local SQLite store (which the UI reads and
  * writes directly, so it never waits on the network), the sync session, and app-core.
@@ -61,7 +65,7 @@ export const session = new Session(CONVEX_URL, store, keychain, {
 });
 if (!fixture) session.init();
 
-export const cal = createCal(storeSource(store));
+export const cal = createCal(storeSource(store), now);
 // Undo steps belong to the account that made them; see History.clear.
 onAuthChange(() => void cal.history.clear());
 

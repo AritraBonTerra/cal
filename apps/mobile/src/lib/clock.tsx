@@ -1,16 +1,13 @@
 import { type DayKey, toDayKey } from "@cal/domain";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
-import { startNow } from "../data/cal";
+import { now } from "../data/cal";
 
 /*
  * The app's clock. In fixture mode it starts at the configured instant and runs from
  * there, so screenshots always show the same "now"; otherwise it's real time.
  */
 
-const offset = startNow === undefined ? 0 : startNow - Date.now();
-
-// The current instant, including the fixture offset. For event handlers and actions.
-export const now = () => new Date(Date.now() + offset);
+export { now };
 
 const ClockContext = createContext<Date>(now());
 

@@ -28,7 +28,6 @@ export function nextFreeSlot(
 ): Interval | undefined {
   const day: DayKey = toDayKey(from);
   const ceil = (minute: number) => Math.ceil(minute / step) * step;
-  const midnight = atMinute(day, 0).getTime();
   const taken = busy
     .map((each) => ({ start: each.start.getTime(), end: each.end.getTime() }))
     .filter((each) => each.end > each.start)
@@ -39,8 +38,11 @@ export function nextFreeSlot(
     const end = atMinute(day, minute + lengthMin).getTime();
     const clash = taken.find((each) => each.start < end && each.end > start);
     if (!clash) return { start: new Date(start), end: new Date(end) };
-    // Jump past the clash, back onto the snap grid.
-    minute = Math.max(minute + step, ceil((clash.end - midnight) / 60_000));
+    // Jump past the clash, back onto the snap grid, in wall-clock minutes (elapsed time
+    // since midnight differs on DST change days). A clash running into tomorrow ends the day.
+    const clashEnd = new Date(clash.end);
+    const after = toDayKey(clashEnd) > day ? Number.POSITIVE_INFINITY : ceil(minuteOfDay(clashEnd));
+    minute = Math.max(minute + step, after);
   }
   return undefined;
 }
