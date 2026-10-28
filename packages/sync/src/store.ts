@@ -191,7 +191,11 @@ export class LocalStore {
           }
         }
         this.rebuild(record.table, record.uuid);
+        // Later local edits must beat what the server has, even when pending writes
+        // replayed on top show an older `updated_at`.
+        this.clock = Math.max(this.clock, Number(record.row?.updated_at ?? 0));
       }
+      this.setMeta("clock", String(this.clock));
       if (seq !== undefined) this.setMeta("seq", String(seq));
     });
     this.emit({ tables, local: false });
@@ -214,20 +218,39 @@ export class LocalStore {
   }
 
   /**
-   * Binds the store to a signed-in user. Signing in as a different user than before
-   * clears the previous user's records and unsent writes; the first sign-in keeps
-   * records made while signed out, which then upload to that user.
+   * Binds the store to a signed-in user. The first sign-in keeps records made while
+   * signed out, which then upload to that user. Switching to a different user clears
+   * the local copy (the server still has it) and parks the previous user's unsent
+   * writes, which come back when that user signs in here again.
    */
   setUser(userId: string) {
     const previous = this.user;
     if (previous === userId) return;
     this.db.transaction(() => {
       if (previous) {
-        for (const table of tableNames) this.db.run(`DELETE FROM ${quote(table)}`);
+        this.db.run(
+          "INSERT INTO _parked (user, op, tbl, uuid, data) SELECT ?, op, tbl, uuid, data FROM _outbox ORDER BY id",
+          [previous],
+        );
         this.db.run("DELETE FROM _outbox");
+        for (const table of tableNames) this.db.run(`DELETE FROM ${quote(table)}`);
         this.db.run("DELETE FROM _server");
         this.setMeta("seq", "0");
       }
+      const parked = this.db.all(
+        "SELECT op, tbl, uuid, data FROM _parked WHERE user = ? ORDER BY id",
+        [userId],
+      );
+      for (const entry of parked) {
+        this.db.run("INSERT INTO _outbox (op, tbl, uuid, data) VALUES (?, ?, ?, ?)", [
+          parseOp(entry.op),
+          parseTable(entry.tbl),
+          String(entry.uuid),
+          typeof entry.data === "string" ? entry.data : null,
+        ]);
+      }
+      this.db.run("DELETE FROM _parked WHERE user = ?", [userId]);
+      for (const entry of parked) this.rebuild(parseTable(entry.tbl), String(entry.uuid));
       this.setMeta("user", userId);
     });
     if (previous) this.emit({ tables: new Set(tableNames), local: false });
@@ -354,6 +377,10 @@ function migrate(db: SqlDatabase) {
     // change number. Local tables are this plus pending outbox writes.
     db.run(
       "CREATE TABLE IF NOT EXISTS _server (tbl TEXT NOT NULL, uuid TEXT NOT NULL, seq INTEGER NOT NULL, row TEXT, PRIMARY KEY (tbl, uuid))",
+    );
+    // Unsent writes of a user who isn't signed in here right now (see setUser).
+    db.run(
+      "CREATE TABLE IF NOT EXISTS _parked (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, op TEXT NOT NULL, tbl TEXT NOT NULL, uuid TEXT NOT NULL, data TEXT)",
     );
     db.run("CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)");
     db.run(

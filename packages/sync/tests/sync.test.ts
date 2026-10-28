@@ -69,7 +69,7 @@ class TestRemote implements Remote {
 
   constructor(
     private readonly network: Network,
-    private readonly client: Client | Backend,
+    private client: Client | Backend,
   ) {
     network.remotes.add(this);
   }
@@ -95,6 +95,11 @@ class TestRemote implements Remote {
 
   async refresh() {
     for (const watcher of [...this.watchers]) await this.refreshOne(watcher);
+  }
+
+  // Signs this device's connection in as someone else, like ConvexClient.setAuth.
+  useClient(client: Client) {
+    this.client = client;
   }
 
   setOnline(online: boolean) {
@@ -365,15 +370,80 @@ describe("sync between devices", () => {
     expect(mac.store.get("tasks", "bad")).toBeUndefined();
   });
 
-  test("signing in as a different user clears the previous user's records", async () => {
-    const { signUp, device } = await world();
+  test("switching users hides the previous user's records and keeps their unsent edits", async () => {
+    const { signUp, device, settle } = await world();
     const first = await signUp();
+    const second = await signUp();
     const mac = device("mac", first);
     mac.start();
-    mac.store.insert("tasks", newTask("First user's"));
-    mac.store.setUser("someone-else");
+    const synced = mac.store.insert("tasks", newTask("Synced"));
+    await settle(mac);
+    mac.remote.setOnline(false);
+    const unsent = mac.store.insert("tasks", newTask("Written offline"));
+
+    mac.engine.start(second.userId);
+    mac.remote.useClient(second.client);
     expect(mac.store.list("tasks")).toEqual([]);
     expect(mac.store.pendingCount()).toBe(0);
+
+    mac.engine.start(first.userId);
+    mac.remote.useClient(first.client);
+    expect(mac.store.get("tasks", unsent)?.title).toBe("Written offline");
+    mac.remote.setOnline(true);
+    await settle(mac);
+    expect(mac.store.get("tasks", synced)?.title).toBe("Synced");
+    expect(mac.store.pendingCount()).toBe(0);
+    const phone = device("phone", first);
+    phone.start();
+    await settle(phone);
+    expect(phone.store.get("tasks", unsent)?.title).toBe("Written offline");
+  });
+
+  test("a reply that arrives after switching users doesn't reach the new user's data", async () => {
+    const { signUp, device, settle } = await world();
+    const first = await signUp();
+    const second = await signUp();
+    const mac = device("mac", first);
+    mac.start();
+    mac.remote.holdReplies();
+    const uuid = mac.store.insert("tasks", newTask("First user's"));
+    await Bun.sleep(0);
+
+    mac.remote.useClient(second.client);
+    mac.engine.start(second.userId);
+    mac.remote.releaseReplies();
+    await settle(mac);
+    expect(mac.store.get("tasks", uuid)).toBeUndefined();
+    expect(mac.store.list("tasks")).toEqual([]);
+  });
+
+  test("editing a field just pulled beats the server, even with an older edit pending", async () => {
+    const { signUp, device, settle, clock } = await world();
+    const user = await signUp();
+    const mac = device("mac", user);
+    const phone = device("phone", user);
+    mac.start();
+    phone.start();
+    const uuid = mac.store.insert("tasks", newTask("Plan"));
+    await settle(mac, phone);
+
+    mac.remote.setHoldUploads(true);
+    mac.store.update("tasks", uuid, { notes: "Pending on the Mac" });
+    clock.set(9_000);
+    phone.store.update("tasks", uuid, { title: "From the phone" });
+    await settle(phone);
+    expect(mac.store.get("tasks", uuid)?.title).toBe("From the phone");
+
+    clock.set(1_500);
+    mac.store.update("tasks", uuid, { title: "Edited after seeing it" });
+    mac.remote.setHoldUploads(false);
+    await settle(mac, phone);
+    for (const each of [mac, phone]) {
+      expect(each.store.get("tasks", uuid)).toMatchObject({
+        title: "Edited after seeing it",
+        notes: "Pending on the Mac",
+      });
+    }
   });
 
   test("records made before the first sign-in upload to that user", async () => {

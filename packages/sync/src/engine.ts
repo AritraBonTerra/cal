@@ -52,7 +52,11 @@ const BATCH = 100;
  */
 export class SyncEngine {
   private running = false;
-  private uploading = false;
+  // Each start/stop begins a new run; work still in flight from an older run (an upload
+  // reply, a page, a failure) is ignored, so it can't touch another session's data.
+  private run = 0;
+  // The run whose drain loop is uploading, if any.
+  private drainRun: number | undefined;
   private paused = false;
   private batchSize = BATCH;
   private failures = 0;
@@ -73,6 +77,7 @@ export class SyncEngine {
   start(userId: string) {
     this.stop();
     this.store.setUser(userId);
+    this.run++;
     this.running = true;
     this.paused = false;
     this.unsubscribe = this.store.subscribe(({ local }) => {
@@ -84,6 +89,7 @@ export class SyncEngine {
 
   stop() {
     this.running = false;
+    this.run++;
     this.unwatch?.();
     this.unsubscribe?.();
     this.unwatch = this.unsubscribe = undefined;
@@ -114,10 +120,15 @@ export class SyncEngine {
     clearTimeout(this.pullRetry);
     this.pullRetry = undefined;
     const after = this.store.seq;
+    const run = this.run;
     this.unwatch = this.remote.watch(
       after,
-      (page) => this.onPage(after, page),
-      (error) => this.onPullError(error),
+      (page) => {
+        if (run === this.run) this.onPage(after, page);
+      },
+      (error) => {
+        if (run === this.run) this.onPullError(error);
+      },
     );
   }
 
@@ -144,33 +155,34 @@ export class SyncEngine {
   }
 
   private kick() {
-    if (!this.running || this.paused || this.uploading || this.retry) return;
-    void this.drain();
+    if (!this.running || this.paused || this.drainRun === this.run || this.retry) return;
+    void this.drain(this.run);
   }
 
-  private async drain() {
-    this.uploading = true;
+  private async drain(run: number) {
+    this.drainRun = run;
     try {
       for (;;) {
-        if (!this.running || this.paused) return;
+        if (run !== this.run || this.paused) return;
         const batch = this.store.pending(this.batchSize);
         if (batch.length === 0) return;
         let records: ServerRecord[];
         try {
           records = await this.remote.upload(this.store.device, batch.map(toUploadOp));
         } catch (error) {
-          this.onUploadError(batch, error);
+          if (run === this.run) this.onUploadError(batch, error);
           return;
         }
-        // If stopped meanwhile, the store may be closed; the next start re-sends the
-        // batch, which the server treats as a no-op.
-        if (!this.running) return;
+        // Stopped or restarted meanwhile: the store may be closed or bound to another
+        // user. The current run re-sends the batch if it's still pending, which the
+        // server treats as a no-op.
+        if (run !== this.run) return;
         this.store.applyServer(records, { confirm: batch.map((entry) => entry.id) });
         this.failures = 0;
         this.batchSize = BATCH;
       }
     } finally {
-      this.uploading = false;
+      if (this.drainRun === run) this.drainRun = undefined;
       this.settle();
     }
   }
@@ -215,7 +227,7 @@ export class SyncEngine {
     const done =
       !this.running ||
       this.paused ||
-      (!this.uploading && !this.retry && this.store.pendingCount() === 0);
+      (this.drainRun !== this.run && !this.retry && this.store.pendingCount() === 0);
     if (!done) return;
     for (const resolve of this.idleWaiters) resolve();
     this.idleWaiters.clear();
