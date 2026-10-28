@@ -1,7 +1,10 @@
 import {
   type DayKey,
+  dropLengthMinutes,
   type HabitEntry,
+  type Interval,
   localTimeZone,
+  nextFreeSlot,
   type Task,
   type TimeBlock,
   toOffsetIso,
@@ -60,6 +63,37 @@ export function createActions(history: History, now: () => Date = () => new Date
           source: "manual",
         }),
       ),
+
+    /**
+     * Places a task in the next free slot today (`X`, or Schedule on iOS), around `busy`
+     * (the device's events) and every block, including ones running in from yesterday.
+     * The slot is chosen inside the history queue, so quick repeats see each other's
+     * blocks. Resolves false when the working day is full.
+     */
+    scheduleNext: (taskUuid: string, busy: readonly Interval[]) =>
+      history.transact("Schedule To-Do", async (tx) => {
+        const task = await source.get("tasks", tx.resolve(taskUuid));
+        if (!task) return false;
+        const at = now();
+        const blocks = await source.list("time_blocks");
+        const taken = [
+          ...busy,
+          ...blocks.map((block) => ({
+            start: new Date(block.start_at),
+            end: new Date(block.end_at),
+          })),
+        ];
+        const slot = nextFreeSlot(taken, at, dropLengthMinutes(task, blocks, at));
+        if (!slot) return false;
+        await tx.insert("time_blocks", {
+          task_uuid: task.uuid,
+          start_at: toOffsetIso(slot.start),
+          end_at: toOffsetIso(slot.end),
+          time_zone: localTimeZone(),
+          source: "manual",
+        });
+        return true;
+      }),
 
     // Moves or resizes a block. A block the user moved is pinned against the scheduler.
     moveBlock: (uuid: string, start: Date, end: Date) =>

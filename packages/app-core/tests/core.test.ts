@@ -121,6 +121,31 @@ describe("History", () => {
     expect(store.list("tasks").map((task) => task.title)).toEqual(["Plan"]);
   });
 
+  test("scheduling twice at once picks two slots, around blocks from yesterday", async () => {
+    const { store, actions } = setup();
+    const task = await actions.createTask({
+      title: "Plan",
+      position: 0,
+      when: "inbox",
+      estimate_min: 60,
+    });
+    // A block from 23:00 yesterday to 11:00 today; the clock reads 10:40.
+    const overnight = [new Date(2026, 9, 27, 23), new Date(2026, 9, 28, 11)] as const;
+    await actions.scheduleTask(task, ...overnight);
+    await Promise.all([actions.scheduleNext(task, []), actions.scheduleNext(task, [])]);
+    const placed = store
+      .list("time_blocks")
+      .map((block) => [new Date(block.start_at).getTime(), new Date(block.end_at).getTime()])
+      .filter(([start]) => start !== overnight[0].getTime())
+      .sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0));
+    // The overnight block already covers the estimate, so each gets the 30 min default,
+    // one after the other rather than both at 11:00.
+    expect(placed).toEqual([
+      [new Date(2026, 9, 28, 11).getTime(), new Date(2026, 9, 28, 11, 30).getTime()],
+      [new Date(2026, 9, 28, 11, 30).getTime(), new Date(2026, 9, 28, 12).getTime()],
+    ]);
+  });
+
   test("logging a habit replaces the day's entry and 0 unchecks it", async () => {
     const { store, actions } = setup();
     await actions.logHabit("h", "2026-10-28", 1);

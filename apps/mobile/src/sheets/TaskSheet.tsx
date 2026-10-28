@@ -42,7 +42,7 @@ export function TaskSheet({ task, section }: { task: Task; section?: "when" | "d
             : "Inbox";
 
   const schedule = async () => {
-    const placed = await scheduleNext(actions, task, data.blocks, now());
+    const placed = await scheduleNext(actions, task, now());
     if (placed) router.back();
     else Alert.alert("No room today", "Working hours are full. Try moving something first.");
   };

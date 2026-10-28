@@ -1,13 +1,5 @@
 import { type Command, useActions, useCommands, useHistory } from "@cal/app-core";
-import {
-  addDays,
-  dropLengthMinutes,
-  fromDayKey,
-  isOpen,
-  nextFreeSlot,
-  toDayKey,
-  toOffsetIso,
-} from "@cal/domain";
+import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
 import type { AppState } from "./lib/app";
@@ -315,28 +307,20 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const task = selectedTask();
           if (!task) return;
-          const { data } = latest.current;
-          const at = now();
           // Today's events are fetched here: the view may be showing another week, and
           // anything overlapping today counts, including a meeting that began yesterday.
-          const dayStart = fromDayKey(toDayKey(at));
-          const dayEnd = fromDayKey(addDays(toDayKey(at), 1));
+          const today = toDayKey(now());
           void window.cal.calendar
-            .events(toOffsetIso(dayStart), toOffsetIso(dayEnd))
+            .events(toOffsetIso(fromDayKey(today)), toOffsetIso(fromDayKey(addDays(today, 1))))
             .catch(() => [])
-            .then((events) => {
-              const busy = [
-                ...events
+            .then((events) =>
+              actions.scheduleNext(
+                task.uuid,
+                events
                   .filter((event) => event.busy && !event.allDay)
                   .map((event) => ({ start: new Date(event.start), end: new Date(event.end) })),
-                ...data.blocks.map((block) => ({
-                  start: new Date(block.start_at),
-                  end: new Date(block.end_at),
-                })),
-              ].filter((each) => each.end > dayStart && each.start < dayEnd);
-              const slot = nextFreeSlot(busy, at, dropLengthMinutes(task, data.blocks, at));
-              if (slot) void actions.scheduleTask(task.uuid, slot.start, slot.end);
-            });
+              ),
+            );
         },
       },
       {
