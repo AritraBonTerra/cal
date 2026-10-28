@@ -62,6 +62,15 @@ describe("parseQuickEntry", () => {
     expect(entry.start_at?.getHours()).toBe(20);
   });
 
+  test("this evening stays today after 8pm", () => {
+    const late = new Date(2026, 9, 28, 21, 40);
+    expect(parseQuickEntry("Read this evening", late)).toMatchObject({
+      title: "Read",
+      when: "evening",
+      when_date: "2026-10-28",
+    });
+  });
+
   test("an unknown project stays in the title", () => {
     expect(parseQuickEntry("Ship /nowhere", now, projects).title).toBe("Ship /nowhere");
   });

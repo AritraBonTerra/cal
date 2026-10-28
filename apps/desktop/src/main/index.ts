@@ -64,9 +64,18 @@ const rendererFile = join(import.meta.dirname, "../renderer/index.html");
 
 // Whether `url` is Cal's own window content, the only page allowed to use the bridge.
 function isAppUrl(url: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
   const dev = process.env.ELECTRON_RENDERER_URL;
-  if (dev) return url.startsWith(new URL(dev).origin);
-  return url.startsWith(pathToFileURL(rendererFile).href);
+  if (dev) return parsed.origin === new URL(dev).origin;
+  // The built page itself; only its query and hash may differ.
+  return (
+    `${parsed.protocol}//${parsed.host}${parsed.pathname}` === pathToFileURL(rendererFile).href
+  );
 }
 
 // Registers an IPC handler that refuses calls from any page other than Cal's own.

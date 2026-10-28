@@ -82,7 +82,17 @@ export function parseQuickEntry(
   for (const date of chrono.parse(text, now, { forwardDate: true })) {
     const evening = new RegExp(EVENING.source, "i").test(date.text);
     if (!take(evening ? "evening" : "when", date.index, date.index + date.text.length)) continue;
-    const start = date.start.date();
+    let start = date.start.date();
+    // "Tonight" is always today's evening, even after chrono's implied 20:00 has passed.
+    if (evening) {
+      start = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        start.getHours(),
+        start.getMinutes(),
+      );
+    }
     entry.when_date = toDayKey(start);
     entry.when = evening ? "evening" : "date";
     if (date.start.isCertain("hour")) entry.start_at = start;
