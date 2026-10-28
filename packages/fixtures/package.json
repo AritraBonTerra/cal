@@ -1,0 +1,16 @@
+{
+  "name": "@cal/fixtures",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cal/calendar-source": "workspace:*",
+    "@cal/domain": "workspace:*",
+    "@cal/sync": "workspace:*"
+  }
+}

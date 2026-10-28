@@ -10,7 +10,8 @@
       "!**/.agents",
       "!**/.claude",
       "!**/skills-lock.json",
-      "!packages/theme/theme.css"
+      "!packages/theme/theme.css",
+      "!**/uniwind-types.d.ts"
     ]
   },
   "css": {

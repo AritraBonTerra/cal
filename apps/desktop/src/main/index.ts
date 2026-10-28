@@ -2,6 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { storeSource } from "@cal/app-core";
+import { FIXTURE_NOW, FixtureCalendar, seedFixture } from "@cal/fixtures";
 import { LocalStore, Session } from "@cal/sync";
 import {
   app,
@@ -15,7 +16,6 @@ import {
 import { type AuthCall, type CalendarCall, channels, type DataCall } from "../shared/api";
 import { Calkit } from "./calkit";
 import { openDatabase } from "./db";
-import { FIXTURE_NOW, FixtureCalendar, seedFixture } from "./fixtures";
 import { encryptedFile } from "./session";
 
 // The dev deployment's public client URL; a build can point elsewhere with MAIN_VITE_CONVEX_URL.

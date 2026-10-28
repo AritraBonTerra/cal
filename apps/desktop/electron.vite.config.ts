@@ -8,6 +8,7 @@ const bundled = [
   "@cal/backend",
   "@cal/calendar-source",
   "@cal/domain",
+  "@cal/fixtures",
   "@cal/sync",
 ];
 
