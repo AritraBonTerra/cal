@@ -88,6 +88,15 @@
         "@types/bun": "^1.4.4",
       },
     },
+    "packages/scheduler": {
+      "name": "@cal/scheduler",
+      "dependencies": {
+        "@cal/domain": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+      },
+    },
     "packages/sync": {
       "name": "@cal/sync",
       "dependencies": {
@@ -172,6 +181,8 @@
     "@cal/domain": ["@cal/domain@workspace:packages/domain"],
 
     "@cal/nlp": ["@cal/nlp@workspace:packages/nlp"],
+
+    "@cal/scheduler": ["@cal/scheduler@workspace:packages/scheduler"],
 
     "@cal/sync": ["@cal/sync@workspace:packages/sync"],
 
