@@ -1,6 +1,6 @@
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
 import { type ChipColors, chipColorsFromHex, type Mode } from "@cal/theme";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /*
  * Device calendars and their events, read live from the main process. Events are
@@ -32,11 +32,17 @@ export function useEvents(start: string, end: string) {
     events: [],
     loaded: false,
   });
+  // The range on screen now. `refresh` is kept by undo steps long after the view moves
+  // on, so it always reloads this range, and drops results for a range no longer shown.
+  const range = useRef({ start, end });
+  range.current = { start, end };
   // Fixture calendars never report changes, so edits made here refresh explicitly.
   const refresh = useCallback(async () => {
-    const events = await window.cal.calendar.events(start, end).catch(() => []);
-    setState({ events, loaded: true });
-  }, [start, end]);
+    const wanted = range.current;
+    const events = await window.cal.calendar.events(wanted.start, wanted.end).catch(() => []);
+    const now = range.current;
+    if (now.start === wanted.start && now.end === wanted.end) setState({ events, loaded: true });
+  }, []);
   // Without calendar access the fetch fails: the grid simply shows no device events.
   useEffect(() => {
     let active = true;
