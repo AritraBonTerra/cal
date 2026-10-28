@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { storeSource } from "@cal/app-core";
-import { LocalStore } from "@cal/sync";
+import { LocalStore, Session } from "@cal/sync";
 import {
   app,
   BrowserWindow,
@@ -16,7 +16,7 @@ import { type AuthCall, type CalendarCall, channels, type DataCall } from "../sh
 import { Calkit } from "./calkit";
 import { openDatabase } from "./db";
 import { FIXTURE_NOW, FixtureCalendar, seedFixture } from "./fixtures";
-import { Session } from "./session";
+import { encryptedFile } from "./session";
 
 // The dev deployment's public client URL; a build can point elsewhere with MAIN_VITE_CONVEX_URL.
 const CONVEX_URL =
@@ -52,7 +52,7 @@ const broadcast = (channel: string, payload: unknown) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload);
 };
 
-const session = new Session(CONVEX_URL, store, join(app.getPath("userData"), "session.bin"), {
+const session = new Session(CONVEX_URL, store, encryptedFile(join(dataDir, "session.bin")), {
   auth: (state) => broadcast(channels.authChanged, state),
   sync: (status) => broadcast(channels.syncChanged, status),
 });

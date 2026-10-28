@@ -8,6 +8,13 @@ export {
   type UploadOp,
 } from "./engine";
 export {
+  type AuthState,
+  Session,
+  type SessionStorage,
+  type SignInFlow,
+  type SyncStatus,
+} from "./session";
+export {
   LocalStore,
   type NewRow,
   type PendingOp,

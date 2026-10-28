@@ -2,19 +2,9 @@ import type { DataSource } from "@cal/app-core";
 import type { SyncedTable } from "@cal/backend/sync";
 import type { CalendarSource } from "@cal/calendar-source";
 
-export type AuthState =
-  | { status: "signedOut" }
-  | { status: "signedIn"; userId: string; email: string };
+import type { AuthState, SignInFlow, SyncStatus } from "@cal/sync";
 
-export type SignInFlow = "signIn" | "signUp";
-
-export interface SyncStatus {
-  // Local edits not yet confirmed by the server.
-  pending: number;
-  connected: boolean;
-  // Signed in, but the session needs signing in again.
-  needsSignIn: boolean;
-}
+export type { AuthState, SignInFlow, SyncStatus };
 
 /**
  * What the preload script exposes to the window as `window.cal`. The window has no
