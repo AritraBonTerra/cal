@@ -66,10 +66,9 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
     const inMonth = !byMonth || byMonth.includes(Number(key.slice(5, 7)));
     const due =
       freq === "DAILY"
-        ? offset % interval === 0
+        ? offset % interval === 0 && (!parts.has("BYDAY") || byDay.includes(weekdayOf(key)))
         : freq === "WEEKLY"
-          ? Math.floor((offset + intoWeek) / 7) % interval === 0 &&
-            byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
+          ? Math.floor((offset + intoWeek) / 7) % interval === 0 && byDay.includes(weekdayOf(key))
           : freq === "MONTHLY"
             ? months % interval === 0 && monthlyDue(parts, key, first)
             : byMonth
@@ -82,6 +81,9 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
   }
   return result;
 }
+
+// The RRULE weekday code of `key` ("MO", "TU", …).
+const weekdayOf = (key: DayKey) => WEEKDAYS[fromDayKey(key).getDay()] ?? "";
 
 // Whether a monthly rule falls on `key`: one of its days, picked by BYSETPOS if set
 // ("-1" with BYDAY=MO,…,FR: the month's last weekday).

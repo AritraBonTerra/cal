@@ -122,3 +122,14 @@ test("BYMONTHDAY with BYDAY needs both: Friday the 13th", () => {
   );
   expect(days).toEqual(["2026/11/13", "2027/8/13", "2028/10/13"]);
 });
+
+test("a daily rule with BYDAY skips the other weekdays", () => {
+  const start = new Date(2026, 10, 6, 9); // Friday
+  const days = expandRule(
+    "FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;COUNT=3",
+    start,
+    new Date(start.getTime() + 3_600_000),
+    30,
+  ).map((each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`);
+  expect(days).toEqual(["11/6", "11/9", "11/10"]);
+});
