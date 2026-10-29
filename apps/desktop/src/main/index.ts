@@ -24,6 +24,7 @@ import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { openDatabase } from "./db";
 import { encryptedFile } from "./session";
+import { checkNow, startUpdates } from "./updater";
 
 // The dev deployment's public client URL; a build can point elsewhere with MAIN_VITE_CONVEX_URL.
 const CONVEX_URL =
@@ -234,6 +235,7 @@ function buildMenu() {
       role: "appMenu",
       submenu: [
         { role: "about" },
+        { label: "Check for Updates…", click: () => void checkNow() },
         { type: "separator" },
         command("Settings…", "settings.open", "CmdOrCtrl+,"),
         { type: "separator" },
@@ -295,6 +297,7 @@ app.whenReady().then(() => {
   if (!fixture) session.init();
   buildMenu();
   createWindow();
+  startUpdates();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
