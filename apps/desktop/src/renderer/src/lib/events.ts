@@ -6,7 +6,17 @@ import type {
   EventSpan,
   ExternalEvent,
 } from "@cal/calendar-source";
-import { addDays, type DayKey, fromDayKey, toDayKey, toOffsetIso } from "@cal/domain";
+import {
+  addDays,
+  type DayKey,
+  daysBetween,
+  expandRule,
+  fromDayKey,
+  ruleCount,
+  toDayKey,
+  toOffsetIso,
+  withCount,
+} from "@cal/domain";
 import type { QuickEntry, TokenKind } from "@cal/nlp";
 import type { Literal } from "./entryText";
 import { createStore, useStore } from "./store";
@@ -344,9 +354,9 @@ export function previousValues(event: ExternalEvent, patch: Partial<EventInput>)
  * What recreates a deleted event when the delete is undone. "this" brings back a
  * one-off at the occurrence's times: EventKit can't return an occurrence to its series,
  * so the series keeps its gap and the copy stands alone. "future" starts the series
- * again from the deleted occurrence and "all" from the series' first occurrence (a
- * COUNT starts over, and occurrences that had been edited on their own come back as
- * plain repeats).
+ * again from the deleted occurrence, with a COUNT cut down to the occurrences from
+ * there on, and "all" from the series' first occurrence (occurrences that had been
+ * edited on their own come back as plain repeats).
  */
 export function restoreInput(event: ExternalEvent, span: EventSpan): EventInput {
   const input = inputFromEvent(event);
@@ -354,7 +364,22 @@ export function restoreInput(event: ExternalEvent, span: EventSpan): EventInput 
   if (span === "all") {
     return { ...input, start: event.seriesStart ?? event.start, end: event.seriesEnd ?? event.end };
   }
-  return input;
+  return { ...input, recurrence: remainingRule(event) };
+}
+
+// The series' rule as it continues from `event`: a COUNT less the occurrences before it.
+function remainingRule(event: ExternalEvent) {
+  const rule = event.recurrence;
+  if (!rule || !event.seriesStart || !event.seriesEnd) return rule;
+  const count = ruleCount(rule);
+  if (count === undefined) return rule;
+  const seriesStart = new Date(event.seriesStart);
+  const start = Date.parse(event.start);
+  const horizon = daysBetween(toDayKey(seriesStart), toDayKey(new Date(start))) + 1;
+  const before = expandRule(rule, seriesStart, new Date(event.seriesEnd), horizon).filter(
+    (occurrence) => occurrence.start.getTime() < start,
+  ).length;
+  return withCount(rule, Math.max(1, count - before));
 }
 
 /*
@@ -363,26 +388,75 @@ export function restoreInput(event: ExternalEvent, span: EventSpan): EventInput 
  * the id they were recorded with and resolve it here before acting, so undoing an edit
  * made before the id changed still reaches the event. One map per History, shared by
  * every writer made for it.
+ *
+ * Occurrence ids are `<identifier>|<original start>`, the identifier shared by a
+ * series. A series recreated with the same times is aliased as a whole: every
+ * `old|start` resolves to `new|start`, so each occurrence keeps its identity. A
+ * "future" restore applies only from the deleted occurrence on; the earlier ones
+ * stay under the old identifier.
  */
-const aliasesFor = new WeakMap<History, Map<string, string>>();
+const aliasesFor = new WeakMap<History, EventAliases>();
+
+interface SeriesAlias {
+  to: string;
+  // Instant of the first occurrence the alias covers.
+  since: number;
+}
+
+class EventAliases {
+  private readonly ids = new Map<string, string>();
+  private readonly series = new Map<string, SeriesAlias[]>();
+
+  current(id: string): string {
+    let current = id;
+    for (let hops = 0; hops < 100; hops++) {
+      const exact = this.ids.get(current);
+      if (exact !== undefined) {
+        current = exact;
+        continue;
+      }
+      const [identifier, start] = splitId(current);
+      const move = start
+        ? this.series
+            .get(identifier)
+            ?.filter((alias) => alias.since <= Date.parse(start))
+            .reduce<SeriesAlias | undefined>((a, b) => (a && a.since > b.since ? a : b), undefined)
+        : undefined;
+      if (!move) break;
+      current = `${move.to}|${start}`;
+    }
+    return current;
+  }
+  renamed(from: string, to: string) {
+    if (from !== to) this.ids.set(from, to);
+  }
+  forget(from: string) {
+    this.ids.delete(from);
+  }
+  /*
+   * Records that the event `from` came back as `created`: a series under a new
+   * identifier (from the occurrence at `since` on, else from its first), a one-off
+   * under a new id.
+   */
+  recreated(from: string, created: ExternalEvent, since?: number) {
+    const [identifier, start] = splitId(from);
+    const [next, nextStart] = splitId(created.id);
+    if (!start || !nextStart || !created.recurring) return this.renamed(from, created.id);
+    const moves = this.series.get(identifier) ?? [];
+    this.series.set(identifier, [...moves, { to: next, since: since ?? Number.NEGATIVE_INFINITY }]);
+  }
+}
+
+// An occurrence id's identifier and original start; a one-off has no start.
+function splitId(id: string): [identifier: string, start?: string] {
+  const bar = id.indexOf("|");
+  return bar < 0 ? [id] : [id.slice(0, bar), id.slice(bar + 1)];
+}
 
 function eventAliases(history: History) {
-  const aliases = aliasesFor.get(history) ?? new Map<string, string>();
+  const aliases = aliasesFor.get(history) ?? new EventAliases();
   aliasesFor.set(history, aliases);
-  return {
-    current(id: string): string {
-      let current = id;
-      for (let hops = 0; hops < 100; hops++) {
-        const next = aliases.get(current);
-        if (next === undefined) break;
-        current = next;
-      }
-      return current;
-    },
-    renamed(from: string, to: string) {
-      if (from !== to) aliases.set(from, to);
-    },
-  };
+  return aliases;
 }
 
 /**
@@ -405,7 +479,7 @@ export function eventWriter(
           async () => {
             const created = await api.createEvent(input);
             // A redo creates it again under a new id; later steps still hold the old one.
-            if (id) ids.renamed(ids.current(id), created.id);
+            if (id) ids.recreated(ids.current(id), created);
             id = created.id;
             await refresh();
           },
@@ -425,12 +499,24 @@ export function eventWriter(
       label = "Edit Event",
     ) {
       const previous = previousValues(event, patch);
+      // The occurrence id an "all" write collapsed onto the one event left.
+      let collapsed: string | undefined;
       const place = async (input: Partial<EventInput>) => {
         const id = ids.current(event.id);
         const written = await api.updateEvent(id, input, span);
-        // A "this event" edit detaches the occurrence, which can give it a new id. An
-        // "all" write answers with the series' first occurrence, which isn't this one.
-        if (span !== "all") ids.renamed(id, written.id);
+        if (span !== "all") {
+          // A "this event" edit detaches the occurrence, which can give it a new id.
+          ids.renamed(id, written.id);
+        } else if (!written.recurring) {
+          // Clearing the repeat leaves one event, whichever occurrence was picked.
+          ids.renamed(id, written.id);
+          collapsed = id;
+        } else if (collapsed) {
+          // The repeat is back, and with it the occurrence's own id.
+          ids.forget(collapsed);
+          collapsed = undefined;
+        }
+        // Otherwise an "all" write answers with the series' first occurrence, not this one.
         await refresh();
       };
       return history.transact(label, (tx) =>
@@ -451,7 +537,9 @@ export function eventWriter(
           async () => {
             // Deleted events can't come back under their old id; the undo recreates one.
             const created = await api.createEvent(input);
-            ids.renamed(ids.current(event.id), created.id);
+            const id = ids.current(event.id);
+            const since = span === "future" ? Date.parse(splitId(id)[1] ?? event.start) : undefined;
+            ids.recreated(id, created, since);
             await refresh();
           },
         ),

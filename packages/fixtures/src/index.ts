@@ -10,7 +10,7 @@ import {
   addDays,
   atMinute,
   type DayKey,
-  fromDayKey,
+  expandRule,
   startOfWeek,
   toDayKey,
   toOffsetIso,
@@ -38,9 +38,16 @@ const calendars: DeviceCalendar[] = [
 
 /*
  * A fixture event: an ExternalEvent plus the series it belongs to, so "this and
- * following" and "all events" can reach the other occurrences.
+ * following" and "all events" can reach the other occurrences. Occurrence ids follow
+ * EventKit's shape, `<identifier>|<original start>`, with the series' identifier in
+ * front; a one-off's id is just its identifier.
  */
 type Stored = ExternalEvent & { series?: string };
+
+const occurrenceId = (series: string, start: Date) => `${series}|${toOffsetIso(start)}`;
+
+// The identifier before the "|" of an occurrence id (the whole id for a one-off).
+const identifierOf = (id: string) => id.split("|")[0] ?? id;
 
 type Seed = [calendarId: string, title: string, start: Date, end: Date, extra?: Partial<Stored>];
 
@@ -92,7 +99,7 @@ const seeds: Seed[] = [
 ];
 
 const seeded: Stored[] = seeds.map(([calendarId, title, start, end, extra], index) => ({
-  id: `fixture-${index}`,
+  id: extra?.series ? occurrenceId(extra.series, start) : `fixture-${index}`,
   calendarId,
   title,
   start: toOffsetIso(start),
@@ -102,45 +109,6 @@ const seeded: Stored[] = seeds.map(([calendarId, title, start, end, extra], inde
   busy: true,
   ...extra,
 }));
-
-const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-
-/**
- * The occurrences of `rule` starting at `start`, within 90 days: enough RRULE (FREQ,
- * INTERVAL, BYDAY, COUNT, UNTIL) for the fixture week, nothing more.
- */
-function occurrences(rule: string, start: Date, end: Date) {
-  const parts = new Map(rule.split(";").map((part) => part.split("=") as [string, string]));
-  const freq = parts.get("FREQ") ?? "DAILY";
-  const interval = Number(parts.get("INTERVAL") ?? 1);
-  const count = Number(parts.get("COUNT") ?? Infinity);
-  const untilText = parts.get("UNTIL");
-  const until = untilText
-    ? toDayKey(new Date(Date.parse(untilText.replace(/^(\d{4})(\d{2})(\d{2}).*/, "$1-$2-$3"))))
-    : undefined;
-  const byDay = parts.get("BYDAY")?.split(",") ?? [WEEKDAYS[start.getDay()] ?? "MO"];
-  const first = toDayKey(start);
-  const length = end.getTime() - start.getTime();
-  const minutes = start.getHours() * 60 + start.getMinutes();
-  const result: { start: Date; end: Date }[] = [];
-  for (let offset = 0; offset < 90 && result.length < count; offset++) {
-    const key = addDays(first, offset);
-    if (until && key > until) break;
-    const due =
-      freq === "DAILY"
-        ? offset % interval === 0
-        : freq === "WEEKLY"
-          ? Math.floor((offset + start.getDay()) / 7) % interval === 0 &&
-            byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
-          : freq === "MONTHLY"
-            ? key.slice(8) === first.slice(8)
-            : key.slice(5) === first.slice(5);
-    if (!due) continue;
-    const occurrence = atMinute(key, minutes);
-    result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
-  }
-  return result;
-}
 
 // Device calendars for fixture mode: fixed, read-mostly, in memory.
 export class FixtureCalendar implements CalendarSource {
@@ -173,50 +141,45 @@ export class FixtureCalendar implements CalendarSource {
 
   // A repeating event is stored as one occurrence per date, all in one series.
   async createEvent(input: EventInput) {
-    const series = input.recurrence ? `series-${this.nextId}` : undefined;
-    const base: Stored = {
+    const identifier = `fixture-${this.nextId++}`;
+    const start = new Date(input.start);
+    const end = new Date(input.end);
+    const [first] = input.recurrence ? expandRule(input.recurrence, start, end) : [{ start, end }];
+    if (!first) throw new Error("rule has no occurrences");
+    const created: Stored = {
       busy: true,
       ...input,
       ...blankToUndefined(input),
-      id: "",
+      id: input.recurrence ? occurrenceId(identifier, first.start) : identifier,
+      start: toOffsetIso(first.start),
+      end: toOffsetIso(first.end),
       recurring: Boolean(input.recurrence),
       recurrence: input.recurrence || undefined,
-      series,
+      series: input.recurrence ? identifier : undefined,
     };
-    const times = series
-      ? occurrences(input.recurrence ?? "", new Date(input.start), new Date(input.end))
-      : [{ start: new Date(input.start), end: new Date(input.end) }];
-    const created = times.map((time) => ({
-      ...base,
-      id: `fixture-${this.nextId++}`,
-      start: toOffsetIso(time.start),
-      end: toOffsetIso(time.end),
-    }));
-    this.stored.push(...created);
-    const first = created[0];
-    if (!first) throw new Error("rule has no occurrences");
-    return this.publish(first);
+    this.stored.push(created);
+    this.expand(created);
+    return this.publish(created);
   }
 
   /*
    * "this" changes one occurrence, "future" this and the later ones (which become a
    * series of their own), "all" the whole series; new times shift each occurrence by
-   * the same amount. Clearing the repeat keeps the first occurrence of the span and
-   * drops the rest; a new rule is recorded but the occurrences aren't re-expanded.
+   * the same amount. A changed repeat keeps the span's first occurrence and drops the
+   * rest: a cleared rule leaves it alone, a new rule expands again from it. The answer
+   * is the occurrence `id` names, or the kept one when `id` was dropped.
    */
   async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
     const current = this.stored.find((event) => event.id === id);
     if (!current) throw new Error(`no event ${id}`);
-    let members = this.members(current, span);
-    const series = span === "future" && current.series ? `series-${this.nextId++}` : undefined;
-    if (input.recurrence === "") {
-      const kept = members[0];
-      for (const member of members) if (member !== kept) this.drop(member);
-      members = kept ? [kept] : [];
-    }
+    const members = this.members(current, span);
+    const retained = input.recurrence === undefined ? members : members.slice(0, 1);
+    for (const member of members) if (!retained.includes(member)) this.drop(member);
+    const series = span === "future" && current.series ? `fixture-${this.nextId++}` : undefined;
     const shift = (key: "start" | "end", time: string) =>
       Date.parse(time) - Date.parse(current[key]);
-    for (const member of members) {
+    let written: Stored | undefined;
+    for (const member of retained) {
       const next: Stored = { ...member, ...input, ...blankToUndefined(input) };
       if (input.start)
         next.start = toOffsetIso(new Date(Date.parse(member.start) + shift("start", input.start)));
@@ -225,12 +188,16 @@ export class FixtureCalendar implements CalendarSource {
       if (input.recurrence !== undefined) {
         next.recurrence = input.recurrence || undefined;
         next.recurring = Boolean(input.recurrence);
-        if (!input.recurrence) next.series = undefined;
+        next.series = input.recurrence ? (next.series ?? identifierOf(next.id)) : undefined;
+        // A one-off given a rule becomes its series' first occurrence.
+        if (next.series && !next.id.includes("|"))
+          next.id = occurrenceId(next.series, new Date(next.start));
       }
       if (series && next.series) next.series = series;
       this.stored[this.stored.indexOf(member)] = next;
+      if (input.recurrence) this.expand(next);
+      if (member === current || !written) written = next;
     }
-    const written = this.stored.find((event) => event.id === id);
     if (!written) throw new Error(`no event ${id}`);
     return this.publish(written);
   }
@@ -243,13 +210,28 @@ export class FixtureCalendar implements CalendarSource {
     return () => {};
   }
 
-  // The occurrences a span covers, from `current`.
+  // The occurrences a span covers, from `current`, earliest first.
   private members(current: Stored, span: EventSpan) {
     if (span === "this" || !current.series) return [current];
     const from = span === "future" ? Date.parse(current.start) : Number.NEGATIVE_INFINITY;
-    return this.stored.filter(
-      (event) => event.series === current.series && Date.parse(event.start) >= from,
-    );
+    return this.stored
+      .filter((event) => event.series === current.series && Date.parse(event.start) >= from)
+      .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  }
+  // Adds the occurrences that follow `first` under its rule, skipping any already stored.
+  private expand(first: Stored) {
+    if (!first.recurrence || !first.series) return;
+    const times = expandRule(first.recurrence, new Date(first.start), new Date(first.end));
+    for (const time of times.slice(1)) {
+      const id = occurrenceId(first.series, time.start);
+      if (this.stored.some((event) => event.id === id)) continue;
+      this.stored.push({
+        ...first,
+        id,
+        start: toOffsetIso(time.start),
+        end: toOffsetIso(time.end),
+      });
+    }
   }
   private drop(event: Stored) {
     this.stored.splice(this.stored.indexOf(event), 1);

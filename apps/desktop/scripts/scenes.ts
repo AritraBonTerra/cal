@@ -24,7 +24,7 @@ export interface Scene {
 }
 
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
-const STANDUP = "[data-item='event:fixture-2'] > div";
+const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
 
 export const scenes: Scene[] = [
   { name: "week-light" },

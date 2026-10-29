@@ -191,6 +191,19 @@ describe("eventPatch", () => {
       recurrence: "FREQ=DAILY",
     });
   });
+
+  test("a COUNT series restored from a later occurrence keeps only the remaining count", () => {
+    const fifth = {
+      ...event,
+      recurrence: "FREQ=DAILY;COUNT=7",
+      start: "2026-10-30T09:30:00-07:00",
+      end: "2026-10-30T09:45:00-07:00",
+      seriesStart: "2026-10-26T09:30:00-07:00",
+      seriesEnd: "2026-10-26T09:45:00-07:00",
+    };
+    expect(restoreInput(fifth, "future").recurrence).toBe("FREQ=DAILY;COUNT=3");
+    expect(restoreInput(fifth, "all").recurrence).toBe("FREQ=DAILY;COUNT=7");
+  });
 });
 
 const inputOf = (event: ExternalEvent) => ({
@@ -293,6 +306,98 @@ describe("eventWriter", () => {
     ]);
     await history.undo();
     expect((await titled("Standup")).length).toBe(5);
+  });
+
+  test("undoing 'delete this and following' keeps a COUNT series at its original length", async () => {
+    const { history, writer, titled } = setup();
+    await writer.create({
+      calendarId: "work",
+      title: "Yoga",
+      start: "2026-10-29T15:00:00-07:00",
+      end: "2026-10-29T16:00:00-07:00",
+      allDay: false,
+      recurrence: "FREQ=DAILY;COUNT=3",
+    });
+    const second = (await titled("Yoga")).find((each) => each.start.startsWith("2026-10-30"));
+    if (!second) throw new Error("no second Yoga");
+    await writer.remove(second, "future");
+    expect((await titled("Yoga")).map((each) => each.start.slice(0, 10))).toEqual(["2026-10-29"]);
+    await history.undo();
+    expect((await titled("Yoga")).map((each) => each.start.slice(0, 10)).sort()).toEqual([
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+    ]);
+    await history.redo();
+    expect((await titled("Yoga")).length).toBe(1);
+  });
+
+  test("an 'all' edit undone after an 'all' delete and its undo reaches the recreated series", async () => {
+    const { history, writer, titled } = setup();
+    const monday = await standupOn(titled, "2026-10-26");
+    if (!monday) throw new Error("no Monday standup");
+    await writer.update(monday, { title: "Daily standup" }, "all");
+    const tuesday = (await titled("Daily standup")).find((each) =>
+      each.start.startsWith("2026-10-27"),
+    );
+    if (!tuesday) throw new Error("no Tuesday standup");
+    await writer.remove(tuesday, "all");
+    expect((await titled("Daily standup")).length).toBe(0);
+    await history.undo();
+    expect((await titled("Daily standup")).length).toBe(5);
+    await history.undo();
+    const restored = await titled("Standup");
+    expect(restored.map((each) => each.start.slice(0, 10)).sort()).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    expect(new Set(restored.map((each) => each.start.slice(11, 16)))).toEqual(new Set(["09:30"]));
+    expect((await titled("Daily standup")).length).toBe(0);
+    await history.redo();
+    expect((await titled("Daily standup")).length).toBe(5);
+  });
+
+  test("undoing a cleared repeat from a later occurrence restores the series", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = await standupOn(titled, "2026-10-28");
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.update(wednesday, { recurrence: "" }, "all");
+    const kept = await titled("Standup");
+    expect(kept.map((each) => each.start.slice(0, 10))).toEqual(["2026-10-26"]);
+    expect(kept[0]?.recurring).toBe(false);
+    await history.undo();
+    const restored = await titled("Standup");
+    expect(restored.map((each) => each.start.slice(0, 10)).sort()).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    expect(restored.every((each) => each.recurring)).toBe(true);
+    await history.redo();
+    expect((await titled("Standup")).length).toBe(1);
+  });
+
+  test("a one-off given a repeat becomes a series' first occurrence", async () => {
+    const { calendar, titled } = setup();
+    const [planning] = await titled("Planning");
+    if (!planning) throw new Error("no Planning");
+    const written = await calendar.updateEvent(
+      planning.id,
+      { recurrence: "FREQ=DAILY;COUNT=3" },
+      "this",
+    );
+    expect(written.id).toBe(`${planning.id}|${planning.start}`);
+    expect(written.recurring).toBe(true);
+    expect((await titled("Planning")).map((each) => each.start.slice(0, 10))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+    ]);
   });
 
   test("an edit undone after a delete and its undo reaches the recreated event", async () => {
