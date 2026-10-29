@@ -803,6 +803,50 @@ describe("eventWriter: ids that change under a series", () => {
     ]);
   });
 
+  test("a repeat added with 'this' and redone gives later steps their occurrences", async () => {
+    const { history, writer, titled } = setup();
+    const [planning] = await titled("Planning");
+    if (!planning) throw new Error("no Planning");
+    await writer.update(planning, { recurrence: "FREQ=DAILY;COUNT=3" }, "this");
+    const tuesday = (await titled("Planning")).find((each) => each.start.startsWith("2026-10-27"));
+    if (!tuesday) throw new Error("no Tuesday planning");
+    await writer.update(tuesday, { title: "Second" }, "this");
+    await history.undo();
+    await history.undo();
+    await history.redo();
+    await history.redo();
+    expect(days(await titled("Second"))).toEqual(["2026-10-27"]);
+  });
+
+  test("a repeat cleared with new times from a later occurrence comes back from its first", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    const later = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 60 * 60_000));
+    await writer.update(
+      wednesday,
+      { recurrence: "", start: later(wednesday.start), end: later(wednesday.end) },
+      "all",
+    );
+    // The series' first occurrence is kept, moved like the picked one.
+    const kept = await titled("Standup");
+    expect(kept.map((each) => each.start.slice(0, 16))).toEqual(["2026-10-26T10:30"]);
+    await history.undo();
+    const back = await titled("Standup");
+    expect(days(back)).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    expect(back.every((each) => each.start.slice(11, 16) === "09:30")).toBe(true);
+    await history.redo();
+    expect((await titled("Standup")).map((each) => each.start.slice(0, 16))).toEqual([
+      "2026-10-26T10:30",
+    ]);
+  });
+
   test("undoing a repeat added to a one-off leaves one event", async () => {
     const { history, writer, titled } = setup();
     const [planning] = await titled("Planning");

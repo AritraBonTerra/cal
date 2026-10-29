@@ -680,6 +680,12 @@ export function eventWriter(
     ) {
       const ref = ids.ref(event.id);
       const previous = previousValues(event, patch);
+      // Clearing a repeat with new times keeps the series' first occurrence, moved like
+      // the picked one; the undo puts it back at the first occurrence's times.
+      if (span === "all" && patch.recurrence === "" && event.recurring && event.seriesStart) {
+        if (patch.start !== undefined) previous.start = event.seriesStart;
+        if (patch.end !== undefined && event.seriesEnd) previous.end = event.seriesEnd;
+      }
       // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
       const undoSpan: EventSpan =
         span === "this" && patch.recurrence && !event.recurring && !event.recurrence ? "all" : span;
@@ -689,18 +695,21 @@ export function eventWriter(
       const place = async (input: Partial<EventInput>, span: EventSpan, from?: string) => {
         const id = ids.current(ref);
         const written = await api.updateEvent(id, input, span);
+        if (span === "all" && !written.recurring) {
+          // Clearing the repeat leaves one event, whichever occurrence was picked.
+          collapse = ids.collapsed(id, written.id);
+          await refresh();
+          return;
+        }
+        // The repeat is back (by whatever span), and with it each occurrence's own id:
+        // under a new identifier when the one event was deleted and recreated in between.
+        const restored = collapse !== undefined && written.recurring;
+        if (collapse !== undefined && restored) ids.restored(collapse, splitId(written.id)[0]);
+        collapse = undefined;
         if (span !== "all") {
           // A "this event" edit detaches the occurrence, which can give it a new id.
           ids.renamed(id, written.id);
-        } else if (!written.recurring) {
-          // Clearing the repeat leaves one event, whichever occurrence was picked.
-          collapse = ids.collapsed(id, written.id);
         } else {
-          const restored = collapse !== undefined;
-          // The repeat is back, and with it each occurrence's own id: under a new
-          // identifier when the one event was deleted and recreated in between.
-          if (collapse !== undefined) ids.restored(collapse, splitId(written.id)[0]);
-          collapse = undefined;
           // A one-off given a rule is its series' first occurrence.
           if (!splitId(id)[1]) ids.renamed(id, written.id);
           // New times rename every occurrence by its new start, each by the same shift.
