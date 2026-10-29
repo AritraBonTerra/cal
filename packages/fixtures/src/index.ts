@@ -6,7 +6,15 @@ import type {
   EventSpan,
   ExternalEvent,
 } from "@cal/calendar-source";
-import { addDays, atMinute, type DayKey, startOfWeek, toDayKey, toOffsetIso } from "@cal/domain";
+import {
+  addDays,
+  atMinute,
+  type DayKey,
+  fromDayKey,
+  startOfWeek,
+  toDayKey,
+  toOffsetIso,
+} from "@cal/domain";
 import type { LocalStore, NewRow } from "@cal/sync";
 
 /*
@@ -28,16 +36,17 @@ const calendars: DeviceCalendar[] = [
   { id: "holidays", title: "Holidays", color: "#8e4ec6", account: "Subscribed", writable: false },
 ];
 
-type Seed = [
-  calendarId: string,
-  title: string,
-  start: Date,
-  end: Date,
-  extra?: Partial<ExternalEvent>,
-];
+/*
+ * A fixture event: an ExternalEvent plus the series it belongs to, so "this and
+ * following" and "all events" can reach the other occurrences.
+ */
+type Stored = ExternalEvent & { series?: string };
+
+type Seed = [calendarId: string, title: string, start: Date, end: Date, extra?: Partial<Stored>];
 
 // Every weekday's Standup is one occurrence of the same series, with reminders.
-const standup: Partial<ExternalEvent> = {
+const standup: Partial<Stored> = {
+  series: "standup",
   recurring: true,
   recurrence: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
   alarms: [10, 60],
@@ -82,7 +91,7 @@ const seeds: Seed[] = [
   ["personal", "Trip to Tahoe", at(day(5), 0), at(day(7), 0), { allDay: true }],
 ];
 
-const events: ExternalEvent[] = seeds.map(([calendarId, title, start, end, extra], index) => ({
+const seeded: Stored[] = seeds.map(([calendarId, title, start, end, extra], index) => ({
   id: `fixture-${index}`,
   calendarId,
   title,
@@ -94,8 +103,52 @@ const events: ExternalEvent[] = seeds.map(([calendarId, title, start, end, extra
   ...extra,
 }));
 
+const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+/**
+ * The occurrences of `rule` starting at `start`, within 90 days: enough RRULE (FREQ,
+ * INTERVAL, BYDAY, COUNT, UNTIL) for the fixture week, nothing more.
+ */
+function occurrences(rule: string, start: Date, end: Date) {
+  const parts = new Map(rule.split(";").map((part) => part.split("=") as [string, string]));
+  const freq = parts.get("FREQ") ?? "DAILY";
+  const interval = Number(parts.get("INTERVAL") ?? 1);
+  const count = Number(parts.get("COUNT") ?? Infinity);
+  const untilText = parts.get("UNTIL");
+  const until = untilText
+    ? toDayKey(new Date(Date.parse(untilText.replace(/^(\d{4})(\d{2})(\d{2}).*/, "$1-$2-$3"))))
+    : undefined;
+  const byDay = parts.get("BYDAY")?.split(",") ?? [WEEKDAYS[start.getDay()] ?? "MO"];
+  const first = toDayKey(start);
+  const length = end.getTime() - start.getTime();
+  const minutes = start.getHours() * 60 + start.getMinutes();
+  const result: { start: Date; end: Date }[] = [];
+  for (let offset = 0; offset < 90 && result.length < count; offset++) {
+    const key = addDays(first, offset);
+    if (until && key > until) break;
+    const due =
+      freq === "DAILY"
+        ? offset % interval === 0
+        : freq === "WEEKLY"
+          ? Math.floor((offset + start.getDay()) / 7) % interval === 0 &&
+            byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
+          : freq === "MONTHLY"
+            ? key.slice(8) === first.slice(8)
+            : key.slice(5) === first.slice(5);
+    if (!due) continue;
+    const occurrence = atMinute(key, minutes);
+    result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
+  }
+  return result;
+}
+
 // Device calendars for fixture mode: fixed, read-mostly, in memory.
 export class FixtureCalendar implements CalendarSource {
+  // Each instance edits its own copy, so tests and scenes never see each other's changes.
+  private readonly stored: Stored[] = seeded.map((event) => ({ ...event }));
+  // Ids never repeat, so an undo that recreates a deleted event gets a fresh one.
+  private nextId = seeded.length;
+
   async access(): Promise<CalendarAccess> {
     return "fullAccess";
   }
@@ -108,47 +161,116 @@ export class FixtureCalendar implements CalendarSource {
   async events(start: string, end: string, calendarIds?: readonly string[]) {
     const from = Date.parse(start);
     const to = Date.parse(end);
-    return events.filter(
-      (event) =>
-        Date.parse(event.end) > from &&
-        Date.parse(event.start) < to &&
-        (!calendarIds || calendarIds.includes(event.calendarId)),
-    );
+    return this.stored
+      .filter(
+        (event) =>
+          Date.parse(event.end) > from &&
+          Date.parse(event.start) < to &&
+          (!calendarIds || calendarIds.includes(event.calendarId)),
+      )
+      .map((event) => this.publish(event));
   }
-  // Ids never repeat, so an undo that recreates a deleted event gets a fresh one.
-  private nextId = events.length;
 
+  // A repeating event is stored as one occurrence per date, all in one series.
   async createEvent(input: EventInput) {
-    const event: ExternalEvent = {
+    const series = input.recurrence ? `series-${this.nextId}` : undefined;
+    const base: Stored = {
       busy: true,
       ...input,
-      recurrence: input.recurrence || undefined,
-      id: `fixture-${this.nextId++}`,
+      ...blankToUndefined(input),
+      id: "",
       recurring: Boolean(input.recurrence),
+      recurrence: input.recurrence || undefined,
+      series,
     };
-    events.push(event);
-    return event;
+    const times = series
+      ? occurrences(input.recurrence ?? "", new Date(input.start), new Date(input.end))
+      : [{ start: new Date(input.start), end: new Date(input.end) }];
+    const created = times.map((time) => ({
+      ...base,
+      id: `fixture-${this.nextId++}`,
+      start: toOffsetIso(time.start),
+      end: toOffsetIso(time.end),
+    }));
+    this.stored.push(...created);
+    const first = created[0];
+    if (!first) throw new Error("rule has no occurrences");
+    return this.publish(first);
   }
-  // Spans are ignored: fixture occurrences are separate events, so only this one changes.
-  async updateEvent(id: string, input: Partial<EventInput>, _span: EventSpan) {
-    const index = events.findIndex((event) => event.id === id);
-    const current = events[index];
+
+  /*
+   * "this" changes one occurrence, "future" this and the later ones (which become a
+   * series of their own), "all" the whole series; new times shift each occurrence by
+   * the same amount. Clearing the repeat keeps the first occurrence of the span and
+   * drops the rest; a new rule is recorded but the occurrences aren't re-expanded.
+   */
+  async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
+    const current = this.stored.find((event) => event.id === id);
     if (!current) throw new Error(`no event ${id}`);
-    const next: ExternalEvent = { ...current, ...input };
-    if (input.recurrence !== undefined) {
-      next.recurrence = input.recurrence || undefined;
-      next.recurring = Boolean(input.recurrence);
+    let members = this.members(current, span);
+    const series = span === "future" && current.series ? `series-${this.nextId++}` : undefined;
+    if (input.recurrence === "") {
+      const kept = members[0];
+      for (const member of members) if (member !== kept) this.drop(member);
+      members = kept ? [kept] : [];
     }
-    events[index] = next;
-    return next;
+    const shift = (key: "start" | "end", time: string) =>
+      Date.parse(time) - Date.parse(current[key]);
+    for (const member of members) {
+      const next: Stored = { ...member, ...input, ...blankToUndefined(input) };
+      if (input.start)
+        next.start = toOffsetIso(new Date(Date.parse(member.start) + shift("start", input.start)));
+      if (input.end)
+        next.end = toOffsetIso(new Date(Date.parse(member.end) + shift("end", input.end)));
+      if (input.recurrence !== undefined) {
+        next.recurrence = input.recurrence || undefined;
+        next.recurring = Boolean(input.recurrence);
+        if (!input.recurrence) next.series = undefined;
+      }
+      if (series && next.series) next.series = series;
+      this.stored[this.stored.indexOf(member)] = next;
+    }
+    const written = this.stored.find((event) => event.id === id);
+    if (!written) throw new Error(`no event ${id}`);
+    return this.publish(written);
   }
-  async deleteEvent(id: string, _span: EventSpan) {
-    const index = events.findIndex((event) => event.id === id);
-    if (index >= 0) events.splice(index, 1);
+  async deleteEvent(id: string, span: EventSpan) {
+    const current = this.stored.find((event) => event.id === id);
+    if (!current) return;
+    for (const member of this.members(current, span)) this.drop(member);
   }
   onChange() {
     return () => {};
   }
+
+  // The occurrences a span covers, from `current`.
+  private members(current: Stored, span: EventSpan) {
+    if (span === "this" || !current.series) return [current];
+    const from = span === "future" ? Date.parse(current.start) : Number.NEGATIVE_INFINITY;
+    return this.stored.filter(
+      (event) => event.series === current.series && Date.parse(event.start) >= from,
+    );
+  }
+  private drop(event: Stored) {
+    this.stored.splice(this.stored.indexOf(event), 1);
+  }
+  // The event as callers see it: no series key, plus the series' first times.
+  private publish({ series, ...event }: Stored): ExternalEvent {
+    if (!series) return event;
+    const first = this.stored
+      .filter((each) => each.series === series)
+      .reduce((a, b) => (Date.parse(b.start) < Date.parse(a.start) ? b : a));
+    return { ...event, seriesStart: first.start, seriesEnd: first.end };
+  }
+}
+
+// Empty text or lists mean "cleared", stored as absent like a device calendar reports them.
+function blankToUndefined(input: Partial<EventInput>) {
+  const cleared: Partial<Record<"location" | "notes" | "url" | "alarms", undefined>> = {};
+  for (const key of ["location", "notes", "url"] as const)
+    if (input[key] === "") cleared[key] = undefined;
+  if (input.alarms?.length === 0) cleared.alarms = undefined;
+  return cleared;
 }
 
 // Fills an empty store with areas, projects, tasks, blocks and habits for the fixture week.

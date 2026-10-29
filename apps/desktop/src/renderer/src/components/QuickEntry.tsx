@@ -19,7 +19,7 @@ import {
 import { useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
-import { type Literal, prefixKind, shiftLiterals } from "../lib/entryText";
+import { type Literal, shiftLiterals } from "../lib/entryText";
 import { defaultCalendar, type EntryKind, eventWriter } from "../lib/events";
 import { showToast } from "../lib/toast";
 import { closeOverlay, select } from "../lib/ui";
@@ -29,9 +29,10 @@ import { Keycaps, Overlay, Segmented } from "./ui";
 /*
  * ⇧⌘N: one line of natural language. Recognized parts light up as you type and are
  * listed as chips underneath; Enter creates the to-do (and a block when a time was
- * given) or, in Event mode, the calendar event. The Event | To-do switch (⌘1/⌘2, or a
- * leading "event " / "task ") decides; a click on a highlight or Backspace right after
- * a token keeps that text in the title instead.
+ * given) or, in Event mode, the calendar event. The Event | To-do switch (⌘1/⌘2)
+ * decides; before it's touched, a leading "event " / "task " or the shape of the text
+ * does. A click on a highlight or Backspace right after a token keeps that text in the
+ * title instead.
  */
 
 const TOKEN_ICONS: Partial<Record<TokenKind, typeof Flag>> = {
@@ -63,20 +64,21 @@ export function QuickEntry() {
   const { history } = useCal();
   const [text, setText] = useState("");
   const [literals, setLiterals] = useState<Literal[]>([]);
-  // The switch; a typed prefix shows through it until the user flips it again.
+  // The switch, once the user has flipped it (⌘1/⌘2 or a click). Until then the parser
+  // decides: a leading "event " or "task ", else what the text looks like, else To-do.
   const [chosen, setChosen] = useState<EntryKind | null>(null);
   const writable = calendars.filter((calendar) => calendar.writable);
-  const kind: EntryKind = prefixKind(text) ?? chosen ?? "task";
   const entry = parseQuickEntry(text, {
     now: now(),
     surface: "quick",
-    kind,
+    ...(chosen && { kind: chosen }),
     calendars: writable,
     projects: data.projects,
     literals,
     weekStartsOn: account.weekStart,
     defaultEventMin: account.eventMinutes,
   });
+  const kind: EntryKind = entry.kind;
   const chips = entry.tokens.filter((token) => token.applied && token.kind !== "mode");
 
   const change = (next: string) => {

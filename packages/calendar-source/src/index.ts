@@ -32,6 +32,10 @@ export interface ExternalEvent {
   // The repeat rule as an RRULE string without the "RRULE:" prefix, e.g.
   // "FREQ=WEEKLY;BYDAY=MO,WE". Absent for one-off events.
   recurrence?: string;
+  // For an occurrence of a repeating event: when the series' first occurrence runs, so
+  // the whole series can be recreated from any occurrence (undoing "delete all").
+  seriesStart?: string;
+  seriesEnd?: string;
   // Whether the event blocks time; free events don't count as busy for scheduling.
   busy: boolean;
   // IANA time zone the event is pinned to; absent for floating (all-day) events.

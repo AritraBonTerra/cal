@@ -32,6 +32,7 @@ import {
   closeEditor,
   type EditorState,
   type EventWriter,
+  editorStore,
   eventPatch,
   eventWriter,
   formDay,
@@ -182,7 +183,6 @@ function Popover({ editor }: { editor: EditorState }) {
     });
   const entry: QuickEntry | null = creating ? parse(form.text, form.literals) : null;
   const tokens: readonly Token[] = entry?.tokens ?? [];
-  const titleText = form.title;
   const zone = form.timeZone;
   const day = formDay(form);
   const startMin = zonedMinutes(form.start, zone);
@@ -251,11 +251,24 @@ function Popover({ editor }: { editor: EditorState }) {
     closeEditor();
   };
 
+  // A time, date or duration still being typed commits on blur; saving commits it first
+  // and reads the form back from the store, since this render's `form` predates it.
+  const commitFields = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && panel.current?.contains(active)) active.blur();
+    return editorStore.get().editor?.form ?? form;
+  };
+
   const save = async () => {
     if (readOnly) return close();
+    const form = commitFields();
+    const titleText = form.title;
+    const day = formDay(form);
+    const length = Math.round((form.end.getTime() - form.start.getTime()) / MINUTE);
     if (form.kind === "task") {
       if (!titleText) return close();
       close();
+      const entry = creating ? parse(form.text, form.literals) : null;
       const typed: TaskEntry =
         entry?.kind === "task" ? entry : { kind: "task", title: titleText, tokens: [] };
       await actions.createFromEntry(
@@ -341,7 +354,10 @@ function Popover({ editor }: { editor: EditorState }) {
       ) {
         return;
       }
-      if (creating ? titleText : editor.dirty) void save();
+      // The click lands before the focused field blurs, so commit it before deciding.
+      commitFields();
+      const live = editorStore.get().editor ?? editor;
+      if (creating ? live.form.title : live.dirty) void save();
       else close();
     };
     window.addEventListener("pointerdown", away);

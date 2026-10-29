@@ -109,7 +109,14 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
   if let location = event.location, !location.isEmpty { json["location"] = location }
   if let notes = event.notes, !notes.isEmpty { json["notes"] = notes }
   if let url = event.url { json["url"] = url.absoluteString }
-  if let rule = event.recurrenceRules?.first { json["recurrence"] = rruleString(from: rule) }
+  if let rule = event.recurrenceRules?.first {
+    json["recurrence"] = rruleString(from: rule)
+    // The series' first occurrence, which "delete all" is undone from.
+    if let identifier = event.eventIdentifier, let first = store.event(withIdentifier: identifier) {
+      json["seriesStart"] = isoOut.string(from: first.startDate)
+      json["seriesEnd"] = isoOut.string(from: first.endDate)
+    }
+  }
   if let zone = event.timeZone, !event.isAllDay { json["timeZone"] = zone.identifier }
   if let alarms = event.alarms, !alarms.isEmpty {
     json["alarms"] = alarms.compactMap { alarm in

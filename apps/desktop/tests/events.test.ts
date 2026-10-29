@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { type DataSource, History } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
+import { FixtureCalendar } from "@cal/fixtures";
 import { parseClock, parseDurationText } from "../src/renderer/src/lib/clockText";
 import {
   backspaceTarget,
@@ -7,7 +9,13 @@ import {
   prefixKind,
   shiftLiterals,
 } from "../src/renderer/src/lib/entryText";
-import { eventPatch, nextFreeSlot, previousValues } from "../src/renderer/src/lib/events";
+import {
+  eventPatch,
+  eventWriter,
+  nextFreeSlot,
+  previousValues,
+  restoreInput,
+} from "../src/renderer/src/lib/events";
 import { describeRule, repeatPresets } from "../src/renderer/src/lib/recurrence";
 
 /*
@@ -136,6 +144,173 @@ describe("eventPatch", () => {
     });
     expect(patch).toEqual({ title: "Daily standup", recurrence: "" });
     expect(previousValues(event, patch)).toEqual({ title: "Standup", recurrence: "FREQ=DAILY" });
+  });
+
+  test("clears a location with an empty string, which survives the trip over IPC", () => {
+    const placed = { ...event, location: "Room 4", notes: "Bring slides" };
+    const patch = eventPatch(placed, {
+      calendarId: "work",
+      title: "Standup",
+      start: placed.start,
+      end: placed.end,
+      allDay: false,
+      recurrence: "FREQ=DAILY",
+      busy: true,
+      alarms: [10],
+    });
+    expect(patch).toEqual({ location: "", notes: "" });
+    expect(JSON.parse(JSON.stringify(patch))).toEqual({ location: "", notes: "" });
+  });
+
+  test("undoing the first reminder sends an empty list", () => {
+    const quiet: ExternalEvent = { ...event, alarms: undefined };
+    const patch = eventPatch(quiet, { ...inputOf(quiet), alarms: [10] });
+    expect(patch).toEqual({ alarms: [10] });
+    expect(previousValues(quiet, patch)).toEqual({ alarms: [] });
+  });
+
+  test("restores a deleted occurrence as a one-off and a series from its first occurrence", () => {
+    const later = {
+      ...event,
+      start: "2026-10-30T09:30:00-07:00",
+      end: "2026-10-30T09:45:00-07:00",
+      seriesStart: "2026-10-26T09:30:00-07:00",
+      seriesEnd: "2026-10-26T09:45:00-07:00",
+    };
+    expect(restoreInput(later, "this")).toMatchObject({
+      start: later.start,
+      recurrence: undefined,
+    });
+    expect(restoreInput(later, "future")).toMatchObject({
+      start: later.start,
+      recurrence: "FREQ=DAILY",
+    });
+    expect(restoreInput(later, "all")).toMatchObject({
+      start: later.seriesStart,
+      end: later.seriesEnd,
+      recurrence: "FREQ=DAILY",
+    });
+  });
+});
+
+const inputOf = (event: ExternalEvent) => ({
+  calendarId: event.calendarId,
+  title: event.title,
+  start: event.start,
+  end: event.end,
+  allDay: event.allDay,
+  recurrence: event.recurrence,
+  busy: event.busy,
+});
+
+/*
+ * The writer's undo steps against the fixture calendar, which models a series the way
+ * a device calendar does: a span reaches the other occurrences.
+ */
+describe("eventWriter", () => {
+  // Device events live outside Cal's tables, so History never touches the source.
+  const noSource: DataSource = {
+    list: async () => [],
+    get: async () => undefined,
+    insert: async () => "",
+    update: async () => false,
+    remove: async () => false,
+    subscribe: () => () => {},
+  };
+  const setup = () => {
+    const calendar = new FixtureCalendar();
+    const history = new History(noSource);
+    const writer = eventWriter(history, async () => {}, calendar);
+    const titled = async (title: string) =>
+      (await calendar.events("2026-10-26T00:00:00", "2026-11-02T00:00:00")).filter(
+        (each) => each.title === title,
+      );
+    return { calendar, history, writer, titled };
+  };
+  const standupOn = async (titled: ReturnType<typeof setup>["titled"], day: string) =>
+    (await titled("Standup")).find((each) => each.start.startsWith(day));
+
+  test("undoing a repeating event's creation removes the whole series", async () => {
+    const { history, writer, titled } = setup();
+    await writer.create({
+      calendarId: "work",
+      title: "Yoga",
+      start: "2026-10-29T15:00:00-07:00",
+      end: "2026-10-29T16:00:00-07:00",
+      allDay: false,
+      recurrence: "FREQ=DAILY;COUNT=3",
+    });
+    expect((await titled("Yoga")).length).toBe(3);
+    await history.undo();
+    expect((await titled("Yoga")).length).toBe(0);
+    await history.redo();
+    expect((await titled("Yoga")).length).toBe(3);
+    await history.undo();
+    expect((await titled("Yoga")).length).toBe(0);
+  });
+
+  test("undoing 'delete this occurrence' brings back just that occurrence", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = await standupOn(titled, "2026-10-28");
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.remove(wednesday, "this");
+    expect((await titled("Standup")).length).toBe(4);
+    await history.undo();
+    const restored = await titled("Standup");
+    expect(restored.length).toBe(5);
+    expect(restored.filter((each) => each.start.startsWith("2026-10-28")).length).toBe(1);
+    await history.redo();
+    expect((await titled("Standup")).length).toBe(4);
+  });
+
+  test("undoing 'delete all' from a later occurrence restores the series from its first", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = await standupOn(titled, "2026-10-28");
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.remove(wednesday, "all");
+    expect((await titled("Standup")).length).toBe(0);
+    await history.undo();
+    const restored = await titled("Standup");
+    expect(restored.map((each) => each.start.slice(0, 10)).sort()).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    await history.redo();
+    expect((await titled("Standup")).length).toBe(0);
+  });
+
+  test("undoing 'delete this and following' restores from the deleted occurrence", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = await standupOn(titled, "2026-10-28");
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.remove(wednesday, "future");
+    expect((await titled("Standup")).map((each) => each.start.slice(0, 10))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+    ]);
+    await history.undo();
+    expect((await titled("Standup")).length).toBe(5);
+  });
+
+  test("an edit undone after a delete and its undo reaches the recreated event", async () => {
+    const { history, writer, titled } = setup();
+    const [planning] = await titled("Planning");
+    if (!planning) throw new Error("no Planning");
+    await writer.update(planning, { title: "Sprint planning" }, "this");
+    const [renamed] = await titled("Sprint planning");
+    if (!renamed) throw new Error("rename failed");
+    await writer.remove(renamed, "this");
+    await history.undo();
+    const [recreated] = await titled("Sprint planning");
+    expect(recreated?.id).not.toBe(planning.id);
+    await history.undo();
+    expect((await titled("Planning")).length).toBe(1);
+    expect((await titled("Sprint planning")).length).toBe(0);
+    await history.redo();
+    expect((await titled("Sprint planning")).length).toBe(1);
   });
 });
 

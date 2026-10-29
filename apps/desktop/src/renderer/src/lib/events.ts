@@ -1,5 +1,11 @@
 import type { History } from "@cal/app-core";
-import type { DeviceCalendar, EventInput, EventSpan, ExternalEvent } from "@cal/calendar-source";
+import type {
+  CalendarSource,
+  DeviceCalendar,
+  EventInput,
+  EventSpan,
+  ExternalEvent,
+} from "@cal/calendar-source";
 import { addDays, type DayKey, fromDayKey, toDayKey, toOffsetIso } from "@cal/domain";
 import type { QuickEntry, TokenKind } from "@cal/nlp";
 import type { Literal } from "./entryText";
@@ -280,39 +286,103 @@ export function inputFromEvent(event: ExternalEvent): EventInput {
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
+/*
+ * An input with its optional fields spelled out: "" for no location, notes, URL or
+ * repeat and [] for no reminders. A patch must send these to clear a field, since an
+ * absent key leaves it as it was and `undefined` doesn't survive the trip over IPC.
+ */
+const explicit = (input: EventInput): EventInput => ({
+  ...input,
+  location: input.location ?? "",
+  notes: input.notes ?? "",
+  url: input.url ?? "",
+  recurrence: input.recurrence ?? "",
+  alarms: input.alarms ?? [],
+});
+
+const INPUT_KEYS = [
+  "calendarId",
+  "title",
+  "start",
+  "end",
+  "allDay",
+  "location",
+  "notes",
+  "url",
+  "recurrence",
+  "busy",
+  "timeZone",
+  "alarms",
+] as const satisfies readonly (keyof EventInput)[];
+
 /** The fields of `next` that differ from `event`, as an update patch; empty when none do. */
 export function eventPatch(event: ExternalEvent, next: EventInput): Partial<EventInput> {
-  const previous = inputFromEvent(event);
+  const previous = explicit(inputFromEvent(event));
+  const wanted = explicit(next);
   const patch: Partial<EventInput> = {};
-  const changed = <K extends keyof EventInput>(key: K, equal: boolean) => {
-    if (!equal) patch[key] = next[key];
-  };
-  changed("start", Date.parse(previous.start) === Date.parse(next.start));
-  changed("end", Date.parse(previous.end) === Date.parse(next.end));
-  changed("calendarId", previous.calendarId === next.calendarId);
-  changed("title", previous.title === next.title);
-  changed("allDay", previous.allDay === next.allDay);
-  changed("location", same(previous.location, next.location));
-  changed("notes", same(previous.notes, next.notes));
-  changed("url", same(previous.url, next.url));
-  changed("busy", same(previous.busy, next.busy));
-  changed("timeZone", same(previous.timeZone, next.timeZone));
-  changed("alarms", same(previous.alarms ?? [], next.alarms ?? []));
-  // Clearing a repeat sends "", which the source reads as "remove the rule".
-  if ((previous.recurrence ?? "") !== (next.recurrence ?? ""))
-    patch.recurrence = next.recurrence ?? "";
+  for (const key of INPUT_KEYS) {
+    const equal =
+      key === "start" || key === "end"
+        ? Date.parse(previous[key]) === Date.parse(wanted[key])
+        : same(previous[key], wanted[key]);
+    if (!equal) Object.assign(patch, { [key]: wanted[key] });
+  }
   return patch;
 }
 
 // The previous values of the keys `patch` changes, to undo an update.
 export function previousValues(event: ExternalEvent, patch: Partial<EventInput>) {
-  const previous = inputFromEvent(event);
+  const previous = explicit(inputFromEvent(event));
   const result: Partial<EventInput> = {};
   for (const key of Object.keys(patch) as (keyof EventInput)[]) {
-    const value = previous[key];
-    Object.assign(result, { [key]: key === "recurrence" ? (value ?? "") : value });
+    Object.assign(result, { [key]: previous[key] });
   }
   return result;
+}
+
+/**
+ * What recreates a deleted event when the delete is undone. "this" brings back a
+ * one-off at the occurrence's times: EventKit can't return an occurrence to its series,
+ * so the series keeps its gap and the copy stands alone. "future" starts the series
+ * again from the deleted occurrence and "all" from the series' first occurrence (a
+ * COUNT starts over, and occurrences that had been edited on their own come back as
+ * plain repeats).
+ */
+export function restoreInput(event: ExternalEvent, span: EventSpan): EventInput {
+  const input = inputFromEvent(event);
+  if (span === "this") return { ...input, recurrence: undefined };
+  if (span === "all") {
+    return { ...input, start: event.seriesStart ?? event.start, end: event.seriesEnd ?? event.end };
+  }
+  return input;
+}
+
+/*
+ * Ids of events that came back under a new id: one recreated by undoing a delete, or
+ * an occurrence detached from its series by a "this event" edit. History steps keep
+ * the id they were recorded with and resolve it here before acting, so undoing an edit
+ * made before the id changed still reaches the event. One map per History, shared by
+ * every writer made for it.
+ */
+const aliasesFor = new WeakMap<History, Map<string, string>>();
+
+function eventAliases(history: History) {
+  const aliases = aliasesFor.get(history) ?? new Map<string, string>();
+  aliasesFor.set(history, aliases);
+  return {
+    current(id: string): string {
+      let current = id;
+      for (let hops = 0; hops < 100; hops++) {
+        const next = aliases.get(current);
+        if (next === undefined) break;
+        current = next;
+      }
+      return current;
+    },
+    renamed(from: string, to: string) {
+      if (from !== to) aliases.set(from, to);
+    },
+  };
 }
 
 /**
@@ -321,19 +391,27 @@ export function previousValues(event: ExternalEvent, patch: Partial<EventInput>)
  * recreated under a new id) and ⇧⌘Z applies it again. `refresh` reloads the grid,
  * since fixture calendars never report changes.
  */
-export function eventWriter(history: History, refresh: () => Promise<void>) {
-  const api = window.cal.calendar;
+export function eventWriter(
+  history: History,
+  refresh: () => Promise<void>,
+  api: CalendarSource = window.cal.calendar,
+) {
+  const ids = eventAliases(history);
   return {
     create(input: EventInput) {
       let id: string | undefined;
       return history.transact("New Event", async (tx) => {
         await tx.external(
           async () => {
-            id = (await api.createEvent(input)).id;
+            const created = await api.createEvent(input);
+            // A redo creates it again under a new id; later steps still hold the old one.
+            if (id) ids.renamed(ids.current(id), created.id);
+            id = created.id;
             await refresh();
           },
           async () => {
-            if (id) await api.deleteEvent(id, "this");
+            // A repeating event was created as a whole series, so it goes as one.
+            if (id) await api.deleteEvent(ids.current(id), input.recurrence ? "all" : "this");
             await refresh();
           },
         );
@@ -347,8 +425,14 @@ export function eventWriter(history: History, refresh: () => Promise<void>) {
       label = "Edit Event",
     ) {
       const previous = previousValues(event, patch);
-      const place = (input: Partial<EventInput>) =>
-        api.updateEvent(event.id, input, span).then(refresh);
+      const place = async (input: Partial<EventInput>) => {
+        const id = ids.current(event.id);
+        const written = await api.updateEvent(id, input, span);
+        // A "this event" edit detaches the occurrence, which can give it a new id. An
+        // "all" write answers with the series' first occurrence, which isn't this one.
+        if (span !== "all") ids.renamed(id, written.id);
+        await refresh();
+      };
       return history.transact(label, (tx) =>
         tx.external(
           () => place(patch),
@@ -357,17 +441,17 @@ export function eventWriter(history: History, refresh: () => Promise<void>) {
       );
     },
     remove(event: ExternalEvent, span: EventSpan) {
-      let id = event.id;
-      const input = inputFromEvent(event);
+      const input = restoreInput(event, span);
       return history.transact("Delete Event", (tx) =>
         tx.external(
           async () => {
-            await api.deleteEvent(id, span);
+            await api.deleteEvent(ids.current(event.id), span);
             await refresh();
           },
           async () => {
             // Deleted events can't come back under their old id; the undo recreates one.
-            id = (await api.createEvent(input)).id;
+            const created = await api.createEvent(input);
+            ids.renamed(ids.current(event.id), created.id);
             await refresh();
           },
         ),

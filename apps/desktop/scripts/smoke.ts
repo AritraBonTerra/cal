@@ -295,6 +295,18 @@ await page.waitForTimeout(400);
 const renamed = page.locator("[data-item^='event:'] > div", { hasText: "Renamed event" });
 check("editing the title renames the event", (await renamed.count()) === 1);
 
+// 13d2. a time typed into the Start field saves with ⌘↩, without Enter or a blur first
+await renamed.click();
+await page.waitForTimeout(200);
+await page.locator("[role=dialog][aria-label='Event'] input[aria-label='Start time']").click();
+await page.keyboard.type("7pm");
+await page.keyboard.press("Meta+Enter");
+await page.waitForTimeout(400);
+check(
+  "⌘↩ right after typing a start time saves the typed time",
+  (await renamed.textContent())?.includes("7–8 PM") ?? false,
+);
+
 // 13e. delete it with ⌫, then Undo from the toast
 await renamed.click();
 await page.waitForTimeout(200);
@@ -384,6 +396,70 @@ check(
 );
 await page.keyboard.press("Meta+2");
 await page.waitForTimeout(200);
+
+// 13i. Quick Entry with the switch untouched reads a time range and a place as an event
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.type("Coffee tomorrow 3-4pm at Blue Bottle");
+await page.waitForTimeout(100);
+const quickFooter = () => page.locator("[role=dialog][aria-label='Quick Entry'] footer");
+check(
+  "Quick Entry infers Event from a time range and a place",
+  (await quickFooter().textContent())?.includes("Add event") ?? false,
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(400);
+const coffee = page.locator("[data-column='2026-10-29'] [data-item^='event:'] > div", {
+  hasText: "Coffee",
+});
+check(
+  "the inferred event lands at 3–4 PM tomorrow",
+  (await coffee.filter({ hasText: "3–4 PM" }).count()) === 1,
+);
+// Delete it again: the month-view checks later count on this Thursday's chips.
+await coffee.click();
+await page.waitForTimeout(200);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(100);
+await page.keyboard.press("Backspace");
+await page.waitForTimeout(400);
+
+// 13j. ⌘2 overrides a typed "event " prefix
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.type("event Buy stamps");
+await page.waitForTimeout(100);
+const prefixed = (await quickFooter().textContent())?.includes("Add event") ?? false;
+await page.keyboard.press("Meta+2");
+await page.waitForTimeout(100);
+check(
+  "⌘2 after an 'event' prefix switches to To-do",
+  prefixed && ((await quickFooter().textContent())?.includes("Add to-do") ?? false),
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+1");
+await page.waitForTimeout(200);
+check(
+  "the prefixed text became a to-do",
+  (await page.locator("li", { hasText: "Buy stamps" }).count()) === 1 &&
+    (await page.locator("[data-item^='event:'] > div", { hasText: "Buy stamps" }).count()) === 0,
+);
+await page.keyboard.press("Meta+2");
+await page.waitForTimeout(200);
+
+// 13k. undoing a repeating event's creation removes every occurrence
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.press("Meta+1");
+await page.keyboard.type("Yoga tomorrow 7am every day");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(400);
+const yoga = page.locator("[data-item^='event:'] > div", { hasText: "Yoga" });
+const yogaCount = await yoga.count();
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(400);
+check(
+  "⌘Z after creating a repeating event removes the whole series",
+  yogaCount >= 3 && (await yoga.count()) === 0,
+);
 
 // 14. nav keys and palette
 await page.keyboard.press("ArrowRight");
