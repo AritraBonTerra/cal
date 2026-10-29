@@ -658,3 +658,117 @@ describe("parseQuickEntry: behavior", () => {
     });
   });
 });
+
+// Sol's review cases (C1–C10).
+describe("parseQuickEntry: review cases", () => {
+  const event = (text: string) => parseQuickEntry(text, { ...base, kind: "event" });
+  const task = (text: string) => parseQuickEntry(text, { ...base, kind: "task" });
+
+  test("C1 all day without a date is today, all-day", () => {
+    expect(fields(event("Party all day"))).toEqual({
+      kind: "event",
+      title: "Party",
+      allDay: true,
+      start: "2026-10-28",
+      end: "2026-10-29",
+    });
+  });
+
+  test("C2 a range with a date and time on each side", () => {
+    expect(fields(event("Trip Nov 20 8am to Nov 22 6pm"))).toEqual({
+      kind: "event",
+      title: "Trip",
+      allDay: false,
+      start: "2026-11-20T08:00:00-08:00",
+      end: "2026-11-22T18:00:00-08:00",
+    });
+  });
+
+  test("C3 overnight ranges across DST end at the typed clock", () => {
+    expect(event("Party Oct 31 11pm-2am")).toMatchObject({
+      start: "2026-10-31T23:00:00-07:00",
+      end: "2026-11-01T02:00:00-08:00",
+    });
+    expect(event("Party March 13 2027 11pm-4am")).toMatchObject({
+      start: "2027-03-13T23:00:00-08:00",
+      end: "2027-03-14T04:00:00-07:00",
+    });
+  });
+
+  test("C4 a zone after a range applies to both ends", () => {
+    expect(event("Call 9am-10am ET tomorrow")).toMatchObject({
+      start: "2026-10-29T09:00:00-04:00",
+      end: "2026-10-29T10:00:00-04:00",
+      timeZone: "America/New_York",
+    });
+  });
+
+  test("C5 a zoned time that has passed moves to tomorrow", () => {
+    // 10:40 PDT is 13:40 ET, so 9am ET today has passed.
+    expect(event("Call at 9am ET")).toMatchObject({ start: "2026-10-29T09:00:00-04:00" });
+  });
+
+  test("C6 every 2 weeks on Monday and Wednesday", () => {
+    const entry = event("Sync every 2 weeks on Monday and Wednesday at 9am");
+    expect(entry).toMatchObject({
+      title: "Sync",
+      rrule: "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+      start: "2026-11-02T09:00:00-08:00",
+    });
+  });
+
+  test("C7 a repeat bounded by a duration", () => {
+    expect(fields(task("Water plants every day for 3 weeks"))).toEqual({
+      kind: "task",
+      title: "Water plants",
+      when: "date",
+      when_date: "2026-10-28",
+      rrule: "FREQ=DAILY;UNTIL=20261117",
+      repeat: "fixed",
+    });
+  });
+
+  test("C8 until claims only the date", () => {
+    expect(task("Standup daily until Dec 18 with Sam")).toMatchObject({
+      title: "Standup with Sam",
+      rrule: "FREQ=DAILY;UNTIL=20261218",
+    });
+    expect(task("Standup daily until nonsense")).toMatchObject({
+      title: "Standup until nonsense",
+      rrule: "FREQ=DAILY",
+    });
+  });
+
+  test("C9 a number starting an address isn't a time", () => {
+    expect(fields(event("Meet at 10 Downing St"))).toMatchObject({
+      title: "Meet",
+      location: "10 Downing St",
+    });
+  });
+
+  test("C10 remind me with a date and time", () => {
+    expect(fields(task("Email Anna remind me tomorrow 9am"))).toEqual({
+      kind: "task",
+      title: "Email Anna",
+      reminder_at: "2026-10-29T09:00:00-07:00",
+    });
+  });
+
+  test("odd inputs don't throw", () => {
+    for (const text of [
+      "",
+      "   ",
+      "!!!",
+      "~",
+      "@",
+      "/",
+      "#",
+      "every",
+      "from to",
+      "a".repeat(5000),
+      "1-2-3-4-5-6-7",
+    ]) {
+      expect(() => quick(text)).not.toThrow();
+    }
+  });
+});

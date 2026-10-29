@@ -55,6 +55,32 @@ describe("settings", () => {
     expect(account.showWeekends).toBe(true);
   });
 
+  test("values with the wrong shape are ignored", () => {
+    const row = (key: string, value: string) => ({
+      uuid: key,
+      key,
+      value,
+      created_at: 0,
+      updated_at: 1,
+    });
+    const account = readAccountSettings([
+      row("weekStart", "null"),
+      row("workingHours", "[]"),
+      row("timeZones", "[null]"),
+      row("timeFormat", '"typo"'),
+      row("primaryZone", '"Not/AZone"'),
+      row("eventReminder", "null"),
+    ]);
+    expect(account).toMatchObject({
+      weekStart: 1,
+      workingHours: { start: 540, end: 1080 },
+      timeZones: [],
+      timeFormat: "system",
+      primaryZone: null,
+      eventReminder: null,
+    });
+  });
+
   test("device settings persist in the device store and notify", () => {
     const { values, settings } = setup();
     let changes = 0;

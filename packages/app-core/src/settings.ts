@@ -68,10 +68,96 @@ export interface DeviceStore {
   setItem(key: string, value: string): void;
 }
 
+// Whether a stored value is acceptable for its setting.
+type Check = (value: unknown) => boolean;
+
+const isBool: Check = (value) => typeof value === "boolean";
+const isInt =
+  (min: number, max: number): Check =>
+  (value) =>
+    Number.isInteger(value) && Number(value) >= min && Number(value) <= max;
+const oneOf =
+  (...values: unknown[]): Check =>
+  (value) =>
+    values.includes(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const arrayOf =
+  (check: Check, max = 100): Check =>
+  (value) =>
+    Array.isArray(value) && value.length <= max && value.every(check);
+const isString: Check = (value) => typeof value === "string" && value.length > 0;
+const isHex: Check = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+const nullable =
+  (check: Check): Check =>
+  (value) =>
+    value === null || check(value);
+
+// An IANA zone name this runtime knows.
+const isZone: Check = (value) => {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/*
+ * A check per setting, so a value from another app version or a bad write is ignored
+ * (the default stands) instead of reaching the UI with the wrong shape.
+ */
+const accountChecks: { [K in keyof AccountSettings]: Check } = {
+  weekStart: isInt(0, 6),
+  showWeekends: isBool,
+  showDeclined: isBool,
+  weekNumbers: isBool,
+  todayKey: oneOf("go", "left-align"),
+  timeFormat: oneOf("system", "12h", "24h"),
+  timeZones: arrayOf(
+    (zone) =>
+      isRecord(zone) &&
+      isZone(zone.zone) &&
+      (zone.label === undefined || typeof zone.label === "string"),
+    3,
+  ),
+  primaryZone: nullable(isZone),
+  workingHours: (value) =>
+    isRecord(value) &&
+    isInt(0, 24 * 60)(value.start) &&
+    isInt(0, 24 * 60)(value.end) &&
+    Number(value.start) < Number(value.end),
+  eventMinutes: isInt(5, 24 * 60),
+  eventReminder: nullable(isInt(0, 7 * 24 * 60)),
+  maps: oneOf("apple", "google"),
+};
+
+const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
+  theme: oneOf("system", "light", "dark"),
+  hourHeight: (value) => value === 0 || isInt(16, 400)(value),
+  halfHourLines: isBool,
+  hiddenCalendars: arrayOf(isString, 1000),
+  calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
+  freeCalendars: arrayOf(isString, 1000),
+  defaultCalendar: nullable(isString),
+  launchAtLogin: isBool,
+  recentZones: arrayOf(isZone, 20),
+};
+
+// `json` parsed, if it passes `check`.
+function parseChecked(json: string, check: Check): { value: unknown } | undefined {
+  try {
+    const value: unknown = JSON.parse(json);
+    return check(value) ? { value } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * Account settings from the synced rows: the newest row per key, parsed over the
- * defaults. A value that doesn't parse, or has a different type than its default, is
- * ignored, so a newer app version's settings can't break an older one.
+ * Account settings from the synced rows: the newest row per key, over the defaults.
+ * Values that fail their setting's check are ignored.
  */
 export function readAccountSettings(rows: readonly SyncedRow<"settings">[]): AccountSettings {
   const newest = new Map<string, SyncedRow<"settings">>();
@@ -83,38 +169,23 @@ export function readAccountSettings(rows: readonly SyncedRow<"settings">[]): Acc
     ...accountDefaults,
     timeZones: [...accountDefaults.timeZones],
   };
-  for (const key of Object.keys(accountDefaults)) {
+  for (const [key, check] of Object.entries(accountChecks)) {
     const row = newest.get(key);
-    if (!row) continue;
-    const value = parseLike(row.value, Reflect.get(accountDefaults, key));
-    if (value !== undefined) Reflect.set(settings, key, value);
+    const parsed = row && parseChecked(row.value, check);
+    if (parsed) Reflect.set(settings, key, parsed.value);
   }
   return settings;
 }
 
-// Device settings from a DeviceStore, parsed over the defaults the same way.
+// Device settings from a DeviceStore, over the defaults, checked the same way.
 export function readDeviceSettings(store: DeviceStore): DeviceSettings {
   const settings: DeviceSettings = { ...deviceDefaults };
-  for (const key of Object.keys(deviceDefaults)) {
+  for (const [key, check] of Object.entries(deviceChecks)) {
     const raw = store.getItem(`cal.${key}`);
-    if (raw === null) continue;
-    const value = parseLike(raw, Reflect.get(deviceDefaults, key));
-    if (value !== undefined) Reflect.set(settings, key, value);
+    const parsed = raw === null ? undefined : parseChecked(raw, check);
+    if (parsed) Reflect.set(settings, key, parsed.value);
   }
   return settings;
-}
-
-// `json` parsed, if it has the same shape of type as `example` (null matches anything).
-function parseLike(json: string, example: unknown): unknown {
-  let value: unknown;
-  try {
-    value = JSON.parse(json);
-  } catch {
-    return undefined;
-  }
-  if (example === null || value === null) return value;
-  if (Array.isArray(example)) return Array.isArray(value) ? value : undefined;
-  return typeof value === typeof example ? value : undefined;
 }
 
 /**

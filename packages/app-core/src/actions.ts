@@ -39,6 +39,8 @@ export function createActions(history: History, now: () => Date = () => new Date
           ...(entry.estimate_min !== undefined && { estimate_min: entry.estimate_min }),
           ...(entry.priority !== undefined && { priority: entry.priority }),
           ...(entry.project_uuid && { project_uuid: entry.project_uuid }),
+          ...(entry.tags?.length && { tags: entry.tags.join(",") }),
+          ...(entry.reminder_at && { reminder_at: entry.reminder_at }),
           ...(entry.rrule && {
             recurrence_rule: entry.rrule,
             recurrence_mode: entry.repeat === "after_completion" ? "after_completion" : "fixed",

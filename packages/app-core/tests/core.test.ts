@@ -146,6 +146,21 @@ describe("History", () => {
     ]);
   });
 
+  test("a parsed to-do keeps its tags and reminder", async () => {
+    const { store, actions } = setup();
+    const uuid = await actions.createFromEntry({
+      kind: "task",
+      title: "File taxes",
+      tokens: [],
+      tags: ["admin", "money"],
+      reminder_at: "2026-10-29T09:00:00-07:00",
+    });
+    expect(store.get("tasks", uuid)).toMatchObject({
+      tags: "admin,money",
+      reminder_at: "2026-10-29T09:00:00-07:00",
+    });
+  });
+
   test("logging a habit replaces the day's entry and 0 unchecks it", async () => {
     const { store, actions } = setup();
     await actions.logHabit("h", "2026-10-28", 1);

@@ -11,7 +11,15 @@ import {
   weekday,
 } from "@cal/domain";
 import * as chrono from "chrono-node/en";
-import { DAY_CODES, dayCode, findRule, type Rule, ruleLabel, toRRule } from "./recurrence";
+import {
+  DAY_CODES,
+  dayCode,
+  findRule,
+  type Rule,
+  type RuleMatch,
+  ruleLabel,
+  toRRule,
+} from "./recurrence";
 import { clockLabel, findTimes, type TimeMatch } from "./times";
 import type {
   Confidence,
@@ -32,8 +40,6 @@ export type * from "./types";
  * later passes can't re-read it and offsets never shift. Then the claimed tokens are
  * assembled, and whatever text is left becomes the title.
  */
-
-const DAY_MS = 86_400_000;
 
 // A working copy of the input that passes claim spans of.
 class Scanner {
@@ -222,14 +228,40 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   // 4. Times and time ranges.
   const times = findTimes(s.masked, text);
   if (remind) {
-    // The time right after "remind me" is the reminder, not the start.
-    const after = times.find(
-      (t) => s.masked.slice(remind.index + remind[0].length, t.start).trim() === "",
-    );
-    if (after) {
-      reminder = after;
-      times.splice(times.indexOf(after), 1);
-      s.claim("reminder", remind.index, after.end, `Remind ${clockLabel(after.startMin)}`);
+    // The first time after "remind me" is the reminder, not the start, with any date
+    // written between ("remind me tomorrow 9am") or right after it ("at 9am Friday").
+    const remindEnd = remind.index + remind[0].length;
+    // A date phrase at the very start of `text`, if any.
+    const dateAt = (text: string) =>
+      chrono.casual
+        .parse(text, now, { forwardDate: true })
+        .find(
+          (hit) =>
+            hit.index === 0 && (hit.start.isCertain("day") || hit.start.isCertain("weekday")),
+        );
+    for (const t of times) {
+      // Between "remind me" and the time: nothing, or exactly one date ("tomorrow at").
+      const gapDate = s.masked
+        .slice(remindEnd, t.start)
+        .trim()
+        .replace(/\s+(?:at|on)$/i, "");
+      const before = gapDate ? dateAt(gapDate) : undefined;
+      if (gapDate && before?.text.trim() !== gapDate) continue;
+      const rest = s.masked.slice(t.end);
+      const lead = rest.length - rest.trimStart().length;
+      const after = before ? undefined : dateAt(rest.trimStart());
+      const dated = before ?? after;
+      reminder = t;
+      reminderDay = dated ? toDayKey(dated.start.date()) : undefined;
+      times.splice(times.indexOf(t), 1);
+      const end = after ? t.end + lead + after.text.length : t.end;
+      s.claim(
+        "reminder",
+        remind.index,
+        end,
+        `Remind ${reminderDay ? `${fmtDay(reminderDay, today)} ` : ""}${clockLabel(t.startMin)}`,
+      );
+      break;
     }
   }
   for (const t of times) {
@@ -269,29 +301,30 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   let untilDay: DayKey | undefined;
   let untilGuess = false;
   let count: number | undefined;
+  let span: RuleMatch["span"];
   if (ruleMatch) {
     rule = ruleMatch.rule;
     count = ruleMatch.count;
+    let end = ruleMatch.end;
     if (ruleMatch.until) {
-      const bare =
-        WEAK.test(ruleMatch.until.text.trim()) && !/^\w+day$/i.test(ruleMatch.until.text.trim());
-      // chrono reads "December" but not "Dec", so bare months are spelled out first.
-      const untilText = bare ? monthName(ruleMatch.until.text.trim()) : ruleMatch.until.text;
-      const [hit] = chrono.casual.parse(untilText, now, { forwardDate: true });
+      // Only a date read from the start of the text after "until" belongs to the rule;
+      // anything after it ("with Sam"), or text that isn't a date, stays in the title.
+      const text = ruleMatch.until.text;
+      const month = /^\s*([a-z]+)\b/i.exec(text)?.[1] ?? "";
+      const bare = WEAK.test(month) && !/day$/i.test(month) && !/^\s*[a-z]+\s+\d/i.test(text);
+      const [hit] = bare
+        ? chrono.casual.parse(monthName(month), now, { forwardDate: true })
+        : chrono.casual.parse(text, now, { forwardDate: true }).filter((each) => each.index === 0);
       if (hit) {
         const day = toDayKey(hit.start.date());
         // "until Dec": through the last day before December starts.
         untilDay = bare ? addDays(startOfMonth(day), -1) : day;
         untilGuess = bare;
+        end = ruleMatch.until.start + (bare ? text.indexOf(month) + month.length : hit.text.length);
       }
     }
-    s.claim(
-      "recurrence",
-      ruleMatch.start,
-      ruleMatch.end,
-      ruleLabel(rule),
-      untilGuess ? "guess" : "certain",
-    );
+    span = ruleMatch.span;
+    s.claim("recurrence", ruleMatch.start, end, ruleLabel(rule), untilGuess ? "guess" : "certain");
   }
 
   // 6. Other keyword phrases: evening, someday/anytime.
@@ -325,6 +358,9 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     dates.push({ token, day, endDay: addDays(day, span), bareWeekday: false });
   }
   for (const hit of chrono.casual.parse(s.masked, now, { forwardDate: true })) {
+    // Times are read by findTimes; a time alone ("at 10" before "Downing St") is skipped.
+    const dated = ["day", "weekday", "month"] as const;
+    if (!dated.some((part) => hit.start.isCertain(part))) continue;
     let start = hit.index;
     const end = hit.index + hit.text.length;
     const phrase = hit.text.trim();
@@ -368,11 +404,15 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   };
   const date = pickLast(dates);
   const deadline = pickLast(deadlines);
-  const time = pickLast(
-    s.tokens
-      .filter((t) => t.kind === "time" || t.kind === "time_range")
-      .map((token) => ({ token, match: times.find((t) => t.start === token.start) })),
-  );
+  const timeHits = s.tokens
+    .filter((t) => t.kind === "time" || t.kind === "time_range")
+    .map((token) => ({ token, match: times.find((t) => t.start === token.start) }));
+  // "Nov 20 8am to Nov 22 6pm": a date range with a time at each end keeps both times.
+  const spanTimes =
+    date?.endDay && timeHits.length === 2 && timeHits.every((hit) => hit.token.kind === "time")
+      ? { first: timeHits[0]?.match, last: timeHits[1]?.match }
+      : undefined;
+  const time = spanTimes ? timeHits[0] : pickLast(timeHits);
   // Unapplied tokens' text returns to the title.
   for (const token of s.tokens) if (!token.applied) unblank(s, token);
 
@@ -421,7 +461,11 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   // The day things happen: the typed date, else the rule's first occurrence, else today.
   const t = time?.match;
   const startMin = t?.startMin;
-  const passedToday = startMin !== undefined && !t?.zone && startMin <= nowMin;
+  // Whether today's instant of the time has passed, in the time's zone ("9am ET" at 10:40
+  // Pacific is already over).
+  const passedToday =
+    startMin !== undefined &&
+    zonedInstant(today, startMin, t?.zone ?? localTimeZone()) <= now.getTime();
   let day = date?.day;
   if (rule && !date) day = firstOccurrence(rule, today, passedToday);
   if (date?.bareWeekday && day === today && passedToday) day = addDays(day, 7);
@@ -437,6 +481,15 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
         token.kind !== "mode" && { pending: true }),
     }))
     .sort((a, b) => a.start - b.start);
+
+  // "for 3 weeks": the last day is the day before that much time after the first.
+  if (span && day) {
+    const after =
+      span.unit === "month" || span.unit === "year"
+        ? addMonths(day, span.count * (span.unit === "year" ? 12 : 1))
+        : addDays(day, span.count * (span.unit === "week" ? 7 : 1));
+    untilDay = addDays(after, -1);
+  }
 
   // Bounds of the rule, as RRULE needs them: a UTC time for timed events, a date otherwise.
   const rrule = rule
@@ -455,20 +508,31 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     if (rrule) entry.rrule = rrule;
     const eventZone = zone;
     const range = date?.endDay ?? undefined;
-    if (t && day) {
-      const startMs = zonedInstant(day, t.startMin, t.zone ?? localTimeZone());
-      let endMs =
-        t.endMin !== undefined
-          ? zonedInstant(day, t.endMin, t.endZone ?? t.zone ?? localTimeZone())
-          : startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000;
-      if (endMs <= startMs) endMs += DAY_MS;
-      entry.start = isoIn(startMs, t.zone);
-      entry.end = isoIn(endMs, t.endZone ?? t.zone);
-      if (eventZone) entry.timeZone = eventZone;
-    } else if (day) {
+    if (allDay || (!t && day)) {
+      // All day: the typed day (or range), else today.
       entry.allDay = true;
-      entry.start = day;
-      entry.end = addDays(range ?? day, 1);
+      entry.start = day ?? today;
+      entry.end = addDays(range ?? day ?? today, 1);
+    } else if (t && day) {
+      const startZone = t.zone ?? localTimeZone();
+      const startMs = zonedInstant(day, t.startMin, startZone);
+      let endMs: number;
+      let endZone = t.endZone ?? t.zone;
+      if (spanTimes?.last && range) {
+        // From the first date's time to the last date's time.
+        endZone = spanTimes.last.zone ?? t.zone;
+        endMs = zonedInstant(range, spanTimes.last.startMin, endZone ?? localTimeZone());
+      } else if (t.endMin !== undefined) {
+        const zoneForEnd = endZone ?? localTimeZone();
+        endMs = zonedInstant(day, t.endMin, zoneForEnd);
+        // An end before the start is on the next day, at that clock time (DST-safe).
+        if (endMs <= startMs) endMs = zonedInstant(addDays(day, 1), t.endMin, zoneForEnd);
+      } else {
+        endMs = startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000;
+      }
+      entry.start = isoIn(startMs, t.zone);
+      entry.end = isoIn(endMs, endZone);
+      if (eventZone) entry.timeZone = eventZone;
     } else {
       // No date or time: the next quarter hour today.
       const quarter = Math.ceil((nowMin + 1) / 15) * 15;
@@ -521,7 +585,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   if (listProject) entry.project_uuid = listProject;
   if (tags.length) entry.tags = tags;
   if (reminder) {
-    reminderDay = day ?? (reminder.startMin <= nowMin ? addDays(today, 1) : today);
+    reminderDay ??= day ?? (reminder.startMin <= nowMin ? addDays(today, 1) : today);
     entry.reminder_at = isoIn(
       zonedInstant(reminderDay, reminder.startMin, reminder.zone ?? localTimeZone()),
       reminder.zone,

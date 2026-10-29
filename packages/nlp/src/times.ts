@@ -84,6 +84,16 @@ export function inferMeridiem(clock: Clock, text: string): "am" | "pm" | undefin
   return clock.hour <= 6 ? "pm" : "am";
 }
 
+const NOT_ADDRESS =
+  /^(?:mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|tomorrow|tonight|next|this|noon|midnight)/i;
+
+// Whether `rest` starts with a capitalized word that isn't a date, time or zone word:
+// the rest of an address ("10 Downing St").
+function addressAfter(rest: string) {
+  const word = /^\s+([A-Z][a-z][\w'.-]*)/.exec(rest)?.[1];
+  return word !== undefined && !NOT_ADDRESS.test(word) && !ZONE_ABBREVIATIONS[word.toUpperCase()];
+}
+
 const zoneOf = (abbreviation?: string) =>
   abbreviation ? ZONE_ABBREVIATIONS[abbreviation.toUpperCase()] : undefined;
 
@@ -130,7 +140,8 @@ export function findTimes(masked: string, context: string): TimeMatch[] {
       end: m.index + m[0].length,
       startMin: toMinutes(a, am),
       endMin: toMinutes(b, bm),
-      zone: zoneOf(m[6]),
+      // One zone after the range ("9-10am ET") covers both ends.
+      zone: zoneOf(m[6]) ?? zoneOf(m[11]),
       endZone: zoneOf(m[11]) ?? zoneOf(m[6]),
       inferred,
     });
@@ -144,6 +155,8 @@ export function findTimes(masked: string, context: string): TimeMatch[] {
     if (!clock || !free(m.index, m.index + m[0].length)) continue;
     if (!lead && !clock.strong) continue;
     if (lead === "by" && !clock.strong) continue;
+    // "at 10 Downing St": a bare number before a name is an address, not a time.
+    if (!clock.strong && addressAfter(masked.slice(m.index + m[0].length))) continue;
     const meridiem = inferMeridiem(clock, context);
     found.push({
       start: m.index,

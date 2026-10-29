@@ -42,8 +42,9 @@ function toExternal(event: Calendar.Event): ExternalEvent {
     location: event.location || undefined,
     notes: event.notes || undefined,
     url: event.url || undefined,
-    recurring: event.recurrenceRule !== null,
-    ...(event.recurrenceRule && { recurrence: fromExpoRule(event.recurrenceRule) }),
+    recurring: repeats(event),
+    ...(repeats(event) &&
+      event.recurrenceRule && { recurrence: fromExpoRule(event.recurrenceRule) }),
     busy: event.availability !== Calendar.Availability.FREE,
     ...(!event.allDay && event.timeZone && { timeZone: event.timeZone }),
     ...(event.alarms.length && {
@@ -53,6 +54,23 @@ function toExternal(event: Calendar.Event): ExternalEvent {
     }),
   };
 }
+
+// The rule written to remove a repeat: one occurrence, so just this event.
+const ONCE = "FREQ=DAILY;COUNT=1";
+
+// Whether an event really repeats (a one-occurrence rule is how Cal removes repeats).
+const repeats = (event: Calendar.Event) =>
+  event.recurrenceRule !== null && event.recurrenceRule.occurrence !== 1;
+
+/*
+ * expo-calendar's save resets reminders and busy/free when they aren't given, so every
+ * update carries the event's current ones unless the edit changes them.
+ */
+const keepCurrent = (event: Calendar.Event, details: ReturnType<typeof toDetails>) => ({
+  alarms: event.alarms,
+  availability: event.availability,
+  ...details,
+});
 
 const toDetails = (input: Partial<EventInput>) => ({
   ...(input.title !== undefined && { title: input.title }),
@@ -70,7 +88,8 @@ const toDetails = (input: Partial<EventInput>) => ({
     alarms: input.alarms.map((minutes) => ({ relativeOffset: -minutes })),
   }),
   ...(input.recurrence !== undefined && {
-    recurrenceRule: input.recurrence ? toExpoRule(input.recurrence) : null,
+    // expo-calendar ignores a null rule, so "no repeat" is a rule that ends after this one.
+    recurrenceRule: toExpoRule(input.recurrence || ONCE),
   }),
 });
 
@@ -122,11 +141,20 @@ export const deviceCalendar: CalendarSource = {
         start: shift(input.start, occurrence.startDate, first.startDate),
         end: shift(input.end, occurrence.endDate, first.endDate),
       };
-      await Calendar.updateEventAsync(eventIdentifier, toDetails(shifted), { futureEvents: true });
+      await Calendar.updateEventAsync(eventIdentifier, keepCurrent(first, toDetails(shifted)), {
+        futureEvents: true,
+      });
       return toExternal(await Calendar.getEventAsync(eventIdentifier));
     }
     const options = { instanceStartDate, futureEvents: span === "future" };
-    const savedId = await Calendar.updateEventAsync(eventIdentifier, toDetails(input), options);
+    const current = await Calendar.getEventAsync(eventIdentifier, {
+      instanceStartDate: instanceStartDate?.toISOString(),
+    });
+    const savedId = await Calendar.updateEventAsync(
+      eventIdentifier,
+      keepCurrent(current, toDetails(input)),
+      options,
+    );
     // expo-calendar finds an occurrence by its current start, which may have just moved.
     const readStart =
       instanceStartDate && (input.start ? new Date(input.start) : instanceStartDate);

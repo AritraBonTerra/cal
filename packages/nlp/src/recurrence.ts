@@ -71,9 +71,14 @@ export interface RuleMatch {
   start: number;
   end: number;
   rule: Rule;
-  // Where a bound ("until Dec 18", "3 times") was read, for the caller to resolve.
-  until?: { start: number; end: number; text: string };
+  // Where the rule's words end, before any bound.
+  ruleEnd: number;
+  // The text after "until" ("Dec 18 with Sam"), for the caller to read a date from the
+  // start of; only the date it finds belongs to the rule.
+  until?: { start: number; text: string };
   count?: number;
+  // "for 3 weeks": the rule ends that long after it starts.
+  span?: { count: number; unit: "day" | "week" | "month" | "year" };
 }
 
 export function dayCode(name: string): DayCode | undefined {
@@ -91,13 +96,22 @@ function dayList(text: string) {
 
 const PATTERNS: { regex: RegExp; read: (match: RegExpExecArray) => Rule | undefined }[] = [
   {
-    // every! 2 weeks, every other week, every 3 days, each month
-    regex: /\b(every|each)(!?)\s+(?:(\d+|other)\s+)?(day|week|month|year)s?\b/gi,
-    read: (m) => ({
-      freq: UNIT_FREQ[(m[4] ?? "").toLowerCase()] ?? "DAILY",
-      interval: m[3] === undefined ? 1 : m[3].toLowerCase() === "other" ? 2 : Number(m[3]),
-      afterCompletion: m[2] === "!",
-    }),
+    // every! 2 weeks, every other week, every 3 days, each month; weeks may name days:
+    // "every 2 weeks on Monday and Wednesday"
+    regex: new RegExp(
+      `\\b(every|each)(!?)\\s+(?:(\\d+|other)\\s+)?(day|week|month|year)s?\\b(?:\\s+on\\s+(${DAY}(?:\\s*(?:,|and|&)\\s*${DAY})*)\\b)?`,
+      "gi",
+    ),
+    read: (m) => {
+      const freq = UNIT_FREQ[(m[4] ?? "").toLowerCase()] ?? "DAILY";
+      const days = m[5] ? dayList(m[5]) : [];
+      return {
+        freq,
+        interval: m[3] === undefined ? 1 : m[3].toLowerCase() === "other" ? 2 : Number(m[3]),
+        ...(days.length && freq === "WEEKLY" && { byDay: days }),
+        afterCompletion: m[2] === "!",
+      };
+    },
   },
   {
     // first Friday of each month, every 3rd Tuesday, the last Monday of the month
@@ -168,7 +182,16 @@ const PATTERNS: { regex: RegExp; read: (match: RegExpExecArray) => Rule | undefi
 
 // A bound right after a rule: "until Dec 18", "through Friday", "for 3 times", "3 times".
 const BOUND =
-  /^\s+(?:(?:until|through|thru|ending)\s+([^,;]+?)(?=\s+(?:at|from|for|\/|#|~|p[1-4]\b|@)|\s*$|[,;])|(?:for\s+)?(\d+)\s+times\b)/i;
+  /^\s+(?:(?:until|through|thru|ending)\s+([^,;]+)|(?:for\s+)?(\d+)\s+times\b|for\s+(\d+|a|an|one|two|three|four|six)\s+(day|week|month|year)s?\b)/i;
+const SMALL_NUMBERS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  six: 6,
+};
 
 /**
  * The first repeat phrase in `masked` (claimed spans already blanked out), with any
@@ -181,7 +204,8 @@ export function findRule(masked: string): RuleMatch | undefined {
     for (let m = regex.exec(masked); m; m = regex.exec(masked)) {
       const rule = read(m);
       if (!rule) continue;
-      const match: RuleMatch = { start: m.index, end: m.index + m[0].length, rule };
+      const end = m.index + m[0].length;
+      const match: RuleMatch = { start: m.index, end, ruleEnd: end, rule };
       // Prefer the earliest, then the longest phrase.
       const better =
         !best || match.start < best.start || (match.start === best.start && match.end > best.end);
@@ -190,15 +214,21 @@ export function findRule(masked: string): RuleMatch | undefined {
     }
   }
   if (!best) return undefined;
+  best.ruleEnd = best.end;
   const bound = BOUND.exec(masked.slice(best.end));
-  if (bound) {
-    const boundEnd = best.end + bound[0].length;
-    if (bound[2]) best.count = Number(bound[2]);
-    else if (bound[1]) {
-      const textStart = best.end + bound[0].indexOf(bound[1]);
-      best.until = { start: textStart, end: textStart + bound[1].length, text: bound[1] };
+  if (bound?.[1]) {
+    // The caller claims "until" plus whatever date it reads at the start of this text.
+    best.until = { start: best.end + bound[0].indexOf(bound[1]), text: bound[1] };
+  } else if (bound?.[2]) {
+    best.count = Number(bound[2]);
+    best.end += bound[0].length;
+  } else if (bound?.[3] && bound[4]) {
+    const unit = bound[4].toLowerCase();
+    const count = SMALL_NUMBERS[bound[3].toLowerCase()] ?? Number(bound[3]);
+    if (unit === "day" || unit === "week" || unit === "month" || unit === "year") {
+      best.span = { count, unit };
+      best.end += bound[0].length;
     }
-    best.end = boundEnd;
   }
   return best;
 }
