@@ -233,6 +233,38 @@ describe("applyEntry", () => {
   });
 });
 
+describe("review fixes", () => {
+  test("changing a two-day event's end time keeps its end date", () => {
+    const form = draftForm({ start: new Date(2026, 10, 3, 10), end: new Date(2026, 10, 4, 17) });
+    expect(endAtMinutes(form, 18 * 60)).toEqual(new Date(2026, 10, 4, 18));
+  });
+
+  test("the remaining COUNT is counted in the event's zone", () => {
+    // Daily at 09:00 UTC from Mar 6 2026, five times. Tests run in Los Angeles time,
+    // whose clocks spring forward on Mar 8, so device-zone counting would slip a day.
+    const event: ExternalEvent = {
+      id: "s|2026-03-09T09:00:00Z",
+      calendarId: "work",
+      title: "Sync",
+      start: "2026-03-09T09:00:00Z",
+      end: "2026-03-09T10:00:00Z",
+      allDay: false,
+      recurring: true,
+      recurrence: "FREQ=DAILY;COUNT=5",
+      timeZone: "UTC",
+      busy: true,
+      seriesStart: "2026-03-06T09:00:00Z",
+      seriesEnd: "2026-03-06T10:00:00Z",
+    };
+    expect(restoreInput(event, "future").recurrence).toBe("FREQ=DAILY;COUNT=2");
+  });
+
+  test("an overnight event's end still wraps past midnight", () => {
+    const form = draftForm({ start: new Date(2026, 10, 3, 22), end: new Date(2026, 10, 4, 2) });
+    expect(endAtMinutes(form, 23 * 60)).toEqual(new Date(2026, 10, 3, 23));
+  });
+});
+
 describe("formDay", () => {
   test("an all-day event shows its calendar day whatever the form's zone", () => {
     const form = draftForm({
@@ -802,7 +834,8 @@ describe("popover field edits", () => {
     try {
       run();
     } finally {
-      process.env.TZ = was;
+      if (was === undefined) delete process.env.TZ;
+      else process.env.TZ = was;
     }
   };
 

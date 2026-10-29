@@ -8,6 +8,7 @@ import type {
 } from "@cal/calendar-source";
 import {
   addDays,
+  atMinute,
   type DayKey,
   daysBetween,
   expandRule,
@@ -27,7 +28,7 @@ import {
 import { type Literal, prefixKind } from "./entryText";
 import { createStore, useStore } from "./store";
 import { dismissToast, showToast } from "./toast";
-import { zonedDayKey, zonedInstant, zonedMinutes } from "./zones";
+import { deviceZone, zonedDayKey, zonedInstant, zonedMinutes } from "./zones";
 
 /*
  * Event creation and editing. One popover serves both: `openCreate` starts a draft
@@ -478,11 +479,18 @@ function remainingRule(event: ExternalEvent) {
   if (!rule || !event.seriesStart || !event.seriesEnd) return rule;
   const count = ruleCount(rule);
   if (count === undefined) return rule;
-  const seriesStart = new Date(event.seriesStart);
-  const start = Date.parse(event.start);
-  const horizon = daysBetween(toDayKey(seriesStart), toDayKey(new Date(start))) + 1;
-  const before = expandRule(rule, seriesStart, new Date(event.seriesEnd), horizon).filter(
-    (occurrence) => occurrence.start.getTime() < start,
+  // Counted on the event zone's wall clock (expandRule works in local wall time), so a
+  // DST change on this device can't shift occurrences across the deleted one.
+  const zone = event.timeZone ?? deviceZone;
+  const wall = (instant: Date) => atMinute(zonedDayKey(instant, zone), zonedMinutes(instant, zone));
+  const seriesStart = wall(new Date(event.seriesStart));
+  const seriesEnd = new Date(
+    seriesStart.getTime() + Date.parse(event.seriesEnd) - Date.parse(event.seriesStart),
+  );
+  const target = wall(new Date(event.start));
+  const horizon = daysBetween(toDayKey(seriesStart), toDayKey(target)) + 1;
+  const before = expandRule(rule, seriesStart, seriesEnd, horizon).filter(
+    (occurrence) => occurrence.start.getTime() < target.getTime(),
   ).length;
   return withCount(rule, Math.max(1, count - before));
 }
@@ -786,7 +794,10 @@ export const formDay = (form: EventForm) =>
 export function endAtMinutes(form: EventForm, minutes: number) {
   const day = formDay(form);
   const endDay = zonedDayKey(form.end, form.timeZone);
-  const base = daysBetween(day, endDay) > 1 ? endDay : day;
+  // Under a day long it's a same-day or overnight event: rebuild from the start's day
+  // and wrap past midnight. A day or more: the end keeps its own date.
+  const multiDay = form.end.getTime() - form.start.getTime() >= DAY;
+  const base = multiDay ? endDay : day;
   const end = zonedInstant(base, minutes, form.timeZone);
   return end.getTime() <= form.start.getTime() ? new Date(end.getTime() + DAY) : end;
 }

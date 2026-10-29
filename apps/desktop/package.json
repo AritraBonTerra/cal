@@ -13,7 +13,7 @@
     "prepare:dev": "bun scripts/prepare.ts",
     "screenshots": "bun scripts/screenshot.ts",
     "smoke": "bun scripts/smoke.ts",
-    "test": "bun test",
+    "test": "TZ=America/Los_Angeles bun test",
     "dist": "bun scripts/prepare.ts && env -u ELECTRON_RUN_AS_NODE electron-vite build && electron-builder --mac"
   },
   "devDependencies": {
