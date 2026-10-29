@@ -4,14 +4,15 @@ import { blockColors, type ChipColors } from "@cal/theme";
 import { Lock, MapPin } from "lucide-react";
 import { useApp } from "../../lib/app";
 import { hueFor } from "../../lib/data";
-import { formatRange, formatTime } from "../../lib/time";
+import { formatMinuteRange, formatMinutes } from "../../lib/time";
 import { Checkbox } from "../ui";
 
 /*
  * Chips on the time grid (research/07 §7.6). Events are a pale fill with a 3px bar;
  * task blocks are lighter, with a checkbox and a project stripe. Text is top-aligned,
  * and what shows depends on height: 12px gets a title only, 24px one line with the
- * time, 36px or more the title and a time range.
+ * time, 36px or more the title and a time range. Times arrive as minutes after midnight
+ * in the grid's zone.
  */
 
 interface Frame {
@@ -43,8 +44,8 @@ function Handles() {
 interface EventChipProps {
   title: string;
   location?: string;
-  start: Date;
-  end: Date;
+  start: number;
+  end: number;
   colors: ChipColors;
   frame: Frame;
   selected: boolean;
@@ -90,7 +91,7 @@ export function EventChip({
           <span className="truncate font-medium">{title}</span>
           {height >= 20 && (
             <span className="shrink-0 text-caption tnum" style={{ color: time }}>
-              {formatTime(start)}
+              {formatMinutes(start)}
             </span>
           )}
         </div>
@@ -103,7 +104,7 @@ export function EventChip({
             className="flex items-center gap-1 truncate text-caption tnum"
             style={{ color: time }}
           >
-            {formatRange(start, end)}
+            {formatMinuteRange(start, end)}
             {location && height >= 48 && (
               <>
                 <MapPin
@@ -127,8 +128,8 @@ interface BlockChipProps {
   block: TimeBlock;
   task?: Task;
   project?: Project;
-  start: Date;
-  end: Date;
+  start: number;
+  end: number;
   frame: Frame;
   selected: boolean;
   past: boolean;
@@ -194,7 +195,7 @@ export function BlockChip({
         )}
       </div>
       {height >= 30 && (
-        <div className="truncate text-caption text-ink-2 tnum">{formatRange(start, end)}</div>
+        <div className="truncate text-caption text-ink-2 tnum">{formatMinuteRange(start, end)}</div>
       )}
       <Handles />
     </div>

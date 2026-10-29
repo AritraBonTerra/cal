@@ -1,25 +1,32 @@
-import { type DayKey, toDayKey } from "@cal/domain";
+import { type DayKey, toDayKey, weekday } from "@cal/domain";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
 import { assignLanes } from "../../lib/layout";
-import { dayNumber, formatTime, formatWeekday } from "../../lib/time";
+import { dayNumber, formatTime, formatWeekday, weekNumber } from "../../lib/time";
 import { select, showDays, useUi } from "../../lib/ui";
 import { withinDays } from "./model";
 
 const LINE = 20;
 const NUMBER_ROW = 26;
 
+// Width of the week-number column when the setting is on.
+const WEEK_COLUMN = 32;
+
+const isWeekend = (day: DayKey) => weekday(day) === 0 || weekday(day) === 6;
+
 /*
  * Month view: six weeks of cells. All-day events run as bars across their days, timed
  * events and blocks are one line each with the start time, and what doesn't fit folds
- * into "+N more". Clicking a day number opens that day.
+ * into "+N more". Clicking a day number opens that day. Hidden weekends drop their
+ * columns; week numbers get a narrow column on the left.
  */
 export function MonthView() {
-  const { days, events, today, palette, mode } = useApp();
+  const { days, events, gridToday, palette, mode, account } = useApp();
   const anchor = useUi((state) => state.anchor);
   const selection = useUi((state) => state.selection);
   const month = anchor.slice(0, 7);
+  const weekColumn = account.weekNumbers ? WEEK_COLUMN : 0;
   const ref = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(120);
   useLayoutEffect(() => {
@@ -30,11 +37,15 @@ export function MonthView() {
     return () => observer.disconnect();
   }, []);
 
-  const weeks = Array.from({ length: 6 }, (_, index) => days.slice(index * 7, index * 7 + 7));
+  const weeks = Array.from({ length: 6 }, (_, index) =>
+    days.slice(index * 7, index * 7 + 7).filter((day) => account.showWeekends || !isWeekend(day)),
+  );
+  const columns = weeks[0]?.length ?? 7;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-dense>
       <div className="flex shrink-0 border-b border-grid">
+        {weekColumn > 0 && <div className="shrink-0" style={{ width: weekColumn }} />}
         {weeks[0]?.map((day) => (
           <div key={day} className="flex-1 px-2 py-1.5 text-small text-ink-2">
             {formatWeekday(day)}
@@ -54,8 +65,11 @@ export function MonthView() {
               return [
                 {
                   event,
-                  from: Math.max(0, week.indexOf(startDay)),
-                  to: week.includes(endDay) ? week.indexOf(endDay) : week.length - 1,
+                  from: Math.max(
+                    0,
+                    week.findIndex((day) => day >= startDay),
+                  ),
+                  to: week.includes(endDay) ? week.indexOf(endDay) : lastIndexBefore(week, endDay),
                 },
               ];
             });
@@ -66,39 +80,49 @@ export function MonthView() {
             Math.floor((rowHeight - NUMBER_ROW - lanes * LINE - 4) / LINE),
           );
           return (
-            <div key={first} className="relative flex min-h-0 flex-1 border-b border-grid">
-              {week.map((day) => (
-                <Cell
-                  key={day}
-                  day={day}
-                  inMonth={day.slice(0, 7) === month}
-                  isToday={day === today}
-                  offset={lanes * LINE}
-                  capacity={capacity}
-                />
-              ))}
-              {placed.map(({ item, lane }) => {
-                const colors = palette.get(item.event.calendarId) ?? graphite(mode);
-                const isSelected = selection?.kind === "event" && selection.id === item.event.id;
-                return (
-                  <button
-                    type="button"
-                    key={item.event.id}
-                    onClick={() => select({ kind: "event", id: item.event.id })}
-                    className="absolute flex h-[18px] items-center truncate rounded-sm border-l-[3px] px-1.5 text-caption font-medium"
-                    style={{
-                      top: NUMBER_ROW + lane * LINE,
-                      left: `calc(${(item.from / 7) * 100}% + 4px)`,
-                      width: `calc(${((item.to - item.from + 1) / 7) * 100}% - 8px)`,
-                      background: isSelected ? colors.solid : colors.fill,
-                      borderColor: isSelected ? colors.solid : colors.bar,
-                      color: isSelected ? "#ffffff" : colors.title,
-                    }}
-                  >
-                    <span className="truncate">{item.event.title}</span>
-                  </button>
-                );
-              })}
+            <div key={first} className="flex min-h-0 flex-1 border-b border-grid">
+              {weekColumn > 0 && (
+                <div
+                  className="flex shrink-0 justify-center pt-[5px] text-caption text-ink-3 tnum"
+                  style={{ width: weekColumn }}
+                >
+                  {weekNumber(first, account.weekStart)}
+                </div>
+              )}
+              <div className="relative flex min-w-0 flex-1">
+                {week.map((day) => (
+                  <Cell
+                    key={day}
+                    day={day}
+                    inMonth={day.slice(0, 7) === month}
+                    isToday={day === gridToday}
+                    offset={lanes * LINE}
+                    capacity={capacity}
+                  />
+                ))}
+                {placed.map(({ item, lane }) => {
+                  const colors = palette.get(item.event.calendarId) ?? graphite(mode);
+                  const isSelected = selection?.kind === "event" && selection.id === item.event.id;
+                  return (
+                    <button
+                      type="button"
+                      key={item.event.id}
+                      onClick={() => select({ kind: "event", id: item.event.id })}
+                      className="absolute flex h-[18px] items-center truncate rounded-sm border-l-[3px] px-1.5 text-caption font-medium"
+                      style={{
+                        top: NUMBER_ROW + lane * LINE,
+                        left: `calc(${(item.from / columns) * 100}% + 4px)`,
+                        width: `calc(${((item.to - item.from + 1) / columns) * 100}% - 8px)`,
+                        background: isSelected ? colors.solid : colors.fill,
+                        borderColor: isSelected ? colors.solid : colors.bar,
+                        color: isSelected ? "#ffffff" : colors.title,
+                      }}
+                    >
+                      <span className="truncate">{item.event.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
@@ -106,6 +130,10 @@ export function MonthView() {
     </div>
   );
 }
+
+// The index of the last day of `week` on or before `day` (an all-day bar's end).
+const lastIndexBefore = (week: readonly DayKey[], day: DayKey) =>
+  week.reduce((found, each, index) => (each <= day ? index : found), 0);
 
 function Cell({
   day,

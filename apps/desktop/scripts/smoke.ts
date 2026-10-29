@@ -44,7 +44,9 @@ const body = await page
     if (!parent) throw new Error("no grid body");
     return { top: parent.getBoundingClientRect().top, scrollTop: parent.scrollTop };
   });
-const y = (minute: number) => body.top + (minute / 60) * 48 - body.scrollTop;
+// The default hour height; the fit floor is lower than it at 1440×900.
+const HOUR = 48;
+const y = (minute: number) => body.top + (minute / 60) * HOUR - body.scrollTop;
 await page.mouse.move(c.x + c.width / 2, y(15 * 60));
 await page.mouse.down();
 await page.mouse.move(c.x + c.width / 2, y(15 * 60 + 30), { steps: 4 });
@@ -267,7 +269,7 @@ const specBlocks = page.locator("[data-item^='block:'] > div", { hasText: "Write
 const tops = await specBlocks.evaluateAll((chips) =>
   chips.map((chip) => (chip instanceof HTMLElement ? chip.style.top : "")),
 );
-check("X from another week schedules after today's 1:1", tops.includes(`${12 * 48}px`));
+check("X from another week schedules after today's 1:1", tops.includes(`${12 * HOUR}px`));
 
 // 16. a completed task leaves the list and loses its selection
 const rent = page.locator("li", { hasText: "Pay rent" }).first();
@@ -296,6 +298,138 @@ check(
   (await page.locator("li", { hasText: "Upcoming task" }).count()) === 1 &&
     (await page.locator("h2", { hasText: "Upcoming" }).count()) === 1,
 );
+
+// 18. sidebar toggle keeps the grid's scroll position and the visible dates
+const grid = page.locator("[data-grid-body]");
+const gridState = () =>
+  grid.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    hour: element.getAttribute("data-hour"),
+    fit: element.getAttribute("data-fit"),
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+await page.keyboard.press("0");
+await page.waitForTimeout(150);
+await grid.evaluate((element) => {
+  element.scrollTop = 300;
+});
+const beforeToggle = await gridState();
+const daysBefore = await page
+  .locator("[data-column]")
+  .evaluateAll((columns) => columns.map((column) => column.getAttribute("data-column")));
+await page.keyboard.press("Meta+\\");
+await page.waitForTimeout(350);
+const afterToggle = await gridState();
+const daysAfter = await page
+  .locator("[data-column]")
+  .evaluateAll((columns) => columns.map((column) => column.getAttribute("data-column")));
+check(
+  "sidebar toggle keeps scrollTop and dates",
+  afterToggle.scrollTop === beforeToggle.scrollTop &&
+    daysAfter.join() === daysBefore.join() &&
+    (await page
+      .locator("[data-pane=sidebar]")
+      .evaluate((pane) => pane.getBoundingClientRect().width)) === 0,
+);
+await page.keyboard.press("Meta+\\");
+await page.waitForTimeout(350);
+
+// 19. zoom keys step the hour height and stop at fit; ⇧⌘0 resets
+const hourOf = async () => Number((await gridState()).hour);
+const startHour = await hourOf();
+await page.keyboard.press("Meta+Shift+.");
+await page.waitForTimeout(100);
+const zoomedIn = await hourOf();
+await page.keyboard.press("Meta+Shift+,");
+await page.waitForTimeout(100);
+check("⇧⌘. zooms in and ⇧⌘, back out", zoomedIn > startHour && (await hourOf()) === startHour);
+for (let i = 0; i < 8; i++) {
+  await page.keyboard.press("Meta+Shift+,");
+  await page.waitForTimeout(50);
+}
+let state = await gridState();
+check(
+  "zoom out stops at fit and fills the body",
+  state.hour === state.fit &&
+    Number(state.fit) < startHour &&
+    Math.abs(state.scrollHeight - state.clientHeight) <= 1,
+);
+await page.keyboard.press("Meta+Shift+0");
+await page.waitForTimeout(100);
+check("⇧⌘0 restores the default height", (await hourOf()) === 48);
+
+// 20. "fit" in a tall window: 24 hours exactly fill the body
+await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 0 } }));
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1200),
+);
+await page.waitForTimeout(400);
+state = await gridState();
+check(
+  "fit fills a tall window",
+  state.hour === state.fit &&
+    Math.abs(Number(state.hour) * 24 - state.clientHeight) < 1 &&
+    Math.abs(state.scrollHeight - state.clientHeight) <= 1,
+);
+await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 48 } }));
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
+);
+await page.waitForTimeout(300);
+
+// 21. settings take effect live: hidden weekends, 24-hour labels, a hidden calendar
+await page.evaluate(() =>
+  window.calTest?.seed({
+    account: { showWeekends: false, timeFormat: "24h" },
+    device: { hiddenCalendars: ["personal"] },
+  }),
+);
+await page.waitForTimeout(300);
+check("hiding weekends leaves five columns", (await page.locator("[data-column]").count()) === 5);
+check("24-hour time relabels the gutter", (await page.locator("text=09:00").count()) === 1);
+check(
+  "a hidden calendar's events leave the grid",
+  (await page.locator("[data-item^='event:'] > div", { hasText: "Dentist" }).count()) === 0,
+);
+await page.keyboard.press("Meta+,");
+await page.waitForTimeout(200);
+check(
+  "⌘, opens Settings",
+  (await page.locator("[role=dialog][aria-label=Settings]").count()) === 1,
+);
+await page.click("[role=switch][aria-label='Show weekends']");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "the weekends switch shows seven columns again",
+  (await page.locator("[data-column]").count()) === 7,
+);
+
+// 22. an extra time zone column and Z travel
+await page.evaluate(() =>
+  window.calTest?.seed({ account: { timeZones: [{ zone: "Asia/Kolkata", label: "IST" }] } }),
+);
+await page.waitForTimeout(300);
+check(
+  "an extra zone column labels 09:00 as 21:30",
+  (await page.locator("[data-zone-column='Asia/Kolkata']", { hasText: "21:30" }).count()) === 1,
+);
+await page.keyboard.press("z");
+await page.keyboard.type("tokyo");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+const travelRetro = page.locator("[data-item^='event:'] > div", { hasText: "Retro" });
+check(
+  "Z travel shows Tokyo time and shifts events",
+  (await page.locator("[data-travel]").count()) === 1 &&
+    // Retro sits at 4–5 PM since step 13, shown in 24-hour time since step 21: Friday
+    // 4 PM Pacific is 08:00 Saturday in Tokyo.
+    ((await travelRetro.first().textContent())?.includes("08:00–09:00") ?? false),
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check("Esc returns from travel", (await page.locator("[data-travel]").count()) === 0);
 
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

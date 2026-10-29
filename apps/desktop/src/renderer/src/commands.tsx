@@ -1,4 +1,4 @@
-import { type Command, useActions, useCommands, useHistory } from "@cal/app-core";
+import { type Command, useActions, useCommands, useHistory, useSettings } from "@cal/app-core";
 import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
@@ -10,6 +10,8 @@ import {
   goToday,
   moveView,
   moveWeek,
+  openSettings,
+  openZonePicker,
   select,
   showDays,
   showList,
@@ -30,6 +32,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
+  const { setAccount } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -126,6 +129,50 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         aliases: ["tasks", "pane"],
         run: () => ui.set((state) => ({ tasks: !state.tasks })),
       },
+      {
+        id: "view.weekends",
+        title: "Toggle Weekends",
+        group: "View",
+        keys: ["mod+shift+e"],
+        aliases: ["hide weekends", "show weekends", "saturday", "sunday"],
+        run: () => void setAccount("showWeekends", !latest.current.account.showWeekends),
+      },
+      {
+        id: "view.declined",
+        title: "Toggle Declined Events",
+        group: "View",
+        keys: ["mod+shift+d"],
+        aliases: ["hide declined", "show declined"],
+        run: () => void setAccount("showDeclined", !latest.current.account.showDeclined),
+      },
+      {
+        id: "zone.add",
+        title: "Add Time Zone…",
+        group: "View",
+        aliases: ["timezone", "time zone column", "world clock"],
+        enabled: () => latest.current.account.timeZones.length < 3,
+        run: () => openZonePicker({ kind: "add" }),
+      },
+      {
+        id: "zone.travel",
+        title: "Travel to Time Zone…",
+        group: "View",
+        keys: ["z"],
+        aliases: ["time travel", "timezone", "view in zone"],
+        run: () => {
+          if (ui.get().travelZone) ui.set({ travelZone: null });
+          else openZonePicker({ kind: "travel" });
+        },
+      },
+      {
+        id: "zone.exit",
+        title: "Stop Travelling",
+        group: "View",
+        keys: ["escape"],
+        aliases: ["return to my time zone"],
+        enabled: () => ui.get().travelZone !== null && ui.get().overlay === null,
+        run: () => ui.set({ travelZone: null }),
+      },
     ];
 
     const navigate: Command[] = [
@@ -167,7 +214,15 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Navigate",
         keys: ["t"],
         aliases: ["now"],
-        run: () => goToday(latest.current.today),
+        run: () => goToday(latest.current.today, latest.current.account.todayKey === "left-align"),
+      },
+      {
+        id: "nav.todayLeft",
+        title: "Today, Left-Aligned",
+        group: "Navigate",
+        keys: ["alt+t"],
+        aliases: ["start from today"],
+        run: () => goToday(latest.current.today, true),
       },
       ...SMART_LISTS.map(
         (list, index): Command => ({
@@ -317,7 +372,12 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
               actions.scheduleNext(
                 task.uuid,
                 events
-                  .filter((event) => event.busy && !event.allDay)
+                  .filter(
+                    (event) =>
+                      event.busy &&
+                      !event.allDay &&
+                      !latest.current.device.freeCalendars.includes(event.calendarId),
+                  )
                   .map((event) => ({ start: new Date(event.start), end: new Date(event.end) })),
               ),
             );
@@ -446,6 +506,14 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => toggleOverlay("shortcuts"),
       },
       {
+        id: "settings.open",
+        title: "Settings…",
+        group: "General",
+        keys: ["mod+,"],
+        aliases: ["preferences", "options", "theme", "time format", "calendars"],
+        run: () => openSettings(),
+      },
+      {
         id: "edit.undo",
         title: "Undo",
         group: "General",
@@ -481,5 +549,5 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess]);
+  }, [actions, history, auth.status, requestAccess, setAccount]);
 }

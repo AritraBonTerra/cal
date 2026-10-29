@@ -29,6 +29,8 @@ export const accountDefaults = {
   timeFormat: "system" as "system" | "12h" | "24h",
   // Extra time zones beside the main one, outermost first (at most 3).
   timeZones: [] as ZoneColumn[],
+  // The zone the grid renders in; null follows the device's zone.
+  primaryZone: null as string | null,
   // Minutes after midnight.
   workingHours: { start: 9 * 60, end: 18 * 60 },
   // Length of a new event or block, in minutes.
@@ -52,6 +54,8 @@ export const deviceDefaults = {
   // Where new events go; the system default calendar when unset.
   defaultCalendar: null as string | null,
   launchAtLogin: false,
+  // Zones picked lately, newest first, so the picker can offer them before the search.
+  recentZones: [] as string[],
 };
 
 export type AccountSettings = typeof accountDefaults;

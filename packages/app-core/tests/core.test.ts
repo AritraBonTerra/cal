@@ -163,6 +163,8 @@ describe("commands", () => {
     expect(matches("mod+k", key("k"), true)).toBe(false);
     expect(matches("t", key("T", { shiftKey: true }), true)).toBe(false);
     expect(matches("?", key("?", { shiftKey: true }), true)).toBe(true);
+    expect(matches("mod+,", key(",", { metaKey: true, shiftKey: true }), true)).toBe(false);
+    expect(matches("mod+shift+,", key(",", { metaKey: true, shiftKey: true }), true)).toBe(true);
     expect(matches("shift+right", key("ArrowRight", { shiftKey: true }), true)).toBe(true);
   });
 

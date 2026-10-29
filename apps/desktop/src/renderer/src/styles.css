@@ -90,6 +90,13 @@
   }
 }
 
+/* Side panes slide by width; under reduced motion they snap. */
+@utility pane-slide {
+  @media (prefers-reduced-motion: no-preference) {
+    transition: width 200ms var(--ease-out);
+  }
+}
+
 /* Thin, auto-hiding scrollbars like the rest of the Mac. */
 ::-webkit-scrollbar {
   width: 10px;

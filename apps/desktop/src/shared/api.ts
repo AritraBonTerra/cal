@@ -2,9 +2,9 @@ import type { DataSource } from "@cal/app-core";
 import type { SyncedTable } from "@cal/backend/sync";
 import type { CalendarSource } from "@cal/calendar-source";
 
-import type { AuthState, SignInFlow, SyncStatus } from "@cal/sync";
+import type { AuthState, SyncStatus } from "@cal/sync";
 
-export type { AuthState, SignInFlow, SyncStatus };
+export type { AuthState, SyncStatus };
 
 /**
  * What the preload script exposes to the window as `window.cal`. The window has no
@@ -24,9 +24,13 @@ export interface CalBridge {
   auth: {
     state(): Promise<AuthState>;
     // Resolves with the new state, or rejects with a message the window can show.
-    signIn(email: string, password: string, flow: SignInFlow): Promise<AuthState>;
+    // Opens Google sign-in in the browser; the app hears back through its URL scheme.
+    signInWithGoogle(): Promise<void>;
+    // Finishes sign-in with the code from the browser page (development builds).
+    submitCode(code: string): Promise<AuthState>;
     signOut(): Promise<AuthState>;
     onChange(listener: (state: AuthState) => void): () => void;
+    onError(listener: (message: string) => void): () => void;
   };
   sync: {
     status(): Promise<SyncStatus>;
@@ -35,7 +39,12 @@ export interface CalBridge {
   calendar: CalendarSource;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
+  // Switches the window (and its `prefers-color-scheme`) between following the Mac,
+  // light and dark.
+  setTheme(theme: Theme): Promise<void>;
 }
+
+export type Theme = "system" | "light" | "dark";
 
 // IPC channel names, shared by main and preload.
 export const channels = {
@@ -44,10 +53,13 @@ export const channels = {
   dataChanged: "cal:data-changed",
   auth: "cal:auth",
   authChanged: "cal:auth-changed",
+  // A sign-in that came back through the URL scheme failed; the payload is the message.
+  authError: "cal:auth-error",
   syncStatus: "cal:sync-status",
   syncChanged: "cal:sync-changed",
   calendar: "cal:calendar",
   calendarChanged: "cal:calendar-changed",
+  theme: "cal:theme",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.
@@ -64,7 +76,8 @@ export type CalendarCall = {
 
 export type AuthCall =
   | { method: "state"; args: [] }
-  | { method: "signIn"; args: [string, string, SignInFlow] }
+  | { method: "signInWithGoogle"; args: [] }
+  | { method: "submitCode"; args: [string] }
   | { method: "signOut"; args: [] };
 
 export type DataChanged = readonly SyncedTable[];

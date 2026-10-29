@@ -26,7 +26,23 @@ export type Selection =
   | { kind: "block"; uuid: string }
   | { kind: "event"; id: string };
 
-export type Overlay = "palette" | "shortcuts" | "quickEntry" | "signIn" | "when";
+export type Overlay =
+  | "palette"
+  | "shortcuts"
+  | "quickEntry"
+  | "signIn"
+  | "when"
+  | "settings"
+  | "zonePicker";
+
+export type SettingsSection = "general" | "grid" | "zones" | "calendars" | "account";
+
+// Why the zone picker is open: to add a column, swap the zone of column `index` (or
+// the primary zone when `index` is absent), or travel (`Z`).
+export type ZonePickerPurpose =
+  | { kind: "add" }
+  | { kind: "change"; index?: number }
+  | { kind: "travel" };
 
 export interface UiState {
   view: View;
@@ -41,6 +57,13 @@ export interface UiState {
   editing: string | null;
   // Set after a jump (T, `.`) so the grid can flash the target day once.
   flashDay: DayKey | null;
+  // First day of the week (0 = Sunday), mirrored from the account setting so view
+  // helpers can read it without a settings handle.
+  weekStart: number;
+  settingsSection: SettingsSection;
+  zonePicker: ZonePickerPurpose;
+  // The zone the grid shows while travelling (`Z`); null when not travelling.
+  travelZone: string | null;
 }
 
 const WEEK = 7;
@@ -55,23 +78,39 @@ export const ui = createStore<UiState>({
   overlay: null,
   editing: null,
   flashDay: null,
+  weekStart: 1,
+  settingsSection: "general",
+  zonePicker: { kind: "add" },
+  travelZone: null,
 });
 
 export const useUi = <R>(select: (state: UiState) => R) => useStore(ui, select);
 
 /**
- * Shows `count` days. A week always starts on Monday. Narrower spans start on today
- * when it's in view (week → day lands on today, like Notion), else keep their first day.
+ * Shows `count` days. A week starts on the configured weekday. Narrower spans start on
+ * today when it's in view (week → day lands on today, like Notion), else keep their
+ * first day.
  */
 export function showDays(count: number, today: DayKey, from?: DayKey) {
-  ui.set(({ anchor, view }) => {
+  ui.set(({ anchor, view, weekStart }) => {
     const visible =
       view.kind === "days"
         ? dayRange(anchor, view.count).includes(today)
         : anchor.slice(0, 7) === today.slice(0, 7);
     const base = from ?? (visible ? today : view.kind === "month" ? startOfMonth(anchor) : anchor);
-    return { view: { kind: "days", count }, anchor: count === WEEK ? startOfWeek(base) : base };
+    return {
+      view: { kind: "days", count },
+      anchor: count === WEEK ? startOfWeek(base, weekStart) : base,
+    };
   });
+}
+
+// Applies a new first day of the week, re-aligning the week view to it.
+export function setWeekStart(weekStart: number) {
+  ui.set(({ view, anchor }) => ({
+    weekStart,
+    anchor: view.kind === "days" && view.count === WEEK ? startOfWeek(anchor, weekStart) : anchor,
+  }));
 }
 
 // Window-size defaults: panes hide on narrow windows and come back when there's room.
@@ -96,9 +135,13 @@ export function moveWeek(direction: 1 | -1) {
   ui.set(({ anchor }) => ({ anchor: addDays(anchor, direction * WEEK) }));
 }
 
-export function goToday(today: DayKey) {
-  ui.set(({ view }) => ({
-    anchor: view.kind === "days" && view.count === WEEK ? startOfWeek(today) : today,
+// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T).
+export function goToday(today: DayKey, leftAlign = false) {
+  ui.set(({ view, weekStart }) => ({
+    anchor:
+      view.kind === "days" && view.count === WEEK && !leftAlign
+        ? startOfWeek(today, weekStart)
+        : today,
     flashDay: today,
   }));
 }
@@ -110,6 +153,12 @@ export function toggleOverlay(overlay: Overlay) {
 }
 
 export const closeOverlay = () => ui.set({ overlay: null });
+
+export const openSettings = (section?: SettingsSection) =>
+  ui.set((state) => ({ overlay: "settings", settingsSection: section ?? state.settingsSection }));
+
+export const openZonePicker = (zonePicker: ZonePickerPurpose) =>
+  ui.set({ overlay: "zonePicker", zonePicker });
 
 // Switching lists drops a task selection, since the row it points at is no longer shown.
 export const showList = (list: ListId) =>

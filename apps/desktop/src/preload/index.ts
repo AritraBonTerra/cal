@@ -10,6 +10,7 @@ import {
   type DataCall,
   type DataChanged,
   type SyncStatus,
+  type Theme,
 } from "../shared/api";
 
 // Subscribes to a main-process broadcast; returns an unsubscribe.
@@ -52,10 +53,13 @@ const bridge: CalBridge = {
   data,
   auth: {
     state: () => callAuth({ method: "state", args: [] }),
-    signIn: (email, password, flow) =>
-      callAuth({ method: "signIn", args: [email, password, flow] }),
+    signInWithGoogle: async () => {
+      await ipcRenderer.invoke(channels.auth, { method: "signInWithGoogle", args: [] });
+    },
+    submitCode: (code) => callAuth({ method: "submitCode", args: [code] }),
     signOut: () => callAuth({ method: "signOut", args: [] }),
     onChange: (listener) => listen<AuthState>(channels.authChanged, listener),
+    onError: (listener) => listen<string>(channels.authError, listener),
   },
   sync: {
     status: (): Promise<SyncStatus> => ipcRenderer.invoke(channels.syncStatus),
@@ -63,6 +67,7 @@ const bridge: CalBridge = {
   },
   calendar,
   onCommand: (listener) => listen<string>("cal:command", listener),
+  setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
 };
 
 contextBridge.exposeInMainWorld("cal", bridge);

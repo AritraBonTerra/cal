@@ -17,6 +17,7 @@
     "dist": "bun scripts/prepare.ts && env -u ELECTRON_RUN_AS_NODE electron-vite build && electron-builder --mac"
   },
   "devDependencies": {
+    "@better-auth/electron": "1.6.33",
     "@cal/app-core": "workspace:*",
     "@cal/backend": "workspace:*",
     "@cal/calendar-source": "workspace:*",
@@ -25,12 +26,14 @@
     "@cal/nlp": "workspace:*",
     "@cal/sync": "workspace:*",
     "@cal/theme": "workspace:*",
+    "@convex-dev/better-auth": "0.12.6",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "^1.4.4",
     "@types/node": "*",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "better-auth": "1.6.33",
     "convex": "1.48.0",
     "electron": "45.1.0",
     "electron-builder": "26.18.0",
