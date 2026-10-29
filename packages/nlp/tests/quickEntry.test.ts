@@ -838,3 +838,10 @@ test("links after the first are kept whole, and nothing is read from their paths
   expect(entry.title).toBe("Read https://b.com/tomorrow");
   expect(entry.tokens.some((token) => token.applied && token.kind === "when")).toBe(false);
 });
+
+test("no location is read out of a later link", () => {
+  const entry = grid("Read https://a.com https://b.com/@Office");
+  if (entry.kind !== "event") throw new Error("expected an event");
+  expect(entry.location).toBeUndefined();
+  expect(entry.title).toBe("Read https://b.com/@Office");
+});

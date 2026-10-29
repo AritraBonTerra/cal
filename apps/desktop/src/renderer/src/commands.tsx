@@ -445,15 +445,15 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           // and a meeting that began yesterday still counts.
           const from = now();
           const today = toDayKey(from);
-          const before = editorStore.get().editor;
+          const before = editorStore.get();
           const events = await window.cal.calendar
             .events(
               toOffsetIso(fromDayKey(addDays(today, -1))),
               toOffsetIso(fromDayKey(addDays(today, 3))),
             )
             .catch(() => latest.current.events);
-          // A draft opened or closed meanwhile (a drag on the grid) wins over this one.
-          if (editorStore.get().editor !== before) return;
+          // Any draft opened, edited or closed meanwhile (a drag on the grid) wins.
+          if (editorStore.get() !== before) return;
           const { calendars, device, account, data, gridToday, zone } = latest.current;
           const calendar = defaultCalendar(calendars, device.defaultCalendar);
           const busy = [

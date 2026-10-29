@@ -168,11 +168,15 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   // An event has one URL field: the first link fills it. Any others are claimed too, so
   // no later pass reads a date out of their paths, but stay in the title as text.
   let url: string | undefined;
+  const extraLinks = new Set<Token>();
   for (const m of s.masked.matchAll(/https?:\/\/[^\s]+/gi)) {
     const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(m[0]);
     const token = s.claim("url", m.index, m.index + m[0].length, video ? "Video call" : "Link");
     if (url === undefined) url = m[0];
-    else token.applied = false;
+    else {
+      token.applied = false;
+      extraLinks.add(token);
+    }
   }
   const attendees: string[] = [];
   for (const m of s.masked.matchAll(/(?:\bwith\s+|\+)([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/gi)) {
@@ -422,8 +426,9 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
       ? { first: timeHits[0]?.match, last: timeHits[1]?.match }
       : undefined;
   const time = spanTimes ? timeHits[0] : pickLast(timeHits);
-  // Unapplied tokens' text returns to the title.
-  for (const token of s.tokens) if (!token.applied) unblank(s, token);
+  // Unapplied tokens' text returns to the title (extra links stay masked, so no
+  // location is read out of them).
+  for (const token of s.tokens) if (!token.applied && !extraLinks.has(token)) unblank(s, token);
 
   // 8. Locations: "at Blue Bottle", "@ office", read after dates and times are blanked.
   let location: string | undefined;
