@@ -37,8 +37,10 @@ const del = (id: string): Op => ({ op: "DELETE", table: "tasks", id });
 async function setup() {
   const t = convexTest(schema, modules);
   const signIn = async () => {
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
-    const client = t.withIdentity({ subject: `${userId}|session` });
+    // The JWT subject is the Better Auth user id, which users.authId maps to Cal's id.
+    const authId = crypto.randomUUID();
+    const userId = await t.run((ctx) => ctx.db.insert("users", { authId }));
+    const client = t.withIdentity({ subject: authId });
     // Uploads one batch as `device`, one of this user's devices.
     const upload = (device: string, ...ops: Op[]) =>
       client.mutation(api.sync.upload, { device, ops });

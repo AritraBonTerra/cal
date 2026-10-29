@@ -25,3 +25,7 @@ mac:
     NSCalendarsUsageDescription: Cal shows and edits the events in your calendars.
 dmg:
   title: Cal
+# Google sign-in returns to the app through this URL scheme (see src/main/auth.ts).
+protocols:
+  - name: Cal
+    schemes: [dev.aritra.cal]

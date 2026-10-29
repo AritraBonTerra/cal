@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as sync from "../sync.js";
 import type * as syncTables from "../syncTables.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   sync: typeof sync;
   syncTables: typeof syncTables;
+  users: typeof users;
 }>;
 
 /**
@@ -52,4 +54,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
+};

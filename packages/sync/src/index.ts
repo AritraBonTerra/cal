@@ -8,10 +8,10 @@ export {
   type UploadOp,
 } from "./engine";
 export {
+  type AuthAdapter,
   type AuthState,
   Session,
   type SessionStorage,
-  type SignInFlow,
   type SyncStatus,
 } from "./session";
 export {
