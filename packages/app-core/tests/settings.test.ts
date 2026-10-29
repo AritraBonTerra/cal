@@ -61,6 +61,18 @@ describe("settings", () => {
     expect(account.showWeekends).toBe(true);
   });
 
+  test("ties pick the same row whatever the order", () => {
+    const row = (uuid: string, value: string) => ({
+      uuid,
+      key: "weekStart",
+      value,
+      created_at: 0,
+      updated_at: 5,
+    });
+    expect(readAccountSettings([row("a", "0"), row("b", "3")]).weekStart).toBe(3);
+    expect(readAccountSettings([row("b", "3"), row("a", "0")]).weekStart).toBe(3);
+  });
+
   test("values with the wrong shape are ignored", () => {
     const row = (key: string, value: string) => ({
       uuid: key,

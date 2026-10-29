@@ -158,6 +158,11 @@ function parseChecked(json: string, check: Check): { value: unknown } | undefine
   }
 }
 
+// Whether `a` beats `b` for the same key: later write, then the higher uuid, so every
+// device picks the same row even when two were written in the same millisecond.
+const newer = (a: SyncedRow<"settings">, b: SyncedRow<"settings">) =>
+  a.updated_at > b.updated_at || (a.updated_at === b.updated_at && a.uuid > b.uuid);
+
 /**
  * Account settings from the synced rows: the newest row per key, over the defaults.
  * Values that fail their setting's check are ignored.
@@ -166,7 +171,7 @@ export function readAccountSettings(rows: readonly SyncedRow<"settings">[]): Acc
   const newest = new Map<string, SyncedRow<"settings">>();
   for (const row of rows) {
     const current = newest.get(row.key);
-    if (!current || row.updated_at > current.updated_at) newest.set(row.key, row);
+    if (!current || newer(row, current)) newest.set(row.key, row);
   }
   const settings: AccountSettings = {
     ...accountDefaults,
@@ -227,7 +232,10 @@ export class Settings {
   // Saves an account setting: updates the newest row for the key, or adds one.
   async setAccount<K extends keyof AccountSettings>(key: K, value: AccountSettings[K]) {
     const rows = (await this.source.list("settings")).filter((row) => row.key === key);
-    const newest = rows.sort((a, b) => b.updated_at - a.updated_at)[0];
+    const newest = rows.reduce<(typeof rows)[number] | undefined>(
+      (best, row) => (!best || newer(row, best) ? row : best),
+      undefined,
+    );
     const json = JSON.stringify(value);
     if (newest) await this.source.update("settings", newest.uuid, { value: json });
     else await this.source.insert("settings", { key, value: json });
