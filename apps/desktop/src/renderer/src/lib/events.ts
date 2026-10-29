@@ -292,7 +292,9 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
     // Invitees can't be added on the Mac, so they're kept in the notes, as Quick Entry does.
     if (entry.attendees?.length) {
       const line = `With ${entry.attendees.join(", ")}`;
-      form.notes = base.notes ? `${base.notes}\n${line}` : line;
+      // Notes edited by hand hold the line already; a reparse mustn't add it again.
+      const present = base.notes.split("\n").includes(line);
+      form.notes = !base.notes ? line : present ? base.notes : `${base.notes}\n${line}`;
     }
     if (entry.url !== undefined) form.url = entry.url;
     if (entry.alertsMin !== undefined) form.alarms = entry.alertsMin;
@@ -497,62 +499,70 @@ function remainingRule(event: ExternalEvent) {
 
 /*
  * Ids of events that came back under a new id: one recreated by undoing a delete, or
- * an occurrence detached from its series by a "this event" edit. History steps keep
- * the id they were recorded with and resolve it here before acting, so undoing an edit
- * made before the id changed still reaches the event. One map per History, shared by
- * every writer made for it.
+ * an occurrence detached from its series by a "this event" edit. A History step takes
+ * a reference to the id it was recorded with and resolves it here before acting, so
+ * undoing an edit made before the id changed still reaches the event. One log per
+ * History, shared by every writer made for it.
+ *
+ * Renames are a log, and a reference only follows the ones made after it was taken.
+ * Calendars reuse ids (a series moved a day gives Tuesday's occurrence Wednesday's
+ * old id), so a fresh id and an older step's id can be the same text yet name
+ * different events.
  *
  * Occurrence ids are `<identifier>|<original start>`, the identifier shared by a
  * series. A series recreated with the same times is aliased as a whole: every
- * `old|start` resolves to `new|start`, so each occurrence keeps its identity. A
- * "future" restore applies only from the deleted occurrence on; the earlier ones
- * stay under the old identifier.
+ * `old|start` becomes `new|start`, so each occurrence keeps its identity. A "future"
+ * restore applies only from the deleted occurrence on; the earlier ones stay under
+ * the old identifier.
  */
 const aliasesFor = new WeakMap<History, EventAliases>();
 
-interface SeriesAlias {
-  to: string;
-  // Instant of the first occurrence the alias covers.
-  since: number;
+type Alias =
+  | { from: string; to: string }
+  // Occurrences of series `from` starting at `since` or later moved to identifier `to`.
+  | { series: string; to: string; since: number };
+
+// The event an id named when the reference was taken: `at` is the log's length then.
+interface EventRef {
+  id: string;
+  at: number;
 }
 
 class EventAliases {
-  private readonly ids = new Map<string, string>();
-  private readonly series = new Map<string, SeriesAlias[]>();
+  private readonly log: Alias[] = [];
 
-  current(id: string): string {
-    let current = id;
-    for (let hops = 0; hops < 100; hops++) {
-      const exact = this.ids.get(current);
-      if (exact !== undefined) {
-        current = exact;
+  // A reference to the event that has `id` now.
+  ref(id: string): EventRef {
+    return { id, at: this.log.length };
+  }
+  // The id the referenced event has now: every rename since the reference, in order.
+  current(ref: EventRef): string {
+    let current = ref.id;
+    for (const alias of this.log.slice(ref.at)) {
+      if ("from" in alias) {
+        if (current === alias.from) current = alias.to;
         continue;
       }
       const [identifier, start] = splitId(current);
-      const move = start
-        ? this.series
-            .get(identifier)
-            ?.filter((alias) => alias.since <= Date.parse(start))
-            .reduce<SeriesAlias | undefined>((a, b) => (a && a.since > b.since ? a : b), undefined)
-        : undefined;
-      if (!move) break;
-      current = `${move.to}|${start}`;
+      if (identifier === alias.series && start && Date.parse(start) >= alias.since) {
+        current = `${alias.to}|${start}`;
+      }
     }
     return current;
   }
+  // Records that the event at `from` is now at `to`; returns the entry's place in the log.
   renamed(from: string, to: string) {
-    if (from === to) return;
-    // Back to an id an earlier rename left behind: drop that rename rather than loop.
-    if (this.current(to) === from) this.ids.delete(to);
-    this.ids.set(from, to);
+    if (from === to) return undefined;
+    return this.log.push({ from, to }) - 1;
   }
   /*
-   * Drops the rename recorded from `id`, because an event is at it again: a restored
-   * repeat gives the collapsed occurrence its id back, and an undone series move gives
-   * every occurrence its old id back, so an id freshly read from the calendar is live.
+   * Points the rename at `index` to `to` instead, for the references taken before it:
+   * a restored repeat gives the occurrence a cleared repeat collapsed its id back,
+   * while the one event left stays a different event.
    */
-  forget(id: string) {
-    this.ids.delete(id);
+  redirect(index: number, to: string) {
+    const alias = this.log[index];
+    if (alias && "from" in alias) this.log[index] = { from: alias.from, to };
   }
   /*
    * Records that the event `from` came back as `created`: a series under a new
@@ -562,10 +572,12 @@ class EventAliases {
   recreated(from: string, created: ExternalEvent, since?: number) {
     const [identifier, start] = splitId(from);
     const [next, nextStart] = splitId(created.id);
-    if (!start || !nextStart || !created.recurring) return this.renamed(from, created.id);
+    if (!start || !nextStart || !created.recurring) {
+      this.renamed(from, created.id);
+      return;
+    }
     if (identifier === next) return;
-    const moves = this.series.get(identifier) ?? [];
-    this.series.set(identifier, [...moves, { to: next, since: since ?? Number.NEGATIVE_INFINITY }]);
+    this.log.push({ series: identifier, to: next, since: since ?? Number.NEGATIVE_INFINITY });
   }
 }
 
@@ -595,23 +607,23 @@ export function eventWriter(
   const ids = eventAliases(history);
   return {
     create(input: EventInput) {
-      let id: string | undefined;
+      let ref: EventRef | undefined;
       return history.transact("New Event", async (tx) => {
         await tx.external(
           async () => {
             const created = await api.createEvent(input);
             // A redo creates it again under a new id; later steps still hold the old one.
-            if (id) ids.recreated(ids.current(id), created);
-            id = created.id;
+            if (ref) ids.recreated(ids.current(ref), created);
+            ref = ids.ref(created.id);
             await refresh();
           },
           async () => {
             // A repeating event was created as a whole series, so it goes as one.
-            if (id) await api.deleteEvent(ids.current(id), input.recurrence ? "all" : "this");
+            if (ref) await api.deleteEvent(ids.current(ref), input.recurrence ? "all" : "this");
             await refresh();
           },
         );
-        return id;
+        return ref && ids.current(ref);
       });
     },
     update(
@@ -620,29 +632,32 @@ export function eventWriter(
       span: EventSpan,
       label = "Edit Event",
     ) {
-      ids.forget(event.id);
+      const ref = ids.ref(event.id);
       const previous = previousValues(event, patch);
       // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
       const undoSpan: EventSpan =
         span === "this" && patch.recurrence && !event.recurring && !event.recurrence ? "all" : span;
-      // The occurrence id an "all" write collapsed onto the one event left.
-      let collapsed: string | undefined;
+      // The occurrence id an "all" write collapsed onto the one event left, and the log
+      // entry that recorded it.
+      let collapsed: { id: string; entry: number | undefined } | undefined;
       const place = async (input: Partial<EventInput>, span: EventSpan) => {
-        const id = ids.current(event.id);
+        const id = ids.current(ref);
         const written = await api.updateEvent(id, input, span);
         if (span !== "all") {
           // A "this event" edit detaches the occurrence, which can give it a new id.
           ids.renamed(id, written.id);
         } else if (!written.recurring) {
           // Clearing the repeat leaves one event, whichever occurrence was picked.
-          ids.renamed(id, written.id);
-          collapsed = id;
+          collapsed = { id, entry: ids.renamed(id, written.id) };
         } else {
           if (collapsed) {
             // The repeat is back, and with it the occurrence's own id: under a new
             // identifier when the one event was deleted and recreated in between.
-            ids.forget(collapsed);
-            ids.recreated(collapsed, written);
+            const [, start] = splitId(collapsed.id);
+            if (collapsed.entry !== undefined && start) {
+              ids.redirect(collapsed.entry, `${splitId(written.id)[0]}|${start}`);
+            }
+            ids.recreated(collapsed.id, written);
             collapsed = undefined;
           }
           // A one-off given a rule is its series' first occurrence.
@@ -676,18 +691,18 @@ export function eventWriter(
       );
     },
     remove(event: ExternalEvent, span: EventSpan) {
-      ids.forget(event.id);
+      const ref = ids.ref(event.id);
       const input = restoreInput(event, span);
       return history.transact("Delete Event", (tx) =>
         tx.external(
           async () => {
-            await api.deleteEvent(ids.current(event.id), span);
+            await api.deleteEvent(ids.current(ref), span);
             await refresh();
           },
           async () => {
             // Deleted events can't come back under their old id; the undo recreates one.
             const created = await api.createEvent(input);
-            const id = ids.current(event.id);
+            const id = ids.current(ref);
             const since = span === "future" ? Date.parse(splitId(id)[1] ?? event.start) : undefined;
             ids.recreated(id, created, since);
             await refresh();

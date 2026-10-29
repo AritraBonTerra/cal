@@ -227,6 +227,14 @@ describe("applyEntry", () => {
     expect(form.notes).toBe("Agenda\nWith sam@example.com");
   });
 
+  test("invitees already in hand-edited notes aren't added again", () => {
+    const form = applyEntry(
+      draftForm({ notes: "With sam@example.com\nAgenda" }),
+      parseEvent("Team lunch with sam@example.com"),
+    );
+    expect(form.notes).toBe("With sam@example.com\nAgenda");
+  });
+
   test("a typed prefix shows as the form's kind", () => {
     const entry = parseQuickEntry("task Buy stamps", { now: typedAt, surface: "grid" });
     expect(applyEntry(draftForm(), entry).kind).toBe("task");
@@ -693,6 +701,32 @@ describe("eventWriter: ids that change under a series", () => {
   };
   const days = (events: readonly ExternalEvent[]) =>
     events.map((each) => each.start.slice(0, 10)).sort();
+
+  test("an edit to an occurrence that took a moved one's id leaves the move undoable", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    const shift = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 24 * 60 * 60_000));
+    await writer.update(
+      wednesday,
+      { start: shift(wednesday.start), end: shift(wednesday.end) },
+      "all",
+    );
+    // Tuesday's occurrence moved onto Wednesday and took its old id.
+    const live = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!live) throw new Error("no moved Wednesday standup");
+    expect(live.id).toBe(wednesday.id);
+    await writer.update(live, { title: "Wednesday sync" }, "this");
+    await history.undo();
+    await history.undo();
+    expect(days(await titled("Standup"))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+  });
 
   test("undoing an 'all' move made from a later occurrence reaches the moved series", async () => {
     const { history, writer, titled } = setup();
