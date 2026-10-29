@@ -239,6 +239,15 @@ describe("review fixes", () => {
     expect(endAtMinutes(form, 18 * 60)).toEqual(new Date(2026, 10, 4, 18));
   });
 
+  test("an end across two midnights keeps its date when spring DST makes it under a day", () => {
+    // 23:30 Mar 7 to 00:15 Mar 9 in Los Angeles is 23h45m: clocks spring forward Mar 8.
+    const form = draftForm({
+      start: new Date(2026, 2, 7, 23, 30),
+      end: new Date(2026, 2, 9, 0, 15),
+    });
+    expect(endAtMinutes(form, 60)).toEqual(new Date(2026, 2, 9, 1));
+  });
+
   test("the remaining COUNT is counted in the event's zone", () => {
     // Daily at 09:00 UTC from Mar 6 2026, five times. Tests run in Los Angeles time,
     // whose clocks spring forward on Mar 8, so device-zone counting would slip a day.

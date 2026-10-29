@@ -794,9 +794,10 @@ export const formDay = (form: EventForm) =>
 export function endAtMinutes(form: EventForm, minutes: number) {
   const day = formDay(form);
   const endDay = zonedDayKey(form.end, form.timeZone);
-  // Under a day long it's a same-day or overnight event: rebuild from the start's day
-  // and wrap past midnight. A day or more: the end keeps its own date.
-  const multiDay = form.end.getTime() - form.start.getTime() >= DAY;
+  // A day or more long, or across two midnights (shorter than a day over spring DST):
+  // the end keeps its own date. Otherwise it's a same-day or overnight event, rebuilt
+  // from the start's day and wrapped past midnight.
+  const multiDay = form.end.getTime() - form.start.getTime() >= DAY || daysBetween(day, endDay) > 1;
   const base = multiDay ? endDay : day;
   const end = zonedInstant(base, minutes, form.timeZone);
   return end.getTime() <= form.start.getTime() ? new Date(end.getTime() + DAY) : end;
