@@ -1005,6 +1005,33 @@ describe("eventWriter: ids that change under a series", () => {
     expect(back.every((each) => each.start.slice(11, 16) === "09:00")).toBe(true);
   });
 
+  test("a series in another zone moves on that zone's clock", async () => {
+    const { writer, titled } = setup();
+    // Daily at 9:00 in Paris, whose clocks fall back on Oct 25 (Los Angeles: Nov 1).
+    await writer.create({
+      calendarId: "work",
+      title: "Café",
+      start: "2026-10-23T09:00:00+02:00",
+      end: "2026-10-23T09:30:00+02:00",
+      allDay: false,
+      recurrence: "FREQ=DAILY;COUNT=4",
+      timeZone: "Europe/Paris",
+    });
+    const cafes = () => titled("Café", "2026-10-22", "2026-10-30");
+    const saturday = (await cafes()).find((each) => each.start.startsWith("2026-10-24"));
+    if (!saturday) throw new Error("no Saturday café");
+    await writer.update(
+      saturday,
+      { start: "2026-10-25T09:00:00+01:00", end: "2026-10-25T09:30:00+01:00" },
+      "all",
+    );
+    // The series' new first occurrence: Saturday at 9:00 Paris time, one clock day on.
+    // (The fixture lays out later occurrences on the device's clock, so only it is exact.)
+    const [first] = await cafes();
+    expect(first?.start.slice(0, 10)).toBe("2026-10-24");
+    expect(first && zonedMinutes(new Date(first.start), "Europe/Paris")).toBe(9 * 60);
+  });
+
   test("a new rule that drops the picked occurrence can still be undone", async () => {
     const { history, writer, titled } = setup();
     const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));

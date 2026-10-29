@@ -830,3 +830,11 @@ test("pieces never repeat text when a zone sits inside its time", () => {
       .join(""),
   ).toBe(text);
 });
+
+test("links after the first are kept whole, and nothing is read from their paths", () => {
+  const entry = grid("Read https://a.com https://b.com/tomorrow");
+  if (entry.kind !== "event") throw new Error("expected an event");
+  expect(entry.url).toBe("https://a.com");
+  expect(entry.title).toBe("Read https://b.com/tomorrow");
+  expect(entry.tokens.some((token) => token.applied && token.kind === "when")).toBe(false);
+});

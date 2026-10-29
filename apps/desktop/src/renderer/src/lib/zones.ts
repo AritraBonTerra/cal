@@ -1,4 +1,10 @@
-import { type DayKey, fromDayKey, localTimeZone, toDayKey } from "@cal/domain";
+import {
+  type DayKey,
+  fromDayKey,
+  zonedInstant as instantIn,
+  localTimeZone,
+  toDayKey,
+} from "@cal/domain";
 
 /*
  * Time-zone math for the grid. The grid renders in one "primary" zone (the Mac's, a
@@ -82,8 +88,8 @@ export function zonedMinutes(date: Date, zone: string) {
 
 /**
  * The instant at `minutes` after midnight on `day` in `zone`. `minutes` may run past the
- * day in either direction. Two passes resolve the offset, so a time on a DST day lands
- * on the right side of the change; a time in a skipped hour moves forward.
+ * day in either direction. A time on a DST day lands on the right side of the change: a
+ * repeated hour means its first pass, a skipped one moves forward.
  */
 export function zonedInstant(day: DayKey, minutes: number, zone: string) {
   if (isDeviceZone(zone)) {
@@ -91,13 +97,7 @@ export function zonedInstant(day: DayKey, minutes: number, zone: string) {
     date.setMinutes(minutes);
     return date;
   }
-  const [year = 1970, month = 1, date = 1] = day.split("-").map(Number);
-  const wall = Date.UTC(year, month - 1, date, 0, minutes);
-  const offset = (ms: number) => zoneOffset(zone, new Date(ms)) * 60_000;
-  const first = wall - offset(wall);
-  const second = wall - offset(first);
-  // In a skipped hour neither reading keeps its offset; the later one moves forward.
-  return new Date(offset(second) === offset(first) ? second : Math.max(first, second));
+  return new Date(instantIn(day, minutes, zone));
 }
 
 // "PDT", "GMT+5:30", "IST": the zone's short name at `date` in the user's language.

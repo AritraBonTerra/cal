@@ -10,12 +10,12 @@ import {
   addDays,
   atMinute,
   type DayKey,
-  daysBetween,
   expandRule,
-  minuteOfDay,
+  localTimeZone,
   startOfWeek,
   toDayKey,
   toOffsetIso,
+  wallMove,
 } from "@cal/domain";
 import type { LocalStore, NewRow } from "@cal/sync";
 
@@ -178,18 +178,16 @@ export class FixtureCalendar implements CalendarSource {
     const retained = input.recurrence === undefined ? members : members.slice(0, 1);
     for (const member of members) if (!retained.includes(member)) this.drop(member);
     const series = span === "future" && current.series ? `fixture-${this.nextId++}` : undefined;
-    // How new times move each member: whole days plus a change of clock time on the
-    // wall clock, as a calendar re-expands a moved series, so a move holds across DST.
+    // How new times move each member: whole days plus the change of clock time on the
+    // event zone's wall clock, as a calendar re-expands a moved series.
     const moveFor = (key: "start" | "end", time: string | undefined) => {
       if (!time) return undefined;
-      const before = new Date(current[key]);
-      const after = new Date(time);
-      const days = daysBetween(toDayKey(before), toDayKey(after));
-      const minutes = minuteOfDay(after) - minuteOfDay(before);
-      return (instant: string) => {
-        const at = new Date(instant);
-        return toOffsetIso(atMinute(addDays(toDayKey(at), days), minuteOfDay(at) + minutes));
-      };
+      const move = wallMove(
+        new Date(current[key]),
+        new Date(time),
+        current.timeZone ?? localTimeZone(),
+      );
+      return (instant: string) => toOffsetIso(move(new Date(instant)));
     };
     const moveStart = moveFor("start", input.start);
     const moveEnd = moveFor("end", input.end);

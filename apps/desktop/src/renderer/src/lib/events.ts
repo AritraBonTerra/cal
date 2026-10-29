@@ -16,6 +16,7 @@ import {
   ruleCount,
   toDayKey,
   toOffsetIso,
+  wallMove,
   withCount,
 } from "@cal/domain";
 import {
@@ -626,22 +627,6 @@ class EventAliases {
     if (!move && to === identifier) return;
     this.log.push({ series: identifier, to, since, move });
   }
-}
-
-/*
- * `from` → `to` as a move on `zone`'s wall clock: whole days plus a change of clock time.
- * A calendar re-expands a moved series this way, so each occurrence keeps its clock
- * time across a DST change rather than moving by the same number of hours.
- */
-function wallMove(from: Date, to: Date, zone: string) {
-  const days = daysBetween(zonedDayKey(from, zone), zonedDayKey(to, zone));
-  const minutes = zonedMinutes(to, zone) - zonedMinutes(from, zone);
-  return (instant: Date) =>
-    zonedInstant(
-      addDays(zonedDayKey(instant, zone), days),
-      zonedMinutes(instant, zone) + minutes,
-      zone,
-    );
 }
 
 // Whether two ids name the same event: the same identifier, and starts at one instant.

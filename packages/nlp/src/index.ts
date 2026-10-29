@@ -9,6 +9,7 @@ import {
   startOfWeek,
   toDayKey,
   weekday,
+  zonedInstant,
 } from "@cal/domain";
 import * as chrono from "chrono-node/en";
 import {
@@ -30,7 +31,7 @@ import type {
   Token,
   TokenKind,
 } from "./types";
-import { isoIn, wallDate, zonedInstant } from "./zones";
+import { isoIn, wallDate } from "./zones";
 
 export { type Piece, pieces } from "./pieces";
 export type * from "./types";
@@ -164,13 +165,14 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   }
 
   // 2. Sigils: URLs, attendees, lists, tags, estimates, priorities.
-  // An event has one URL field: the first link fills it, any others stay in the title.
+  // An event has one URL field: the first link fills it. Any others are claimed too, so
+  // no later pass reads a date out of their paths, but stay in the title as text.
   let url: string | undefined;
-  const link = /https?:\/\/[^\s]+/i.exec(s.masked);
-  if (link) {
-    url = link[0];
-    const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(url);
-    s.claim("url", link.index, link.index + url.length, video ? "Video call" : "Link");
+  for (const m of s.masked.matchAll(/https?:\/\/[^\s]+/gi)) {
+    const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(m[0]);
+    const token = s.claim("url", m.index, m.index + m[0].length, video ? "Video call" : "Link");
+    if (url === undefined) url = m[0];
+    else token.applied = false;
   }
   const attendees: string[] = [];
   for (const m of s.masked.matchAll(/(?:\bwith\s+|\+)([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/gi)) {
