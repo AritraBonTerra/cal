@@ -93,8 +93,11 @@ export function zonedInstant(day: DayKey, minutes: number, zone: string) {
   }
   const [year = 1970, month = 1, date = 1] = day.split("-").map(Number);
   const wall = Date.UTC(year, month - 1, date, 0, minutes);
-  const guess = new Date(wall - zoneOffset(zone, new Date(wall)) * 60_000);
-  return new Date(wall - zoneOffset(zone, guess) * 60_000);
+  const offset = (ms: number) => zoneOffset(zone, new Date(ms)) * 60_000;
+  const first = wall - offset(wall);
+  const second = wall - offset(first);
+  // In a skipped hour neither reading keeps its offset; the later one moves forward.
+  return new Date(offset(second) === offset(first) ? second : Math.max(first, second));
 }
 
 // "PDT", "GMT+5:30", "IST": the zone's short name at `date` in the user's language.

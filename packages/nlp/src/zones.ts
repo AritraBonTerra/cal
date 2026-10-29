@@ -71,9 +71,11 @@ export function offsetMinutes(ms: number, zone: string) {
 export function zonedInstant(day: DayKey, minutes: number, zone: string) {
   const [year = 1970, month = 1, date = 1] = day.split("-").map(Number);
   const wall = Date.UTC(year, month - 1, date, 0, minutes);
-  let guess = wall - offsetMinutes(wall, zone) * 60_000;
-  guess = wall - offsetMinutes(guess, zone) * 60_000;
-  return guess;
+  const offset = (ms: number) => offsetMinutes(ms, zone) * 60_000;
+  const first = wall - offset(wall);
+  const second = wall - offset(first);
+  // In a skipped hour neither reading keeps its offset; the later one moves forward.
+  return offset(second) === offset(first) ? second : Math.max(first, second);
 }
 
 const pad = (value: number) => String(value).padStart(2, "0");

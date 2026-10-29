@@ -1,6 +1,6 @@
-import type { Token } from "@cal/nlp";
+import { pieces, type Token } from "@cal/nlp";
 import { type KeyboardEvent as ReactKeyboardEvent, type RefObject, useEffect, useRef } from "react";
-import { backspaceTarget, isHighlighted, pieces, tokenKey } from "../lib/entryText";
+import { backspaceTarget, isHighlighted, tokenKey } from "../lib/entryText";
 
 /*
  * A one-line text field whose recognized spans light up (research/10 §4.5 and §4.7).

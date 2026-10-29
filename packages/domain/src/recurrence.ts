@@ -3,7 +3,8 @@ import { addDays, atMinute, type DayKey, daysInMonth, fromDayKey, toDayKey } fro
 /*
  * Just enough RRULE (RFC 5545 bodies without the "RRULE:" prefix) to expand a series:
  * FREQ with INTERVAL, BYDAY (with ordinals like "1FR" / "-1FR" for monthly rules),
- * BYMONTHDAY (incl. -1), COUNT and UNTIL — every rule Cal writes. Fixture calendars
+ * BYMONTHDAY (incl. -1), COUNT, UNTIL and WKST (weeks start Monday by default, as in
+ * RFC 5545) — every rule Cal writes. Fixture calendars
  * store a series as one row per occurrence, and undoing a delete needs an occurrence's
  * place in its series. BYMONTH, BYSETPOS and the like are ignored.
  */
@@ -44,6 +45,9 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
   const untilText = parts.get("UNTIL");
   const until = untilText ? untilInstant(untilText) : undefined;
   const byDay = parts.get("BYDAY")?.split(",") ?? [WEEKDAYS[start.getDay()] ?? "MO"];
+  const weekStart = Math.max(0, WEEKDAYS.indexOf(parts.get("WKST") ?? "MO"));
+  // Days from the start of the start's week, so INTERVAL counts whole RRULE weeks.
+  const intoWeek = (start.getDay() - weekStart + 7) % 7;
   const first = toDayKey(start);
   const length = end.getTime() - start.getTime();
   const minutes = start.getHours() * 60 + start.getMinutes();
@@ -58,7 +62,7 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
       freq === "DAILY"
         ? offset % interval === 0
         : freq === "WEEKLY"
-          ? Math.floor((offset + start.getDay()) / 7) % interval === 0 &&
+          ? Math.floor((offset + intoWeek) / 7) % interval === 0 &&
             byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
           : freq === "MONTHLY"
             ? months % interval === 0 && monthlyDay(parts, key, first)

@@ -208,6 +208,25 @@ func apply(_ params: [String: Any], to event: EKEvent) throws {
   }
 }
 
+// `date` moved as `old` moved to `new` in `zone`: by whole days plus the change of clock
+// time, so a series moved across a DST change keeps its clock time.
+func wallMove(_ date: Date, from old: Date, to new: Date, in zone: TimeZone) -> Date {
+  var calendar = Calendar(identifier: .gregorian)
+  calendar.timeZone = zone
+  let days =
+    calendar.dateComponents(
+      [.day], from: calendar.startOfDay(for: old), to: calendar.startOfDay(for: new)
+    ).day ?? 0
+  let clock = { (date: Date) -> Int in
+    let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
+    return (parts.hour ?? 0) * 3600 + (parts.minute ?? 0) * 60 + (parts.second ?? 0)
+  }
+  var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+  parts.day = (parts.day ?? 1) + days
+  parts.second = (parts.second ?? 0) + clock(new) - clock(old)
+  return calendar.date(from: parts) ?? date.addingTimeInterval(new.timeIntervalSince(old))
+}
+
 func handle(_ method: String, _ params: [String: Any], reply: @escaping (Result<Any, Error>) -> Void) {
   do {
     switch method {
@@ -239,15 +258,19 @@ func handle(_ method: String, _ params: [String: Any], reply: @escaping (Result<
       let event = try target(id, params["span"])
       var input = params["input"] as? [String: Any] ?? [:]
       if (params["span"] as? String) == "all" {
-        // New times for one occurrence become a shift of the whole series.
+        // New times for one occurrence become the same move of the whole series, on the
+        // event's wall clock.
         let occurrence = try findEvent(id)
+        let zone = event.timeZone ?? TimeZone.current
         if input["start"] != nil {
-          let delta = try parseDate(input["start"]).timeIntervalSince(occurrence.startDate)
-          input["start"] = isoIn.string(from: event.startDate.addingTimeInterval(delta))
+          let start = try parseDate(input["start"])
+          input["start"] = isoIn.string(
+            from: wallMove(event.startDate, from: occurrence.startDate, to: start, in: zone))
         }
         if input["end"] != nil {
-          let delta = try parseDate(input["end"]).timeIntervalSince(occurrence.endDate)
-          input["end"] = isoIn.string(from: event.endDate.addingTimeInterval(delta))
+          let end = try parseDate(input["end"])
+          input["end"] = isoIn.string(
+            from: wallMove(event.endDate, from: occurrence.endDate, to: end, in: zone))
         }
       }
       try apply(input, to: event)

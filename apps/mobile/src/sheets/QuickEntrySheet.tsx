@@ -1,5 +1,5 @@
 import { useActions } from "@cal/app-core";
-import { parseQuickEntry, type TokenKind } from "@cal/nlp";
+import { parseQuickEntry, pieces, type TokenKind } from "@cal/nlp";
 import { router } from "expo-router";
 import {
   Bell,
@@ -71,15 +71,12 @@ export function QuickEntrySheet({
     await actions.createFromEntry(entry, newTaskIn(list, today));
   };
 
-  // The text as styled runs: recognized tokens get the accent tint.
-  const pieces: { text: string; kind?: TokenKind }[] = [];
-  let cursor = 0;
-  for (const token of entry.tokens.filter((each) => each.applied)) {
-    if (token.start > cursor) pieces.push({ text: text.slice(cursor, token.start) });
-    pieces.push({ text: text.slice(token.start, token.end), kind: token.kind });
-    cursor = token.end;
-  }
-  if (cursor < text.length) pieces.push({ text: text.slice(cursor) });
+  // The text as styled runs: recognized tokens get the accent tint. A token nested in
+  // another (a zone inside its time) is skipped, so no text shows twice.
+  const runs = pieces(
+    text,
+    entry.tokens.filter((each) => each.applied),
+  );
 
   return (
     <View className="flex-1 bg-raised">
@@ -104,11 +101,11 @@ export function QuickEntrySheet({
           multiline
         >
           <Text className="text-title-3 text-ink">
-            {pieces.map((piece, index) => (
+            {runs.map((piece, index) => (
               <Text
                 // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional text.
                 key={index}
-                className={piece.kind ? "bg-accent-soft text-accent" : ""}
+                className={piece.token ? "bg-accent-soft text-accent" : ""}
               >
                 {piece.text}
               </Text>

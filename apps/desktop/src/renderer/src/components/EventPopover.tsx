@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
 import type { Attendee } from "@cal/calendar-source";
-import { addDays, type DayKey, fromDayKey, toDayKey } from "@cal/domain";
+import { addDays, fromDayKey, toDayKey } from "@cal/domain";
 import { parseQuickEntry, type QuickEntry, type Token } from "@cal/nlp";
 import {
   AlignLeft,
@@ -31,16 +31,18 @@ import { parseClock, parseDurationText } from "../lib/clockText";
 import { type Literal, shiftLiterals } from "../lib/entryText";
 import {
   closeEditor,
+  datePatch,
   deleteWithUndo,
   type EditorState,
+  type EventForm,
   editorStore,
   endAtMinutes,
   eventPatch,
   eventWriter,
   formDay,
-  movedToDay,
   parseDraft,
   patchForm,
+  setFormKind,
   setFormText,
   spanFor,
   spanStore,
@@ -178,15 +180,18 @@ function Popover({ editor }: { editor: EditorState }) {
   }, [place.ready, readOnly]);
 
   // New titles parse live; an existing event's title is text, never re-read.
+  const draftContext = () => ({
+    now: now(),
+    calendars: writable,
+    projects: data.projects,
+    weekStartsOn: account.weekStart,
+    defaultEventMin: account.eventMinutes,
+    canCreateEvents,
+  });
   const parse = (text: string, literals: readonly Literal[]) =>
-    parseDraft(editor, text, literals, {
-      now: now(),
-      calendars: writable,
-      projects: data.projects,
-      weekStartsOn: account.weekStart,
-      defaultEventMin: account.eventMinutes,
-      canCreateEvents,
-    });
+    parseDraft(editor, text, literals, draftContext());
+  const setKind = (kind: EventForm["kind"]) =>
+    setFormKind(kind, creating ? draftContext() : undefined);
   const entry: QuickEntry | null = creating ? parse(form.text, form.literals) : null;
   const tokens: readonly Token[] = entry?.tokens ?? [];
   const zone = form.timeZone;
@@ -213,7 +218,6 @@ function Popover({ editor }: { editor: EditorState }) {
     patchForm({ start, end: new Date(start.getTime() + length * MINUTE) });
   };
   const setEnd = (minutes: number) => patchForm({ end: endAtMinutes(form, minutes) });
-  const setDay = (next: DayKey) => patchForm(movedToDay(form, next));
   const timed = useRef({ start: form.start, end: form.end });
   const setAllDay = (allDay: boolean) => {
     if (allDay) {
@@ -353,9 +357,8 @@ function Popover({ editor }: { editor: EditorState }) {
     const typing = inTextField(keyboard.target);
     if (keyboard.key === "Escape") dismiss();
     else if (keyboard.key === "Enter" && meta) void save();
-    else if (meta && keyboard.key === "1" && creating && canCreateEvents)
-      patchForm({ kind: "event" });
-    else if (meta && keyboard.key === "2" && creating) patchForm({ kind: "task" });
+    else if (meta && keyboard.key === "1" && creating && canCreateEvents) setKind("event");
+    else if (meta && keyboard.key === "2" && creating) setKind("task");
     else if (keyboard.key === "Backspace" && (meta || !typing) && !creating) void remove();
     else if (!meta) {
       // Plain keys belong to the fields; never to the grid's single-letter shortcuts.
@@ -397,7 +400,7 @@ function Popover({ editor }: { editor: EditorState }) {
                 { value: "event", label: "Event" },
                 { value: "task", label: "To-do" },
               ]}
-              onChange={(kind) => patchForm({ kind })}
+              onChange={setKind}
               label="Kind"
             />
             <span className="flex gap-1 text-caption text-ink-3">
@@ -499,12 +502,8 @@ function Popover({ editor }: { editor: EditorState }) {
               }
               onCommit={(text) => {
                 const parsed = parseQuickEntry(text, { now: now(), kind: "event", timeZone: zone });
-                const dated = parsed.tokens.some(
-                  (token) =>
-                    token.applied && (token.kind === "when" || token.kind === "date_range"),
-                );
-                if (!dated) return;
-                setDay(parsed.allDay ? parsed.start : zonedDayKey(new Date(parsed.start), zone));
+                const patch = datePatch(form, parsed);
+                if (patch) patchForm(patch);
               }}
               label="Date"
               width={200}

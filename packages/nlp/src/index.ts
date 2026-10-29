@@ -32,6 +32,7 @@ import type {
 } from "./types";
 import { isoIn, wallDate, zonedInstant } from "./zones";
 
+export { type Piece, pieces } from "./pieces";
 export type * from "./types";
 
 /*
@@ -163,11 +164,13 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   }
 
   // 2. Sigils: URLs, attendees, lists, tags, estimates, priorities.
+  // An event has one URL field: the first link fills it, any others stay in the title.
   let url: string | undefined;
-  for (const m of s.masked.matchAll(/https?:\/\/[^\s]+/gi)) {
-    url ??= m[0];
-    const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(m[0]);
-    s.claim("url", m.index, m.index + m[0].length, video ? "Video call" : "Link");
+  const link = /https?:\/\/[^\s]+/i.exec(s.masked);
+  if (link) {
+    url = link[0];
+    const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(url);
+    s.claim("url", link.index, link.index + url.length, video ? "Video call" : "Link");
   }
   const attendees: string[] = [];
   for (const m of s.masked.matchAll(/(?:\bwith\s+|\+)([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/gi)) {

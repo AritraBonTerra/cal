@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ParseContext, parseQuickEntry, type QuickEntry } from "../src";
+import { type ParseContext, parseQuickEntry, pieces, type QuickEntry } from "../src";
 
 // Wednesday 2026-10-28 10:40 in Los Angeles (PDT); clocks fall back on Sun Nov 1.
 // `bun run test` runs this file with TZ=America/Los_Angeles.
@@ -811,4 +811,22 @@ describe("parseQuickEntry: review cases", () => {
       expect(() => quick(text)).not.toThrow();
     }
   });
+});
+
+test("an event takes its first link; other links stay in the title", () => {
+  const entry = grid("Compare https://example.com/a https://example.com/b tomorrow 3pm");
+  if (entry.kind !== "event") throw new Error("expected an event");
+  expect(entry.url).toBe("https://example.com/a");
+  expect(entry.title).toBe("Compare https://example.com/b");
+});
+
+test("pieces never repeat text when a zone sits inside its time", () => {
+  const text = "Call 9am EST tomorrow";
+  const entry = quick(text);
+  const applied = entry.tokens.filter((token) => token.applied);
+  expect(
+    pieces(text, applied)
+      .map((piece) => piece.text)
+      .join(""),
+  ).toBe(text);
 });

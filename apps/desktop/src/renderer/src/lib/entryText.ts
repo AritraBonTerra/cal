@@ -3,7 +3,7 @@ import type { Token, TokenKind } from "@cal/nlp";
 /*
  * Shared pieces of the two natural-language title fields (Quick Entry and the event
  * popover): the un-parsed spans ("literals") that follow the text as it's edited, the
- * leading "event " / "task " prefix, and the text cut into highlighted pieces.
+ * leading "event " / "task " prefix, and which tokens show highlighted.
  */
 
 export interface Literal {
@@ -44,28 +44,6 @@ export function prefixKind(text: string): "event" | "task" | undefined {
   const match = /^\s*(task|todo|to-do|reminder|event)\s+/i.exec(text);
   if (!match) return undefined;
   return (match[1] ?? "").toLowerCase() === "event" ? "event" : "task";
-}
-
-export interface Piece {
-  text: string;
-  token?: Token;
-}
-
-/**
- * `text` cut into plain runs and token spans, in order. Tokens that overlap an earlier
- * one are skipped, so a parser hiccup can never duplicate text.
- */
-export function pieces(text: string, tokens: readonly Token[]): Piece[] {
-  const out: Piece[] = [];
-  let cursor = 0;
-  for (const token of [...tokens].sort((a, b) => a.start - b.start)) {
-    if (token.start < cursor || token.end > text.length) continue;
-    if (token.start > cursor) out.push({ text: text.slice(cursor, token.start) });
-    out.push({ text: text.slice(token.start, token.end), token });
-    cursor = token.end;
-  }
-  if (cursor < text.length) out.push({ text: text.slice(cursor) });
-  return out;
 }
 
 // A stable key for a recognized span, to tell newly recognized tokens from older ones.

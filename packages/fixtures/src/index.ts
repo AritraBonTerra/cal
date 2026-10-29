@@ -10,7 +10,9 @@ import {
   addDays,
   atMinute,
   type DayKey,
+  daysBetween,
   expandRule,
+  minuteOfDay,
   startOfWeek,
   toDayKey,
   toOffsetIso,
@@ -176,22 +178,32 @@ export class FixtureCalendar implements CalendarSource {
     const retained = input.recurrence === undefined ? members : members.slice(0, 1);
     for (const member of members) if (!retained.includes(member)) this.drop(member);
     const series = span === "future" && current.series ? `fixture-${this.nextId++}` : undefined;
-    const shift = (key: "start" | "end", time: string) =>
-      Date.parse(time) - Date.parse(current[key]);
+    // How new times move each member: whole days plus a change of clock time on the
+    // wall clock, as a calendar re-expands a moved series, so a move holds across DST.
+    const moveFor = (key: "start" | "end", time: string | undefined) => {
+      if (!time) return undefined;
+      const before = new Date(current[key]);
+      const after = new Date(time);
+      const days = daysBetween(toDayKey(before), toDayKey(after));
+      const minutes = minuteOfDay(after) - minuteOfDay(before);
+      return (instant: string) => {
+        const at = new Date(instant);
+        return toOffsetIso(atMinute(addDays(toDayKey(at), days), minuteOfDay(at) + minutes));
+      };
+    };
+    const moveStart = moveFor("start", input.start);
+    const moveEnd = moveFor("end", input.end);
     // A member's id under `series`: like EventKit's occurrence date, its original start
-    // (not a detached occurrence's own) moved by the span's shift.
+    // (not a detached occurrence's own) moved like the span.
     const renamed = (series: string, member: Stored) => {
-      const original = Date.parse(member.id.split("|")[1] ?? member.start);
-      const moved = input.start ? shift("start", input.start) : 0;
-      return occurrenceId(series, new Date(original + moved));
+      const original = toOffsetIso(new Date(member.id.split("|")[1] ?? member.start));
+      return `${series}|${moveStart ? moveStart(original) : original}`;
     };
     let written: Stored | undefined;
     for (const member of retained) {
       const next: Stored = { ...member, ...input, ...blankToUndefined(input) };
-      if (input.start)
-        next.start = toOffsetIso(new Date(Date.parse(member.start) + shift("start", input.start)));
-      if (input.end)
-        next.end = toOffsetIso(new Date(Date.parse(member.end) + shift("end", input.end)));
+      if (moveStart) next.start = moveStart(member.start);
+      if (moveEnd) next.end = moveEnd(member.end);
       // Like a device calendar, a series' occurrences are named by their start: moving
       // the series renames each one. A detached ("this") occurrence keeps its name.
       if (input.start && span !== "this" && next.series && next.id.includes("|"))

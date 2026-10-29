@@ -440,14 +440,27 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Calendar",
         keys: ["c"],
         aliases: ["create event", "add event", "meeting"],
-        run: () => {
-          const { calendars, device, account, events, data, gridToday, zone } = latest.current;
+        run: async () => {
+          // The days around now are fetched here: the view may be showing another week,
+          // and a meeting that began yesterday still counts.
+          const from = now();
+          const today = toDayKey(from);
+          const events = await window.cal.calendar
+            .events(
+              toOffsetIso(fromDayKey(addDays(today, -1))),
+              toOffsetIso(fromDayKey(addDays(today, 3))),
+            )
+            .catch(() => latest.current.events);
+          const { calendars, device, account, data, gridToday, zone } = latest.current;
           const calendar = defaultCalendar(calendars, device.defaultCalendar);
           const busy = [
-            ...events.filter((event) => event.busy && !event.allDay),
+            ...events.filter(
+              (event) =>
+                event.busy && !event.allDay && !device.freeCalendars.includes(event.calendarId),
+            ),
             ...data.blocks.map((block) => ({ start: block.start_at, end: block.end_at })),
           ].map((span) => ({ start: new Date(span.start), end: new Date(span.end) }));
-          const slot = nextFreeSlot(now(), account.eventMinutes, busy);
+          const slot = nextFreeSlot(from, account.eventMinutes, busy);
           closeOverlay();
           // The slot's day in the grid's zone: while travelling, it may be "tomorrow" here.
           if (!latest.current.days.includes(zonedDayKey(slot.start, zone))) goToday(gridToday);

@@ -60,3 +60,23 @@ test("monthly and yearly rules honor INTERVAL, ordinals and month days", () => {
   expect(days("FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3", at(1, 31))).toEqual(["1/31", "2/28", "3/31"]);
   expect(days("FREQ=YEARLY;INTERVAL=2;COUNT=2", at(5, 16), 1500)).toEqual(["5/16", "5/16"]);
 });
+
+test("weekly INTERVAL counts weeks from Monday unless WKST says otherwise", () => {
+  const start = new Date(2026, 10, 1, 9); // a Sunday
+  const days = (rule: string) =>
+    expandRule(rule, start, new Date(start.getTime() + 3_600_000), 60).map(
+      (each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`,
+    );
+  expect(days("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;COUNT=4")).toEqual([
+    "11/1",
+    "11/9",
+    "11/15",
+    "11/23",
+  ]);
+  expect(days("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;WKST=SU;COUNT=4")).toEqual([
+    "11/1",
+    "11/2",
+    "11/15",
+    "11/16",
+  ]);
+});

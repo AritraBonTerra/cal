@@ -3,17 +3,13 @@ import { type DataSource, History } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
 import { addDays, fromDayKey, toOffsetIso } from "@cal/domain";
 import { FixtureCalendar } from "@cal/fixtures";
-import { parseQuickEntry } from "@cal/nlp";
+import { parseQuickEntry, pieces } from "@cal/nlp";
 import { parseClock, parseDurationText } from "../src/renderer/src/lib/clockText";
-import {
-  backspaceTarget,
-  pieces,
-  prefixKind,
-  shiftLiterals,
-} from "../src/renderer/src/lib/entryText";
+import { backspaceTarget, prefixKind, shiftLiterals } from "../src/renderer/src/lib/entryText";
 import {
   applyEntry,
   closeEditor,
+  datePatch,
   deleteWithUndo,
   type EventForm,
   editorStore,
@@ -29,12 +25,14 @@ import {
   patchForm,
   previousValues,
   restoreInput,
+  setFormKind,
+  setFormText,
   taskEntry,
 } from "../src/renderer/src/lib/events";
 import { mapsUrl } from "../src/renderer/src/lib/maps";
 import { describeRule, repeatPresets } from "../src/renderer/src/lib/recurrence";
 import { toasts } from "../src/renderer/src/lib/toast";
-import { deviceZone, zonedDayKey, zonedMinutes } from "../src/renderer/src/lib/zones";
+import { deviceZone, zonedDayKey, zonedInstant, zonedMinutes } from "../src/renderer/src/lib/zones";
 
 /*
  * Pure helpers behind the event popover and Quick Entry: typed times, literal spans
@@ -256,6 +254,32 @@ describe("review fixes", () => {
     expect(endAtMinutes(form, 60)).toEqual(new Date(2026, 2, 9, 1));
   });
 
+  test("an overnight end wraps to the next calendar day across spring DST", () => {
+    // Clocks spring forward on Mar 8: 3am that night is 3am, not 24 elapsed hours on.
+    const form = draftForm({ start: new Date(2026, 2, 7, 23), end: new Date(2026, 2, 8, 1) });
+    expect(endAtMinutes(form, 3 * 60)).toEqual(new Date(2026, 2, 8, 3));
+  });
+
+  test("a time in another zone's skipped hour moves forward", () => {
+    // 2:30 on Mar 8 doesn't exist in New York; it reads as 3:30 EDT.
+    expect(zonedInstant("2026-03-08", 150, "America/New_York").toISOString()).toBe(
+      "2026-03-08T07:30:00.000Z",
+    );
+  });
+
+  test("an all-day draft given a date keeps floating days", () => {
+    const base = draftForm({
+      allDay: true,
+      start: fromDayKey("2026-10-29"),
+      end: fromDayKey("2026-10-31"),
+      timeZone: "Asia/Tokyo",
+    });
+    const form = applyEntry(base, parseEvent("Holiday Nov 5", "Asia/Tokyo"));
+    expect(form.allDay).toBe(true);
+    expect(form.start).toEqual(fromDayKey("2026-11-05"));
+    expect(form.end).toEqual(fromDayKey("2026-11-07"));
+  });
+
   test("the remaining COUNT is counted in the event's zone", () => {
     // Daily at 09:00 UTC from Mar 6 2026, five times. Tests run in Los Angeles time,
     // whose clocks spring forward on Mar 8, so device-zone counting would slip a day.
@@ -302,6 +326,34 @@ describe("formDay", () => {
   });
 });
 
+describe("datePatch", () => {
+  const read = (text: string) => parseQuickEntry(text, { now: typedAt, kind: "event" });
+  test("a range typed on an all-day event sets both ends", () => {
+    const form = draftForm({
+      allDay: true,
+      start: fromDayKey("2026-11-20"),
+      end: fromDayKey("2026-11-23"),
+    });
+    expect(datePatch(form, read("Fri, Nov 20 – Tue, Nov 24"))).toEqual({
+      start: fromDayKey("2026-11-20"),
+      end: fromDayKey("2026-11-25"),
+    });
+  });
+
+  test("a single date moves the event and keeps its length", () => {
+    const form = draftForm({
+      allDay: true,
+      start: fromDayKey("2026-11-20"),
+      end: fromDayKey("2026-11-23"),
+    });
+    expect(datePatch(form, read("Dec 1"))).toEqual({
+      start: fromDayKey("2026-12-01"),
+      end: fromDayKey("2026-12-04"),
+    });
+    expect(datePatch(form, read("lunch"))).toBeUndefined();
+  });
+});
+
 describe("parseDraft", () => {
   const context = {
     now: typedAt,
@@ -317,6 +369,21 @@ describe("parseDraft", () => {
     if (!editor) throw new Error("no draft");
     return editor;
   };
+
+  test("switching kinds reads the title again as the new kind", () => {
+    const editor = open(deviceZone);
+    const text = "Read https://example.com";
+    setFormText(text, [], parseDraft(editor, text, [], context));
+    expect(editorStore.get().editor?.form.title).toBe("Read");
+    setFormKind("task", context);
+    const switched = editorStore.get().editor?.form;
+    expect(switched?.kind).toBe("task");
+    expect(switched?.title).toBe("Read https://example.com");
+    // New drafts open as the last kind chosen; leave it as the other tests expect.
+    setFormKind("event", context);
+    expect(editorStore.get().editor?.form.title).toBe("Read");
+    closeEditor();
+  });
 
   test("reads times without a zone in the form's zone", () => {
     const editor = open("Asia/Tokyo");
@@ -895,6 +962,47 @@ describe("eventWriter: ids that change under a series", () => {
     await history.undo();
     await history.undo();
     expect((await standupOn("2026-10-29")).start.slice(11, 16)).toBe("09:30");
+  });
+
+  test("a series moved across DST keeps its clock time, and older steps follow it", async () => {
+    const { history, writer, titled } = setup();
+    // Daily at 9:00 in Los Angeles from Oct 30; clocks fall back on Nov 1.
+    await writer.create({
+      calendarId: "work",
+      title: "Walk",
+      start: "2026-10-30T09:00:00-07:00",
+      end: "2026-10-30T09:30:00-07:00",
+      allDay: false,
+      recurrence: "FREQ=DAILY;COUNT=5",
+    });
+    const walkOn = async (day: string) => {
+      const found = (await titled("Walk", "2026-10-29", "2026-11-06")).find((each) =>
+        each.start.startsWith(day),
+      );
+      if (!found) throw new Error(`no walk on ${day}`);
+      return found;
+    };
+    await writer.update(await walkOn("2026-11-03"), { title: "Long walk" }, "this");
+    // Saturday's walk moved to Sunday at 9:00: 25 hours later, but one day on the clock.
+    const saturday = await walkOn("2026-10-31");
+    await writer.update(
+      saturday,
+      { start: "2026-11-01T09:00:00-08:00", end: "2026-11-01T09:30:00-08:00" },
+      "all",
+    );
+    const moved = await titled("Walk", "2026-10-29", "2026-11-06");
+    expect(moved.map((each) => each.start.slice(11, 16))).toEqual(Array(4).fill("09:00"));
+    await history.undo();
+    await history.undo();
+    const back = await titled("Walk", "2026-10-29", "2026-11-06");
+    expect(days(back)).toEqual([
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+      "2026-11-03",
+    ]);
+    expect(back.every((each) => each.start.slice(11, 16) === "09:00")).toBe(true);
   });
 
   test("a new rule that drops the picked occurrence can still be undone", async () => {

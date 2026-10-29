@@ -177,6 +177,19 @@ export function patchForm(patch: Partial<EventForm>) {
   if (patch.kind) lastKind = patch.kind;
 }
 
+/*
+ * Switches a draft between event and to-do. With a context (a new draft) the title is
+ * read again as the new kind, so what only one kind keeps, like a URL or a deadline,
+ * goes back into the title or out to its field.
+ */
+export function setFormKind(kind: EventForm["kind"], context?: DraftContext) {
+  patchForm({ kind });
+  const { editor } = editorStore.get();
+  if (!editor || !context || !editor.base.text) return;
+  const { text, literals } = editor.base;
+  setFormText(text, literals, parseDraft(editor, text, literals, context));
+}
+
 // A new title text and its parse: the parsed fields lay over the slot and manual edits.
 export function setFormText(text: string, literals: Literal[], entry: QuickEntry | null) {
   editorStore.set(({ editor }) => {
@@ -259,6 +272,11 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
       form.allDay = true;
       form.start = fromDayKey(entry.start);
       form.end = fromDayKey(entry.end);
+    } else if (entry.allDay && hasDate && base.allDay) {
+      // An all-day draft moved to "tomorrow": the same number of floating days from there.
+      const days = daysBetween(toDayKey(base.start), toDayKey(base.end));
+      form.start = fromDayKey(entry.start);
+      form.end = fromDayKey(addDays(entry.start, Math.max(1, days)));
     } else if (entry.allDay && hasDate) {
       // "tomorrow": the same time of day, a different day.
       form.start = zonedInstant(entry.start, zonedMinutes(base.start, zone), zone);
@@ -514,7 +532,7 @@ function remainingRule(event: ExternalEvent) {
  * `old|start` becomes `new|start`, so each occurrence keeps its identity. A "future"
  * restore applies only from the deleted occurrence on; the earlier ones stay under
  * the old identifier. A series moved by an "all" edit is aliased as a whole too, every
- * start shifted by the same amount. Starts compare as instants, since a calendar can
+ * start moved alike on the wall clock. Starts compare as instants, since a calendar can
  * spell one two ways.
  */
 const aliasesFor = new WeakMap<History, EventAliases>();
@@ -522,8 +540,8 @@ const aliasesFor = new WeakMap<History, EventAliases>();
 type Alias =
   | { from: string; to: string }
   // Occurrences of `series` starting at `since` or later are now under identifier `to`,
-  // their starts `shift` ms later.
-  | { series: string; to: string; since: number; shift: number }
+  // their starts moved by `move` when the series' times changed.
+  | { series: string; to: string; since: number; move?: (instant: Date) => Date }
   // Every occurrence of `collapse` is now the one event `to`: its repeat was cleared.
   | { collapse: string; to: string };
 
@@ -554,7 +572,7 @@ class EventAliases {
         continue;
       }
       if (identifier === alias.series && start && Date.parse(start) >= alias.since) {
-        const moved = alias.shift ? toOffsetIso(new Date(Date.parse(start) + alias.shift)) : start;
+        const moved = alias.move ? toOffsetIso(alias.move(new Date(start))) : start;
         current = `${alias.to}|${moved}`;
       }
     }
@@ -580,12 +598,7 @@ class EventAliases {
   restored(index: number, identifier: string) {
     const alias = this.log[index];
     if (!alias || !("collapse" in alias)) return;
-    this.log[index] = {
-      series: alias.collapse,
-      to: identifier,
-      since: Number.NEGATIVE_INFINITY,
-      shift: 0,
-    };
+    this.log[index] = { series: alias.collapse, to: identifier, since: Number.NEGATIVE_INFINITY };
   }
   /*
    * Records that the event `from` came back as `created`: a series under a new
@@ -600,19 +613,35 @@ class EventAliases {
       return;
     }
     if (identifier === next) return;
-    this.log.push({
-      series: identifier,
-      to: next,
-      since: since ?? Number.NEGATIVE_INFINITY,
-      shift: 0,
-    });
+    this.log.push({ series: identifier, to: next, since: since ?? Number.NEGATIVE_INFINITY });
   }
   // Records that the occurrences of series `identifier` from `since` on are now under
-  // `to`, each `shift` ms later: a moved series, or the part a "future" edit split off.
-  moved(identifier: string, shift: number, to = identifier, since = Number.NEGATIVE_INFINITY) {
-    if (shift === 0 && to === identifier) return;
-    this.log.push({ series: identifier, to, since, shift });
+  // `to`, each moved by `move`: a moved series, or the part a "future" edit split off.
+  moved(
+    identifier: string,
+    move: ((instant: Date) => Date) | undefined,
+    to = identifier,
+    since = Number.NEGATIVE_INFINITY,
+  ) {
+    if (!move && to === identifier) return;
+    this.log.push({ series: identifier, to, since, move });
   }
+}
+
+/*
+ * `from` → `to` as a move on `zone`'s wall clock: whole days plus a change of clock time.
+ * A calendar re-expands a moved series this way, so each occurrence keeps its clock
+ * time across a DST change rather than moving by the same number of hours.
+ */
+function wallMove(from: Date, to: Date, zone: string) {
+  const days = daysBetween(zonedDayKey(from, zone), zonedDayKey(to, zone));
+  const minutes = zonedMinutes(to, zone) - zonedMinutes(from, zone);
+  return (instant: Date) =>
+    zonedInstant(
+      addDays(zonedDayKey(instant, zone), days),
+      zonedMinutes(instant, zone) + minutes,
+      zone,
+    );
 }
 
 // Whether two ids name the same event: the same identifier, and starts at one instant.
@@ -708,21 +737,24 @@ export function eventWriter(
         if (collapse !== undefined && restored) ids.restored(collapse, splitId(written.id)[0]);
         collapse = undefined;
         const [identifier, start] = splitId(id);
-        // The amount new times move each occurrence of the span.
-        const shift = input.start && from ? Date.parse(input.start) - Date.parse(from) : 0;
+        // How new times move each occurrence of the span.
+        const move =
+          input.start && from && Date.parse(input.start) !== Date.parse(from)
+            ? wallMove(new Date(from), new Date(input.start), event.timeZone ?? deviceZone)
+            : undefined;
         if (span === "future" && start && written.recurring && !restored) {
           // "This and following" splits the series: those occurrences go to the written
-          // identifier, each moved by the same shift.
-          ids.moved(identifier, shift, splitId(written.id)[0], Date.parse(start));
+          // identifier, each moved alike.
+          ids.moved(identifier, move, splitId(written.id)[0], Date.parse(start));
         } else if (span !== "all") {
           // A "this event" edit detaches the occurrence, which can give it a new id.
           ids.renamed(id, written.id);
         } else {
           // A one-off given a rule is its series' first occurrence.
           if (!start) ids.renamed(id, written.id);
-          // New times rename every occurrence by its new start, each by the same shift.
+          // New times rename every occurrence by its new start, each moved alike.
           // A one-off given a rule or a restored repeat is written at its new start already.
-          if (start && !restored) ids.moved(identifier, shift);
+          if (start && !restored) ids.moved(identifier, move);
           // A new rule can drop this occurrence; the calendar answers with one it kept.
           if (start && !restored && input.recurrence !== undefined && !input.start) {
             ids.renamed(id, written.id);
@@ -862,7 +894,10 @@ export function endAtMinutes(form: EventForm, minutes: number) {
   const multiDay = form.end.getTime() - form.start.getTime() >= DAY || daysBetween(day, endDay) > 1;
   const base = multiDay ? endDay : day;
   const end = zonedInstant(base, minutes, form.timeZone);
-  return end.getTime() <= form.start.getTime() ? new Date(end.getTime() + DAY) : end;
+  // Wrapped onto the next calendar day, so the typed clock time holds across DST.
+  return end.getTime() <= form.start.getTime()
+    ? zonedInstant(addDays(base, 1), minutes, form.timeZone)
+    : end;
 }
 
 /**
@@ -878,6 +913,21 @@ export function movedToDay(form: EventForm, day: DayKey) {
   }
   const start = zonedInstant(day, zonedMinutes(form.start, form.timeZone), form.timeZone);
   return { start, end: new Date(start.getTime() + form.end.getTime() - form.start.getTime()) };
+}
+
+/**
+ * What the Date field's text sets, if it names a date: a range on an all-day event sets
+ * both ends; a single date moves the event, keeping its time of day and length.
+ */
+export function datePatch(form: EventForm, parsed: QuickEntry) {
+  if (parsed.kind !== "event") return undefined;
+  const applied = (kind: TokenKind) => parsed.tokens.some((t) => t.applied && t.kind === kind);
+  if (!applied("when") && !applied("date_range")) return undefined;
+  if (form.allDay && parsed.allDay && applied("date_range")) {
+    return { start: fromDayKey(parsed.start), end: fromDayKey(parsed.end) };
+  }
+  const day = parsed.allDay ? parsed.start : zonedDayKey(new Date(parsed.start), form.timeZone);
+  return movedToDay(form, day);
 }
 
 /**
