@@ -229,12 +229,11 @@ function Popover({ editor }: { editor: EditorState }) {
       patchForm({ allDay, start, end: fromDayKey(addDays(day, 1)), busy: false });
       return;
     }
+    // The times from before the all-day switch come back if the day didn't change.
     const keep = timed.current;
-    const start = toDayKey(keep.start) === day ? keep.start : zonedInstant(day, 9 * 60, zone);
-    const end =
-      toDayKey(keep.start) === day
-        ? keep.end
-        : new Date(start.getTime() + account.eventMinutes * MINUTE);
+    const kept = zonedDayKey(keep.start, zone) === day;
+    const start = kept ? keep.start : zonedInstant(day, 9 * 60, zone);
+    const end = kept ? keep.end : new Date(start.getTime() + account.eventMinutes * MINUTE);
     patchForm({ allDay, start, end, busy: true });
   };
 

@@ -569,5 +569,113 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(300);
 check("Esc returns from travel", (await page.locator("[data-travel]").count()) === 0);
 
+// 23. with the to-do pane closed, a block dragged across where the pane was moves there
+// instead of being removed. The Smoke block sits on Thursday (17:00–18:30 in 24-hour
+// time since step 21); Monday's column now covers the pane's old place.
+await page.keyboard.press("Meta+/");
+await page.waitForTimeout(350);
+// Earlier steps scrolled and re-fit the grid; the opening scroll shows 17:00–18:30.
+await page.locator("[data-grid-body]").evaluate((element, top) => {
+  element.scrollTop = top;
+}, body.scrollTop);
+before = await blocks();
+const smokeBlock = page.locator("[data-item^='block:'] > div", { hasText: "Smoke block" });
+box = await boxOf(smokeBlock);
+const mon = await col("2026-10-26");
+check(
+  "closing the to-do pane puts Monday where the pane was",
+  mon.x < 544 && mon.x + mon.width > 224,
+);
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await page.mouse.down();
+await page.mouse.move(box.x - 40, box.y + box.height / 2, { steps: 4 });
+await page.mouse.move(mon.x + mon.width / 2, box.y + box.height / 2, { steps: 8 });
+const removingClosed = await page.locator("text=Remove from calendar").count();
+await page.mouse.up();
+await page.waitForTimeout(300);
+check(
+  "with the pane closed, a block dragged over its old place moves instead of being removed",
+  (await blocks()) === before &&
+    removingClosed === 0 &&
+    (await page
+      .locator("[data-column='2026-10-26'] [data-item^='block:'] > div", { hasText: "Smoke block" })
+      .count()) === 1 &&
+    ((await smokeBlock.textContent())?.includes("17:00–18:30") ?? false),
+);
+await page.keyboard.press("Meta+/");
+await page.waitForTimeout(350);
+
+// 24. travelling to Tokyo: a task dropped at a grid time saves a block at that Tokyo
+// time, and the block shows at the same time in the day and month views.
+await page.keyboard.press("z");
+await page.keyboard.type("tokyo");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+2");
+await page.waitForTimeout(200);
+await page.locator("[data-grid-body]").evaluate((element, top) => {
+  element.scrollTop = top;
+}, body.scrollTop);
+before = await blocks();
+const typed = page.locator("li", { hasText: "Typed task" }).first();
+await typed.scrollIntoViewIfNeeded();
+const tb = await boxOf(typed);
+const friTokyo = await col("2026-10-30");
+await page.mouse.move(tb.x + 100, tb.y + 10);
+await page.mouse.down();
+await page.mouse.move(tb.x + 120, tb.y + 20, { steps: 3 });
+await page.mouse.move(friTokyo.x + friTokyo.width / 2, y(13 * 60), { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const typedBlock = (day: string) =>
+  page.locator(`[data-column='${day}'] [data-item^='block:'] > div`, { hasText: "Typed task" });
+// A half-hour chip is too short for a time label, so check where it sits: 13:00 is 624px.
+const typedTop = async (day: string) =>
+  (await typedBlock(day).count()) === 1
+    ? typedBlock(day).evaluate((chip) => (chip instanceof HTMLElement ? chip.style.top : ""))
+    : "";
+check(
+  "while travelling, a task dropped at 13:00 Friday lands at 13:00 Friday in Tokyo",
+  (await blocks()) === before + 1 && (await typedTop("2026-10-30")) === `${13 * HOUR}px`,
+);
+// Day view of that Friday (1 opens the Mac's today, two days earlier in Tokyo).
+await page.keyboard.press("1");
+await page.waitForTimeout(150);
+await page.keyboard.press("ArrowRight");
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(200);
+check(
+  "the Tokyo day view shows the block at 13:00",
+  (await page.locator("[data-column]").count()) === 1 &&
+    (await typedTop("2026-10-30")) === `${13 * HOUR}px`,
+);
+// A taller window keeps the day's items out of "+N more".
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1200),
+);
+await page.keyboard.press("m");
+await page.waitForTimeout(400);
+const typedCell = page.locator("[data-day='2026-10-30'] button", { hasText: "Typed task" });
+check(
+  "the Tokyo month view puts it on Friday at 13:00",
+  (await typedCell.count()) === 1 &&
+    ((await typedCell.textContent())?.includes("13:00") ?? false) &&
+    (await page.locator("[data-day='2026-10-29'] button", { hasText: "Typed task" }).count()) === 0,
+);
+// The dragged row is still selected, so the first Esc may deselect it rather than
+// stop travelling.
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+if ((await page.locator("[data-travel]").count()) === 1) await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "back in the Mac's zone the block shows on Thursday evening",
+  (await page.locator("[data-travel]").count()) === 0 &&
+    (await page.locator("[data-day='2026-10-29'] button", { hasText: "Typed task" }).count()) === 1,
+);
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
+);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

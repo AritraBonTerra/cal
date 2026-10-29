@@ -47,21 +47,14 @@ function clock(hours: number, minutes: number, withMeridiem: boolean) {
   return withMeridiem ? `${text} ${meridiem(hours)}` : text;
 }
 
-// "9:30 AM" / "9:30". The now pill uses `short` for "10:40" without a suffix.
-export const formatTime = (date: Date, short = false) =>
-  clock(date.getHours(), date.getMinutes(), !short);
-
-// The same for a time already split into minutes after midnight (in any zone).
+// "9:30 AM" / "9:30" for a time split into minutes after midnight in the grid's zone
+// (see `zonedMinutes`); a `Date` never formats directly, as its getters read the Mac's
+// zone. The now pill uses `short` for "10:40" without a suffix.
 export const formatMinutes = (minutes: number, short = false) =>
   clock(Math.floor(minutes / 60) % 24, minutes % 60, !short);
 
-// "9:30–10:15 AM", or "11:30 AM–1 PM" when the range crosses noon.
-export function formatRange(start: Date, end: Date) {
-  const crosses = hour12 && meridiem(start.getHours()) !== meridiem(end.getHours());
-  return `${clock(start.getHours(), start.getMinutes(), crosses)}–${clock(end.getHours(), end.getMinutes(), true)}`;
-}
-
-// The range for two times given as minutes after midnight in the grid's zone.
+// "9:30–10:15 AM", or "11:30 AM–1 PM" when the range crosses noon, for two times given
+// as minutes after midnight in the grid's zone.
 export function formatMinuteRange(start: number, end: number) {
   const startHours = Math.floor(start / 60) % 24;
   const endHours = Math.floor(end / 60) % 24;

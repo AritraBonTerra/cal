@@ -68,4 +68,17 @@ describe("withinDays", () => {
       false,
     );
   });
+
+  test("takes the day boundaries from the grid's zone", () => {
+    // 09:00–10:00 Tokyo on the 30th is 00:00–01:00 UTC that day; the block sits on the
+    // 30th in Tokyo and on the 29th in Los Angeles.
+    const tokyo = {
+      start: new Date("2026-10-30T00:00:00Z"),
+      end: new Date("2026-10-30T01:00:00Z"),
+    };
+    expect(withinDays(tokyo, "2026-10-30", "2026-10-30", "Asia/Tokyo")).toBe(true);
+    expect(withinDays(tokyo, "2026-10-29", "2026-10-29", "Asia/Tokyo")).toBe(false);
+    expect(withinDays(tokyo, "2026-10-29", "2026-10-29", "America/Los_Angeles")).toBe(true);
+    expect(withinDays(tokyo, "2026-10-30", "2026-10-30", "America/Los_Angeles")).toBe(false);
+  });
 });

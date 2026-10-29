@@ -4,9 +4,9 @@ import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
 import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
-import { dayNumber, formatTime, formatWeekday, weekNumber } from "../../lib/time";
+import { dayNumber, formatMinutes, formatWeekday, weekNumber } from "../../lib/time";
 import { select, showDays, useUi } from "../../lib/ui";
-import { withinDays } from "./model";
+import { dayOf, minutesOf, withinDays } from "./model";
 
 const LINE = 20;
 const NUMBER_ROW = 26;
@@ -156,12 +156,14 @@ function Cell({
 }) {
   const { events, data, today, palette, mode, calendars, zone } = useApp();
   const selection = useUi((state) => state.selection);
-  // Timed items touching this day. One that began the day before continues here and
-  // is labelled with when it ends.
+  // Timed items touching this day in the grid's zone. One that began the day before
+  // continues here and is labelled with when it ends.
   const onDay = (start: string, end: string) =>
-    withinDays({ start: new Date(start), end: new Date(end) }, day, day);
+    withinDays({ start: new Date(start), end: new Date(end) }, day, day, zone);
   const label = (start: Date, end: Date) =>
-    toDayKey(start) === day ? formatTime(start) : `–${formatTime(end)}`;
+    dayOf(start, zone) === day
+      ? formatMinutes(minutesOf(start, zone))
+      : `–${formatMinutes(minutesOf(end, zone))}`;
   const timed = [
     ...events
       .filter((event) => !event.allDay && onDay(event.start, event.end))
@@ -202,6 +204,7 @@ function Cell({
   return (
     <div
       className={`flex min-w-0 flex-1 flex-col border-l border-grid first:border-l-0 ${inMonth ? "" : "bg-offhours"}`}
+      data-day={day}
     >
       <div className="flex h-[26px] items-center px-1.5">
         <button

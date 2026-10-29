@@ -30,6 +30,7 @@ import {
   toggleOverlay,
   ui,
 } from "./lib/ui";
+import { zonedDayKey } from "./lib/zones";
 
 /*
  * Every command the window offers, registered once. ⌘K, the `?` sheet, the menu bar
@@ -440,7 +441,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["c"],
         aliases: ["create event", "add event", "meeting"],
         run: () => {
-          const { calendars, device, account, events, data, today, zone } = latest.current;
+          const { calendars, device, account, events, data, gridToday, zone } = latest.current;
           const calendar = defaultCalendar(calendars, device.defaultCalendar);
           const busy = [
             ...events.filter((event) => event.busy && !event.allDay),
@@ -448,7 +449,8 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           ].map((span) => ({ start: new Date(span.start), end: new Date(span.end) }));
           const slot = nextFreeSlot(now(), account.eventMinutes, busy);
           closeOverlay();
-          if (!latest.current.days.includes(toDayKey(slot.start))) goToday(today);
+          // The slot's day in the grid's zone: while travelling, it may be "tomorrow" here.
+          if (!latest.current.days.includes(zonedDayKey(slot.start, zone))) goToday(gridToday);
           select(null);
           openCreate(slot, {
             calendarId: calendar?.id ?? "",

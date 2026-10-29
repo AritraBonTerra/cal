@@ -23,14 +23,30 @@ export const geometry: { grid: GridGeometry | null; taskPane: HTMLElement | null
   taskPane: null,
 };
 
+/**
+ * Whether a window point is over the to-do pane's visible part. The pane slides closed
+ * by width while its content stays mounted at full width (see `Pane` in App.tsx), so
+ * the content's rect is clipped to its `[data-pane]` wrapper, and a closed pane is no
+ * drop target at all, even mid-slide.
+ */
 export const overTaskPane = (clientX: number, clientY: number) => {
-  const rect = geometry.taskPane?.getBoundingClientRect();
+  const pane = geometry.taskPane;
+  if (!pane) return false;
+  const wrapper = pane.closest<HTMLElement>("[data-pane]");
+  if (wrapper && wrapper.dataset.open === undefined) return false;
+  const rect = pane.getBoundingClientRect();
+  const clip = wrapper?.getBoundingClientRect() ?? rect;
+  const left = Math.max(rect.left, clip.left);
+  const right = Math.min(rect.right, clip.right);
+  const top = Math.max(rect.top, clip.top);
+  const bottom = Math.min(rect.bottom, clip.bottom);
   return (
-    rect !== undefined &&
-    clientX >= rect.left &&
-    clientX <= rect.right &&
-    clientY >= rect.top &&
-    clientY <= rect.bottom
+    left < right &&
+    top < bottom &&
+    clientX >= left &&
+    clientX <= right &&
+    clientY >= top &&
+    clientY <= bottom
   );
 };
 

@@ -14,6 +14,7 @@ import { now } from "../lib/clock";
 import { DRAG_THRESHOLD, drag, geometry, useDrag } from "../lib/drag";
 import { formatDuration, formatRelativeDay } from "../lib/time";
 import { select, ui, useUi } from "../lib/ui";
+import { zonedInstant } from "../lib/zones";
 import { Checkbox } from "./ui";
 import { WhenPicker } from "./WhenPicker";
 
@@ -23,7 +24,7 @@ import { WhenPicker } from "./WhenPicker";
  * schedules it.
  */
 export function TaskRow({ task }: { task: Task }) {
-  const { data, today } = useApp();
+  const { data, today, zone } = useApp();
   const actions = useActions();
   const selected = useUi(
     (state) => state.selection?.kind === "task" && state.selection.uuid === task.uuid,
@@ -112,13 +113,13 @@ export function TaskRow({ task }: { task: Task }) {
     if (!state?.dragging) return;
     const { ghost } = drag.get();
     clearDrag();
+    // The ghost's day and minutes are wall-clock values in the grid's zone.
     if (ghost) {
-      const day = ghost.day;
-      const start = new Date(`${day}T00:00`);
-      start.setMinutes(ghost.start);
-      const end = new Date(`${day}T00:00`);
-      end.setMinutes(ghost.end);
-      void actions.scheduleTask(task.uuid, start, end);
+      void actions.scheduleTask(
+        task.uuid,
+        zonedInstant(ghost.day, ghost.start, zone),
+        zonedInstant(ghost.day, ghost.end, zone),
+      );
     }
   };
 

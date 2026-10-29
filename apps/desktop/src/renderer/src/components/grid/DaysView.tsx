@@ -15,7 +15,7 @@ import { ZoneHeaders } from "./ZoneHeaders";
  * holds the main zone's hour labels plus one 44px column per extra time zone.
  */
 export function DaysView() {
-  const { days, events, data, account } = useApp();
+  const { days, events, data, account, zone } = useApp();
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scrollbar, setScrollbar] = useState(0);
   const [columnWidth, setColumnWidth] = useState(160);
@@ -76,10 +76,16 @@ export function DaysView() {
           end: new Date(event.end),
         }),
       ),
-    // Blocks that touch the visible days, so one running past midnight shows on both.
+    // Blocks that touch the visible days (in the grid's zone), so one running past
+    // midnight shows on both.
     ...data.blocks
       .filter((block) =>
-        withinDays({ start: new Date(block.start_at), end: new Date(block.end_at) }, first, last),
+        withinDays(
+          { start: new Date(block.start_at), end: new Date(block.end_at) },
+          first,
+          last,
+          zone,
+        ),
       )
       .map((block): Item => {
         const task = data.tasks.find((each) => each.uuid === block.task_uuid);

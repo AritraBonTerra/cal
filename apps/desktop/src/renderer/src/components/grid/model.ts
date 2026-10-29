@@ -2,7 +2,6 @@ import type { ExternalEvent } from "@cal/calendar-source";
 import {
   addDays,
   type DayKey,
-  fromDayKey,
   type Project,
   snapMinutes,
   type Task,
@@ -64,10 +63,11 @@ export const dayOf = (date: Date, zone = deviceZone) => zonedDayKey(date, zone);
 export const instant = (day: DayKey, minutes: number, zone = deviceZone) =>
   zonedInstant(day, minutes, zone);
 
-// Whether [start, end) touches any of the days `first` through `last` (device zone).
-export const withinDays = ({ start, end }: Span, first: DayKey, last: DayKey) =>
-  end.getTime() > fromDayKey(first).getTime() &&
-  start.getTime() < fromDayKey(addDays(last, 1)).getTime();
+// Whether [start, end) touches any of the days `first` through `last`, with the day
+// boundaries at midnight in `zone`.
+export const withinDays = ({ start, end }: Span, first: DayKey, last: DayKey, zone = deviceZone) =>
+  end.getTime() > instant(first, 0, zone).getTime() &&
+  start.getTime() < instant(addDays(last, 1), 0, zone).getTime();
 
 // The part of each span falling on each of `days`, for timed items only.
 export function segments<T extends Span>(
