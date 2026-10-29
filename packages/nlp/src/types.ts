@@ -67,6 +67,9 @@ export interface EventEntry extends Common {
   attendees?: string[];
   // Minutes before the start.
   alertsMin?: number[];
+  // A typed length ("for 2h") on an all-day entry (a date but no time), which its
+  // start and end can't carry.
+  durationMin?: number;
 }
 
 export interface TaskEntry extends Common {

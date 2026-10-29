@@ -573,6 +573,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     if (url) entry.url = url;
     if (attendees.length) entry.attendees = attendees;
     if (alerts.length) entry.alertsMin = alerts;
+    if (duration !== undefined && entry.allDay) entry.durationMin = duration;
     return entry;
   }
 

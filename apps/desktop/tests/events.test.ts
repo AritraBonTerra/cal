@@ -217,6 +217,12 @@ describe("applyEntry", () => {
     expect(form.end).toEqual(fromDayKey(addDays(shown, 1)));
   });
 
+  test("a date with a duration moves the draft and sets its length", () => {
+    const form = applyEntry(draftForm(), parseEvent("Lunch tomorrow for 2h"));
+    expect(form.allDay).toBe(false);
+    expect(form.end.getTime() - form.start.getTime()).toBe(2 * 60 * 60_000);
+  });
+
   test("typed invitees are kept in the notes", () => {
     const form = applyEntry(
       draftForm({ notes: "Agenda" }),
@@ -1030,6 +1036,41 @@ describe("eventWriter: ids that change under a series", () => {
     const [first] = await cafes();
     expect(first?.start.slice(0, 10)).toBe("2026-10-24");
     expect(first && zonedMinutes(new Date(first.start), "Europe/Paris")).toBe(9 * 60);
+  });
+
+  test("a rule cleared from here on comes back with only the count left", async () => {
+    const { history, writer, titled } = setup();
+    await writer.create({
+      calendarId: "work",
+      title: "Trial",
+      start: "2026-11-03T09:00:00-08:00",
+      end: "2026-11-03T09:30:00-08:00",
+      allDay: false,
+      recurrence: "FREQ=DAILY;COUNT=3",
+    });
+    const trials = () => titled("Trial", "2026-11-01", "2026-11-10");
+    const wednesday = (await trials()).find((each) => each.start.startsWith("2026-11-04"));
+    if (!wednesday) throw new Error("no Wednesday trial");
+    await writer.update(wednesday, { recurrence: "" }, "future");
+    await history.undo();
+    expect(days(await trials())).toEqual(["2026-11-03", "2026-11-04", "2026-11-05"]);
+  });
+
+  test("a new rule that keeps the picked occurrence leaves older steps on it", async () => {
+    const { history, writer, titled } = setup();
+    const standupOn = async (day: string) => {
+      const found = (await titled("Standup")).find((each) => each.start.startsWith(day));
+      if (!found) throw new Error(`no standup on ${day}`);
+      return found;
+    };
+    await writer.update(await standupOn("2026-10-28"), { title: "Wednesday sync" }, "this");
+    const [renamed] = await titled("Wednesday sync");
+    if (!renamed) throw new Error("no renamed standup");
+    await writer.update(renamed, { recurrence: "FREQ=DAILY;COUNT=5" }, "all");
+    await history.undo();
+    await history.undo();
+    await history.redo();
+    expect(days(await titled("Wednesday sync"))).toEqual(["2026-10-28"]);
   });
 
   test("a new rule that drops the picked occurrence can still be undone", async () => {

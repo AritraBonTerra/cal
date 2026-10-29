@@ -279,9 +279,10 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
       form.start = fromDayKey(entry.start);
       form.end = fromDayKey(addDays(entry.start, Math.max(1, days)));
     } else if (entry.allDay && hasDate) {
-      // "tomorrow": the same time of day, a different day.
+      // "tomorrow": the same time of day, a different day; "for 2h" sets the length.
       form.start = zonedInstant(entry.start, zonedMinutes(base.start, zone), zone);
-      form.end = new Date(form.start.getTime() + length(base));
+      const minutes = has("duration") ? entry.durationMin : undefined;
+      form.end = new Date(form.start.getTime() + (minutes ? minutes * MINUTE : length(base)));
     } else if (hasTime) {
       const start = new Date(entry.start);
       const end = new Date(entry.end);
@@ -701,14 +702,21 @@ export function eventWriter(
         if (patch.start !== undefined) previous.start = event.seriesStart;
         if (patch.end !== undefined && event.seriesEnd) previous.end = event.seriesEnd;
       }
+      // A rule changed from here on comes back with only the count left from here.
+      if (span === "future" && patch.recurrence !== undefined && event.recurrence) {
+        previous.recurrence = remainingRule(event);
+      }
       // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
       const undoSpan: EventSpan =
         span === "this" && patch.recurrence && !event.recurring && !event.recurrence ? "all" : span;
       // The log entry of the collapse an "all" write that cleared the repeat made.
       let collapse: number | undefined;
+      // Where this step acts while a new rule has dropped its occurrence: the one the
+      // calendar kept. Only this step: older ones get the occurrence back with the rule.
+      let kept: EventRef | undefined;
       // `from` is the occurrence's start before the write, the other side's start.
       const place = async (input: Partial<EventInput>, span: EventSpan, from?: string) => {
-        const id = ids.current(ref);
+        const id = ids.current(kept ?? ref);
         const written = await api.updateEvent(id, input, span);
         if (span === "all" && !written.recurring) {
           // Clearing the repeat leaves one event, whichever occurrence was picked.
@@ -741,11 +749,20 @@ export function eventWriter(
           // A one-off given a rule or a restored repeat is written at its new start already.
           if (start && !restored) ids.moved(identifier, move);
           // A new rule can drop this occurrence; the calendar answers with one it kept.
-          if (start && !restored && input.recurrence !== undefined && !input.start) {
-            ids.renamed(id, written.id);
+          if (input.recurrence !== undefined && !input.start) {
+            kept = start && !(await exists(id)) ? ids.ref(written.id) : undefined;
           }
         }
         await refresh();
+      };
+      // Whether the occurrence `id` is still in the calendar.
+      const exists = async (id: string) => {
+        const at = Date.parse(splitId(id)[1] ?? event.start);
+        const nearby = await api.events(
+          toOffsetIso(new Date(at - DAY)),
+          toOffsetIso(new Date(at + DAY)),
+        );
+        return nearby.some((each) => sameId(each.id, id));
       };
       return history.transact(label, (tx) =>
         tx.external(

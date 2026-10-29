@@ -233,7 +233,9 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Navigate",
         keys: ["t"],
         aliases: ["now"],
-        run: () => goToday(latest.current.today, latest.current.account.todayKey === "left-align"),
+        // The grid's today, which can differ from the Mac's in another zone.
+        run: () =>
+          goToday(latest.current.gridToday, latest.current.account.todayKey === "left-align"),
       },
       {
         id: "nav.todayLeft",
@@ -241,7 +243,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Navigate",
         keys: ["alt+t"],
         aliases: ["start from today"],
-        run: () => goToday(latest.current.today, true),
+        run: () => goToday(latest.current.gridToday, true),
       },
       ...SMART_LISTS.map(
         (list, index): Command => ({
