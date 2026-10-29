@@ -279,8 +279,20 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
     } else if (!entry.allDay && has("duration")) {
       form.end = new Date(base.start.getTime() + length({ start: entry.start, end: entry.end }));
     }
-    if (has("all_day")) form.allDay = true;
+    if (has("all_day") && !has("date_range")) {
+      // "all day": the shown day (or the typed one) as floating local-midnight bounds,
+      // like the all-day switch, not the slot's instants reread as dates.
+      const day = hasDate ? entry.start.slice(0, 10) : zonedDayKey(base.start, zone);
+      form.allDay = true;
+      form.start = fromDayKey(day);
+      form.end = fromDayKey(addDays(day, 1));
+    }
     if (entry.location !== undefined) form.location = entry.location;
+    // Invitees can't be added on the Mac, so they're kept in the notes, as Quick Entry does.
+    if (entry.attendees?.length) {
+      const line = `With ${entry.attendees.join(", ")}`;
+      form.notes = base.notes ? `${base.notes}\n${line}` : line;
+    }
     if (entry.url !== undefined) form.url = entry.url;
     if (entry.alertsMin !== undefined) form.alarms = entry.alertsMin;
     if (entry.rrule !== undefined) form.recurrence = entry.rrule;

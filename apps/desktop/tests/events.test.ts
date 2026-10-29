@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type DataSource, History } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
-import { fromDayKey, toOffsetIso } from "@cal/domain";
+import { addDays, fromDayKey, toOffsetIso } from "@cal/domain";
 import { FixtureCalendar } from "@cal/fixtures";
 import { parseQuickEntry } from "@cal/nlp";
 import { parseClock, parseDurationText } from "../src/renderer/src/lib/clockText";
@@ -207,6 +207,24 @@ describe("applyEntry", () => {
     expect(zonedDayKey(form.start, "Asia/Tokyo")).toBe(zonedDayKey(slot.start, "Asia/Tokyo"));
     expect(zonedMinutes(form.start, "Asia/Tokyo")).toBe(9 * 60);
     expect(form.end.getTime() - form.start.getTime()).toBe(30 * 60_000);
+  });
+
+  test('"all day" makes the shown day all-day, whatever the form\'s zone', () => {
+    // A late-evening slot in Honolulu is the next day on this device.
+    const base = draftForm({ timeZone: "Pacific/Honolulu" });
+    const form = applyEntry(base, parseEvent("Offsite all day", "Pacific/Honolulu"));
+    const shown = zonedDayKey(slot.start, "Pacific/Honolulu");
+    expect(form.allDay).toBe(true);
+    expect(form.start).toEqual(fromDayKey(shown));
+    expect(form.end).toEqual(fromDayKey(addDays(shown, 1)));
+  });
+
+  test("typed invitees are kept in the notes", () => {
+    const form = applyEntry(
+      draftForm({ notes: "Agenda" }),
+      parseEvent("Lunch with sam@example.com"),
+    );
+    expect(form.notes).toBe("Agenda\nWith sam@example.com");
   });
 
   test("a typed prefix shows as the form's kind", () => {
