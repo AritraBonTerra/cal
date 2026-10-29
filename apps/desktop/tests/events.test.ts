@@ -847,6 +847,48 @@ describe("eventWriter: ids that change under a series", () => {
     ]);
   });
 
+  test("a 'future' move undone leaves earlier steps on the split occurrences", async () => {
+    const { history, writer, titled } = setup();
+    const standupOn = async (day: string) => {
+      const found = (await titled("Standup")).find((each) => each.start.startsWith(day));
+      if (!found) throw new Error(`no standup on ${day}`);
+      return found;
+    };
+    await writer.update(await standupOn("2026-10-29"), { title: "Thursday sync" }, "this");
+    const wednesday = await standupOn("2026-10-28");
+    const later = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 60 * 60_000));
+    await writer.update(
+      wednesday,
+      { start: later(wednesday.start), end: later(wednesday.end) },
+      "future",
+    );
+    await history.undo();
+    await history.undo();
+    expect((await titled("Thursday sync")).length).toBe(0);
+    expect(days(await titled("Standup"))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    await history.redo();
+    await history.redo();
+    expect(days(await titled("Thursday sync"))).toEqual(["2026-10-29"]);
+  });
+
+  test("a new rule that drops the picked occurrence can still be undone", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.update(wednesday, { recurrence: "FREQ=WEEKLY;BYDAY=MO;COUNT=2" }, "all");
+    expect(days(await titled("Standup"))).toEqual(["2026-10-26"]);
+    await history.undo();
+    expect((await titled("Standup")).length).toBe(5);
+    await history.redo();
+    expect(days(await titled("Standup"))).toEqual(["2026-10-26"]);
+  });
+
   test("undoing a repeat added to a one-off leaves one event", async () => {
     const { history, writer, titled } = setup();
     const [planning] = await titled("Planning");

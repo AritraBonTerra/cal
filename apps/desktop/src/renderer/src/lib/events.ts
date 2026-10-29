@@ -607,10 +607,11 @@ class EventAliases {
       shift: 0,
     });
   }
-  // Records that every occurrence of series `identifier` moved `shift` ms.
-  moved(identifier: string, shift: number) {
-    if (shift === 0) return;
-    this.log.push({ series: identifier, to: identifier, since: Number.NEGATIVE_INFINITY, shift });
+  // Records that the occurrences of series `identifier` from `since` on are now under
+  // `to`, each `shift` ms later: a moved series, or the part a "future" edit split off.
+  moved(identifier: string, shift: number, to = identifier, since = Number.NEGATIVE_INFINITY) {
+    if (shift === 0 && to === identifier) return;
+    this.log.push({ series: identifier, to, since, shift });
   }
 }
 
@@ -706,16 +707,25 @@ export function eventWriter(
         const restored = collapse !== undefined && written.recurring;
         if (collapse !== undefined && restored) ids.restored(collapse, splitId(written.id)[0]);
         collapse = undefined;
-        if (span !== "all") {
+        const [identifier, start] = splitId(id);
+        // The amount new times move each occurrence of the span.
+        const shift = input.start && from ? Date.parse(input.start) - Date.parse(from) : 0;
+        if (span === "future" && start && written.recurring && !restored) {
+          // "This and following" splits the series: those occurrences go to the written
+          // identifier, each moved by the same shift.
+          ids.moved(identifier, shift, splitId(written.id)[0], Date.parse(start));
+        } else if (span !== "all") {
           // A "this event" edit detaches the occurrence, which can give it a new id.
           ids.renamed(id, written.id);
         } else {
           // A one-off given a rule is its series' first occurrence.
-          if (!splitId(id)[1]) ids.renamed(id, written.id);
+          if (!start) ids.renamed(id, written.id);
           // New times rename every occurrence by its new start, each by the same shift.
           // A one-off given a rule or a restored repeat is written at its new start already.
-          if (input.start && from && splitId(id)[1] && !restored) {
-            ids.moved(splitId(written.id)[0], Date.parse(input.start) - Date.parse(from));
+          if (start && !restored) ids.moved(identifier, shift);
+          // A new rule can drop this occurrence; the calendar answers with one it kept.
+          if (start && !restored && input.recurrence !== undefined && !input.start) {
+            ids.renamed(id, written.id);
           }
         }
         await refresh();

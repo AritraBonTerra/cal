@@ -199,7 +199,11 @@ export class FixtureCalendar implements CalendarSource {
         if (next.series && !next.id.includes("|"))
           next.id = occurrenceId(next.series, new Date(next.start));
       }
-      if (series && next.series) next.series = series;
+      // A split ("future") series has its own identifier, which names its occurrences.
+      if (series && next.series) {
+        next.series = series;
+        next.id = occurrenceId(series, new Date(next.start));
+      }
       this.stored[this.stored.indexOf(member)] = next;
       if (input.recurrence) this.expand(next);
       if (member === current || !written) written = next;
