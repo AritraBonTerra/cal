@@ -15,7 +15,7 @@ import { Checkbox } from "../ui";
  * in the grid's zone.
  */
 
-interface Frame {
+export interface Frame {
   top: number;
   height: number;
   left: number;

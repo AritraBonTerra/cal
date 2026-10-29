@@ -249,11 +249,16 @@ export function Segmented<T extends string>({
 
 interface SelectProps<T extends string | number> {
   value: T;
-  options: readonly { value: T; label: string }[];
+  // An option may carry a color, drawn as a dot before its label (calendars).
+  options: readonly { value: T; label: string; color?: string }[];
   onChange: (value: T) => void;
   label: string;
   // Width in px, so rows of selects line up.
   width?: number;
+  // Shown when `value` matches no option, e.g. "Add…" for a menu that appends.
+  placeholder?: string;
+  // Borderless: a plain text button that reveals itself on hover (popover rows).
+  quiet?: boolean;
 }
 
 // A popup button: the current choice with a chevron, opening a menu of the options.
@@ -263,6 +268,8 @@ export function Select<T extends string | number>({
   onChange,
   label,
   width = 144,
+  placeholder,
+  quiet = false,
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -289,9 +296,23 @@ export function Select<T extends string | number>({
             setOpen(false);
           }
         }}
-        className="flex h-6 w-full items-center justify-between gap-2 rounded-md bg-raised pr-1.5 pl-2 text-small text-ink shadow-[inset_0_0_0_1px_var(--cal-edge)] hover:bg-hover"
+        className={`flex h-6 w-full items-center justify-between gap-2 rounded-md pr-1.5 pl-2 text-small hover:bg-hover ${
+          quiet
+            ? current
+              ? "text-ink"
+              : "text-ink-3"
+            : "bg-raised text-ink shadow-[inset_0_0_0_1px_var(--cal-edge)]"
+        }`}
       >
-        <span className="truncate">{current?.label ?? String(value)}</span>
+        {current?.color && (
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ background: current.color }}
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate text-left">
+          {current?.label ?? placeholder ?? String(value)}
+        </span>
         <ChevronsUpDown
           size={12}
           strokeWidth={1.5}
@@ -320,6 +341,12 @@ export function Select<T extends string | number>({
               <span className="w-3 shrink-0 text-accent">
                 {option.value === value && <Check size={12} strokeWidth={2} absoluteStrokeWidth />}
               </span>
+              {option.color && (
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: option.color }}
+                />
+              )}
               <span className="truncate">{option.label}</span>
             </button>
           ))}

@@ -38,11 +38,12 @@ export type Overlay =
 export type SettingsSection = "general" | "grid" | "zones" | "calendars" | "account";
 
 // Why the zone picker is open: to add a column, swap the zone of column `index` (or
-// the primary zone when `index` is absent), or travel (`Z`).
+// the primary zone when `index` is absent), travel (`Z`), or set an event's zone.
 export type ZonePickerPurpose =
   | { kind: "add" }
   | { kind: "change"; index?: number }
-  | { kind: "travel" };
+  | { kind: "travel" }
+  | { kind: "event" };
 
 export interface UiState {
   view: View;

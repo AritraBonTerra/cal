@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
 import { type DayKey, daysBetween, toOffsetIso, weekday } from "@cal/domain";
-import { mix, colors as tokens } from "@cal/theme";
+import { blockColors, mix, colors as tokens } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -12,12 +12,22 @@ import {
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
 import { useNow } from "../../lib/clock";
+import { hueFor } from "../../lib/data";
 import { DRAG_THRESHOLD, drag, geometry, overTaskPane, useDrag } from "../../lib/drag";
+import {
+  defaultCalendar,
+  type EventForm,
+  eventWriter,
+  openCreate,
+  openEdit,
+  spanFor,
+  useEditor,
+} from "../../lib/events";
 import { layoutColumn } from "../../lib/layout";
 import { formatHour, formatMinuteRange, formatMinutes, formatZoneHour } from "../../lib/time";
 import { select, ui, useUi } from "../../lib/ui";
 import { zonedMinutes } from "../../lib/zones";
-import { BlockChip, EventChip, frameStyle } from "./chips";
+import { BlockChip, EventChip, type Frame, frameStyle } from "./chips";
 import {
   DAY_MINUTES,
   dayOf,
@@ -39,11 +49,12 @@ import {
 /*
  * The hour grid: a scrolling body with the hour gutter (extra zones first, then the
  * main one) and one column per day. All pointer work happens here with plain pointer
- * events: drag on empty space to create a block, drag a chip to move it, drag its edge
- * to resize, and drop a block on the to-do pane to remove it. Fifteen-minute snapping,
- * off with ⇧. Escape or a cancelled pointer drops the gesture without writing anything.
- * Every y position is minutes × the hour height the view measured; wall-clock minutes
- * are in the grid's zone.
+ * events: drag (or click) on empty space to open the event popover on a draft, click a
+ * device event to open it, drag a chip to move it, drag its edge to resize, and drop a
+ * block on the to-do pane to remove it. Fifteen-minute snapping, off with ⇧. Escape or
+ * a cancelled pointer drops the gesture without writing anything. Every y position is
+ * minutes × the hour height the view measured; wall-clock minutes are in the grid's
+ * zone.
  */
 
 type Gesture =
@@ -58,9 +69,6 @@ type Gesture =
       end: Date;
       moved: boolean;
     };
-
-// The block being typed into after a create gesture; may run past midnight.
-type Draft = Span;
 
 // The half-hour outline under a resting pointer, in minutes of one day.
 interface Hover {
@@ -97,10 +105,11 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
   const selection = useUi((state) => state.selection);
   const flashDay = useUi((state) => state.flashDay);
   const ghost = useDrag((state) => state.ghost);
+  const editor = useEditor();
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const live = useRef<Gesture | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
+  const writer = eventWriter(history, refreshEvents);
   const extras = account.timeZones;
   const gutter = GUTTER + ZONE_COLUMN * extras.length;
   const dayHeight = 24 * hour;
@@ -159,7 +168,8 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
 
   // Pointer gestures. Capture goes to the body so moves keep arriving outside the chip.
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || draft) return;
+    // With the popover open, a press anywhere else closes it first (it saves itself).
+    if (event.button !== 0 || editor) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest("input, button")) return;
     const point = locate(event.clientX, event.clientY);
@@ -171,7 +181,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       if (!item) return;
       const edge = target?.closest<HTMLElement>("[data-edge]")?.dataset.edge;
       if (!isWritable(item)) {
-        selectItem(item);
+        openItem(item);
         return;
       }
       setLive({
@@ -251,22 +261,31 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
     return () => window.removeEventListener("keydown", onKey, true);
   });
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = live.current;
     setLive(null);
     if (!current) return;
     if (current.kind === "create") {
-      // A click makes a default-length block, cut short at midnight like the old grid.
+      // A click makes a default-length draft, cut short at midnight like the old grid.
       const dayEnd = instant(dayOf(current.start, zone), DAY_MINUTES, zone);
       const end = current.moved
         ? current.end
         : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + clickLength * 60_000));
-      setDraft({ start: current.start, end });
+      const calendar = defaultCalendar(calendars, device.defaultCalendar);
+      openCreate(
+        { start: current.start, end },
+        {
+          calendarId: calendar?.id ?? "",
+          timeZone: zone,
+          reminder: account.eventReminder,
+          canCreateEvents: calendar !== undefined,
+        },
+      );
       return;
     }
     const { item } = current;
     if (!current.moved) {
-      selectItem(item);
+      openItem(item);
       return;
     }
     if (item.kind === "block") {
@@ -279,26 +298,42 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       return;
     }
     // Device events live outside Cal's tables, so the move is recorded as an external
-    // History step: ⌘Z puts the event back, ⇧⌘Z moves it again.
-    const previous = { start: toOffsetIso(item.start), end: toOffsetIso(item.end) };
+    // History step: ⌘Z puts the event back, ⇧⌘Z moves it again. A repeating event asks
+    // which occurrences to move; ⌘-drag means "this event" without asking.
+    const label = current.kind === "move" ? "Move Event" : "Resize Event";
     const next = { start: toOffsetIso(current.start), end: toOffsetIso(current.end) };
-    const place = (times: typeof next) =>
-      window.cal.calendar.updateEvent(item.event.id, times, "this").then(refreshEvents);
-    void history.transact(current.kind === "move" ? "Move Event" : "Resize Event", (tx) =>
-      tx.external(
-        () => place(next),
-        () => place(previous),
-      ),
-    );
+    const question = event.metaKey
+      ? Promise.resolve<"this">("this")
+      : spanFor(item.event, `${label.split(" ")[0]} repeating event`);
+    void question.then((span) => span && writer.update(item.event, next, span, label));
+  };
+
+  // A click on a chip: blocks select, device events open the popover (view-only on a
+  // read-only calendar).
+  const openItem = (item: Item) => {
+    selectItem(item);
+    if (item.kind === "event") openEdit(item.event, zone);
   };
 
   // Items drawn where the gesture has them, plus the original slot shown as an outline.
-  const shown =
-    gesture && gesture.kind !== "create"
-      ? items.map((item) =>
-          item.id === gesture.item.id ? { ...item, start: gesture.start, end: gesture.end } : item,
-        )
-      : items;
+  // An event being edited follows its popover's fields.
+  const editing = editor?.mode === "edit" ? editor : null;
+  const shown = items.map((item) => {
+    if (gesture && gesture.kind !== "create" && item.id === gesture.item.id) {
+      return { ...item, start: gesture.start, end: gesture.end };
+    }
+    if (editing && item.kind === "event" && item.event.id === editing.event?.id) {
+      const { form } = editing;
+      if (form.allDay) return item;
+      return {
+        ...item,
+        start: form.start,
+        end: form.end,
+        event: { ...item.event, title: form.title || item.event.title, location: form.location },
+      };
+    }
+    return item;
+  });
   const byDay = segments(shown, days, zone);
   const original =
     gesture && gesture.kind !== "create" && gesture.moved
@@ -306,6 +341,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       : null;
   // The create gesture and the draft, cut per day like items are.
   const creating = gesture?.kind === "create" ? segments([gesture], days, zone) : null;
+  const draft = editor?.mode === "create" && !editor.form.allDay ? editor.form : null;
   const drafting = draft ? segments([draft], days, zone) : null;
   const nowMinute = minutesOf(now, zone);
   const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
@@ -416,7 +452,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
                 end: ghost.end,
               }
             : (creating?.get(day)?.[0] ?? null);
-        const dayHover = !gesture && !draft && hover?.day === day ? hover : null;
+        const dayHover = !gesture && !editor && hover?.day === day ? hover : null;
         const working = weekend ? "var(--cal-offhours)" : "var(--cal-canvas)";
         return (
           <div
@@ -516,16 +552,16 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
             )}
             {dayDraft && day === dayOf(dayDraft.item.start, zone) && (
               <DraftChip
-                draft={dayDraft.item}
-                zone={zone}
-                onDone={() => setDraft(null)}
-                style={frameStyle({
+                form={dayDraft.item}
+                start={dayDraft.start}
+                end={dayDraft.end}
+                frame={{
                   top: px(dayDraft.start),
                   height: px(dayDraft.end - dayDraft.start),
                   left: 0,
                   width: 1,
                   z: 25,
-                })}
+                }}
               />
             )}
             {dayDraft && day !== dayOf(dayDraft.item.start, zone) && (
@@ -573,59 +609,57 @@ function GhostLabel({ span, zone }: { span: Span; zone: string }) {
   );
 }
 
-// The chip being created: type a title, Enter makes a to-do and its block, Escape drops it.
+// The chip of the draft the popover is editing: an event in its calendar's color, or a
+// to-do block with its project stripe. Its title and times follow the popover's fields.
 function DraftChip({
-  draft,
-  zone,
-  onDone,
-  style,
+  form,
+  start,
+  end,
+  frame,
 }: {
-  draft: Draft;
-  zone: string;
-  onDone: () => void;
-  style: ReturnType<typeof frameStyle>;
+  form: EventForm;
+  start: number;
+  end: number;
+  frame: Frame;
 }) {
-  const actions = useActions();
-  const [title, setTitle] = useState("");
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-
-  const commit = async () => {
-    const text = title.trim();
-    onDone();
-    if (!text) return;
-    const uuid = await actions.createTask({
-      title: text,
-      position: -1,
-      when: "date",
-      when_date: dayOf(draft.start, zone),
-      estimate_min: Math.round((draft.end.getTime() - draft.start.getTime()) / 60_000),
-    });
-    await actions.scheduleTask(uuid, draft.start, draft.end);
-  };
-
+  const { palette, mode, data } = useApp();
+  if (form.kind === "event") {
+    return (
+      <div data-item="draft" className="contents">
+        <EventChip
+          title={form.title || "New event"}
+          location={form.location || undefined}
+          start={start}
+          end={end}
+          colors={palette.get(form.calendarId) ?? graphite(mode)}
+          frame={frame}
+          selected
+          past={false}
+          dragging={false}
+          writable={false}
+        />
+      </div>
+    );
+  }
+  const project = data.projects.find((each) => each.uuid === form.projectUuid);
+  const colors = project ? blockColors(hueFor(project), mode) : null;
   return (
     <div
-      className="absolute overflow-hidden rounded-sm border border-accent border-l-[3px] bg-canvas pl-1.5 pr-1 pt-0.5 shadow-drag"
-      style={style}
+      data-item="draft"
+      className="absolute overflow-hidden rounded-sm border border-l-[3px] bg-canvas pl-1.5 pr-1 pt-0.5"
+      style={{
+        ...frameStyle(frame),
+        borderColor: colors?.border ?? "var(--cal-edge)",
+        borderLeftColor: colors?.stripe ?? "var(--cal-edge-strong)",
+        boxShadow: "inset 0 0 0 2px var(--cal-accent)",
+      }}
     >
-      <input
-        ref={ref}
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        onBlur={() => void commit()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") void commit();
-          else if (event.key === "Escape") onDone();
-          event.stopPropagation();
-        }}
-        placeholder="New To-Do"
-        aria-label="Title"
-        className="w-full bg-transparent text-small font-medium leading-4 text-ink outline-none placeholder:text-ink-3"
-      />
-      <div className="truncate text-caption text-ink-2 tnum">
-        {formatMinuteRange(minutesOf(draft.start, zone), minutesOf(draft.end, zone))}
+      <div
+        className={`truncate text-small font-medium leading-4 ${form.title ? "text-ink" : "text-ink-3"}`}
+      >
+        {form.title || "New to-do"}
       </div>
+      <div className="truncate text-caption text-ink-2 tnum">{formatMinuteRange(start, end)}</div>
     </div>
   );
 }

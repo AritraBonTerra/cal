@@ -2,6 +2,7 @@ import { type DayKey, toDayKey, weekday } from "@cal/domain";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
+import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
 import { dayNumber, formatTime, formatWeekday, weekNumber } from "../../lib/time";
 import { select, showDays, useUi } from "../../lib/ui";
@@ -22,7 +23,7 @@ const isWeekend = (day: DayKey) => weekday(day) === 0 || weekday(day) === 6;
  * columns; week numbers get a narrow column on the left.
  */
 export function MonthView() {
-  const { days, events, gridToday, palette, mode, account } = useApp();
+  const { days, events, gridToday, palette, mode, account, zone } = useApp();
   const anchor = useUi((state) => state.anchor);
   const selection = useUi((state) => state.selection);
   const month = anchor.slice(0, 7);
@@ -107,7 +108,11 @@ export function MonthView() {
                     <button
                       type="button"
                       key={item.event.id}
-                      onClick={() => select({ kind: "event", id: item.event.id })}
+                      data-item={`event:${item.event.id}`}
+                      onClick={() => {
+                        select({ kind: "event", id: item.event.id });
+                        openEdit(item.event, zone);
+                      }}
                       className="absolute flex h-[18px] items-center truncate rounded-sm border-l-[3px] px-1.5 text-caption font-medium"
                       style={{
                         top: NUMBER_ROW + lane * LINE,
@@ -149,7 +154,7 @@ function Cell({
   offset: number;
   capacity: number;
 }) {
-  const { events, data, today, palette, mode, calendars } = useApp();
+  const { events, data, today, palette, mode, calendars, zone } = useApp();
   const selection = useUi((state) => state.selection);
   // Timed items touching this day. One that began the day before continues here and
   // is labelled with when it ends.
@@ -169,7 +174,10 @@ function Cell({
         text: (palette.get(event.calendarId) ?? graphite(mode)).title,
         done: false,
         block: false,
-        onClick: () => select({ kind: "event", id: event.id }),
+        onClick: () => {
+          select({ kind: "event", id: event.id });
+          openEdit(event, zone);
+        },
         selected: selection?.kind === "event" && selection.id === event.id,
         writable: calendars.find((c) => c.id === event.calendarId)?.writable ?? false,
       })),
@@ -215,6 +223,7 @@ function Cell({
           <button
             type="button"
             key={item.key}
+            data-item={item.key}
             onClick={item.onClick}
             className={`flex h-[18px] w-full items-center gap-1.5 truncate rounded-sm px-1 text-caption ${
               item.selected ? "bg-accent-soft" : "hover:bg-hover"

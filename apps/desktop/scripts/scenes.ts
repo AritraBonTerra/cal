@@ -5,8 +5,10 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * from a fresh fixture launch (seeded data, clock at Wed 2026-10-28 10:40), seeds any
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
- * capture.
+ * capture. `steps` runs any sequence of those in order instead.
  */
+export type Step = { press: string } | { type: string } | { click: string } | { wait: number };
+
 export interface Scene {
   name: string;
   width?: number;
@@ -18,7 +20,11 @@ export interface Scene {
   text?: string;
   after?: string[];
   click?: string;
+  steps?: Step[];
 }
+
+// The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
+const STANDUP = "[data-item='event:fixture-2'] > div";
 
 export const scenes: Scene[] = [
   { name: "week-light" },
@@ -75,6 +81,43 @@ export const scenes: Scene[] = [
   },
   { name: "zone-picker", keys: ["z"], text: "tok" },
   { name: "travel", keys: ["z"], text: "tokyo", after: ["Enter"] },
+  // The event popover on a draft made with `C` (the next free slot after 10:40).
+  { name: "event-create", keys: ["c"], text: "Coffee with Sam at Blue Bottle" },
+  { name: "event-create-dark", dark: true, keys: ["c"], text: "Coffee with Sam at Blue Bottle" },
+  // A drag-made draft with a parsed time, moved by its title to tomorrow at 3.
+  {
+    name: "event-create-parsed",
+    keys: ["c"],
+    text: "Design sync tomorrow 3pm for 45m alert 15m every weekday",
+  },
+  { name: "event-edit", click: STANDUP },
+  { name: "event-edit-dark", dark: true, click: STANDUP },
+  { name: "event-attendees", click: "[data-item='event:fixture-6'] > div" },
+  // Halloween sits on the subscribed Holidays calendar: the popover opens view-only.
+  { name: "event-readonly", click: "[data-item='event:fixture-19']" },
+  {
+    name: "span-dialog",
+    steps: [{ click: STANDUP }, { press: "Meta+a" }, { type: "Daily standup" }, { press: "Enter" }],
+  },
+  {
+    name: "event-deleted-toast",
+    steps: [
+      { click: "[data-item='event:fixture-12'] > div" },
+      { press: "Escape" },
+      { press: "Backspace" },
+    ],
+  },
+  {
+    name: "quick-entry-event",
+    keys: ["Meta+Shift+n", "Meta+1"],
+    text: "Sunday school planning tomorrow at 3 for 45m at Blue Bottle",
+  },
+  {
+    name: "quick-entry-event-dark",
+    dark: true,
+    keys: ["Meta+Shift+n", "Meta+1"],
+    text: "Lunch with Sam tomorrow 1pm for 1h alert 10m",
+  },
   {
     name: "settings-live",
     settings: {

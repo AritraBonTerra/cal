@@ -2,6 +2,7 @@ import { useSettings } from "@cal/app-core";
 import { Globe } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "../lib/clock";
+import { setFormZone } from "../lib/events";
 import { formatMinutes } from "../lib/time";
 import { closeOverlay, useUi } from "../lib/ui";
 import { useZoneSettings } from "../lib/zoneSettings";
@@ -32,16 +33,19 @@ export function ZonePicker() {
   const heading =
     purpose.kind === "travel"
       ? "Travel to time zone"
-      : purpose.kind === "change"
-        ? purpose.index === undefined
-          ? "Change primary time zone"
-          : "Change time zone"
-        : "Add time zone";
+      : purpose.kind === "event"
+        ? "Event time zone"
+        : purpose.kind === "change"
+          ? purpose.index === undefined
+            ? "Change primary time zone"
+            : "Change time zone"
+          : "Add time zone";
 
   const choose = (zone: string | undefined) => {
     if (!zone) return;
     closeOverlay();
     if (purpose.kind === "travel") zones.travel(zone);
+    else if (purpose.kind === "event") setFormZone(zone);
     else if (purpose.kind === "add") zones.add(zone);
     else if (purpose.index === undefined) zones.setPrimary(zone);
     else zones.change(purpose.index, zone);

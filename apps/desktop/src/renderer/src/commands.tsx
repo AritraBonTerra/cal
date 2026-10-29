@@ -2,8 +2,19 @@ import { type Command, useActions, useCommands, useHistory, useSettings } from "
 import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
+import { deleteWithUndo } from "./components/EventPopover";
 import type { AppState } from "./lib/app";
 import { now } from "./lib/clock";
+import {
+  closeEditor,
+  defaultCalendar,
+  editorStore,
+  eventWriter,
+  nextFreeSlot,
+  openCreate,
+  openEdit,
+  spanFor,
+} from "./lib/events";
 import { newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
 import {
   closeOverlay,
@@ -49,6 +60,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     };
     const hasTask = () => ui.get().selection?.kind === "task" && !ui.get().editing;
     const hasBlock = () => ui.get().selection?.kind === "block";
+    const selectedEvent = () => {
+      const { selection } = ui.get();
+      if (selection?.kind !== "event") return undefined;
+      return latest.current.events.find((event) => event.id === selection.id);
+    };
+    const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
+    const writer = () => eventWriter(history, latest.current.refreshEvents);
 
     // Moves the task selection within the visible list; with nothing selected, picks an end.
     const step = (direction: 1 | -1) => {
@@ -415,6 +433,63 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     const calendar: Command[] = [
+      {
+        id: "event.new",
+        title: "New Event",
+        group: "Calendar",
+        keys: ["c"],
+        aliases: ["create event", "add event", "meeting"],
+        run: () => {
+          const { calendars, device, account, events, data, today, zone } = latest.current;
+          const calendar = defaultCalendar(calendars, device.defaultCalendar);
+          const busy = [
+            ...events.filter((event) => event.busy && !event.allDay),
+            ...data.blocks.map((block) => ({ start: block.start_at, end: block.end_at })),
+          ].map((span) => ({ start: new Date(span.start), end: new Date(span.end) }));
+          const slot = nextFreeSlot(now(), account.eventMinutes, busy);
+          closeOverlay();
+          if (!latest.current.days.includes(toDayKey(slot.start))) goToday(today);
+          select(null);
+          openCreate(slot, {
+            calendarId: calendar?.id ?? "",
+            timeZone: zone,
+            reminder: account.eventReminder,
+            canCreateEvents: calendar !== undefined,
+          });
+        },
+      },
+      {
+        id: "event.edit",
+        title: "Edit Event",
+        group: "Calendar",
+        keys: ["enter", "e"],
+        aliases: ["open event"],
+        enabled: hasEvent,
+        run: () => {
+          const event = selectedEvent();
+          if (event) openEdit(event, latest.current.zone);
+        },
+      },
+      {
+        id: "event.delete",
+        title: "Delete Event",
+        group: "Calendar",
+        keys: ["backspace", "delete", "mod+backspace"],
+        aliases: ["remove event"],
+        enabled: hasEvent,
+        run: () => {
+          const event = selectedEvent();
+          if (!event) return;
+          const calendar = latest.current.calendars.find((each) => each.id === event.calendarId);
+          if (!calendar?.writable) return;
+          void spanFor(event, "Delete repeating event").then((span) => {
+            if (!span) return;
+            select(null);
+            closeEditor();
+            return deleteWithUndo(event, span, writer(), history);
+          });
+        },
+      },
       {
         id: "block.delete",
         title: "Remove from Calendar",

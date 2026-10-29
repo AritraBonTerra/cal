@@ -10,6 +10,7 @@ import {
 } from "@cal/domain";
 import { useCallback, useEffect, useMemo } from "react";
 import { useAppCommands } from "./commands";
+import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
 import { Palette } from "./components/Palette";
@@ -17,8 +18,10 @@ import { QuickEntry } from "./components/QuickEntry";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
 import { SignInSheet } from "./components/SignInSheet";
+import { SpanDialog } from "./components/SpanDialog";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { TaskPane } from "./components/TaskPane";
+import { Toast } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
@@ -182,6 +185,9 @@ export function App() {
           <Toolbar first={first} last={last} />
           {view.kind === "days" ? <DaysView /> : <MonthView />}
         </main>
+        <EventPopover />
+        <SpanDialog />
+        <Toast />
         {overlay === "palette" && <Palette />}
         {overlay === "shortcuts" && <ShortcutSheet />}
         {overlay === "quickEntry" && <QuickEntry />}

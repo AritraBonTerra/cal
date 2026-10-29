@@ -1,6 +1,7 @@
 import { type DayKey, toDayKey } from "@cal/domain";
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
+import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
 import { select, useUi } from "../../lib/ui";
 
@@ -8,7 +9,7 @@ const LANE = 21;
 
 // All-day events as bars spanning their days, stacked in lanes (20px chips, 1px gaps).
 export function AllDayRow({ days }: { days: readonly DayKey[] }) {
-  const { events, palette, mode } = useApp();
+  const { events, palette, mode, zone } = useApp();
   const selected = useUi((state) =>
     state.selection?.kind === "event" ? state.selection.id : null,
   );
@@ -36,7 +37,11 @@ export function AllDayRow({ days }: { days: readonly DayKey[] }) {
           <button
             type="button"
             key={item.event.id}
-            onClick={() => select({ kind: "event", id: item.event.id })}
+            data-item={`event:${item.event.id}`}
+            onClick={() => {
+              select({ kind: "event", id: item.event.id });
+              openEdit(item.event, zone);
+            }}
             className={`absolute flex h-5 items-center truncate border-l-[3px] px-1.5 text-small font-medium ${
               item.clippedStart ? "" : "rounded-l-sm"
             } ${item.clippedEnd ? "" : "rounded-r-sm"}`}

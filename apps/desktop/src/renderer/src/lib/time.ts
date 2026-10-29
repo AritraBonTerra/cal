@@ -106,6 +106,9 @@ export function formatSpan(first: DayKey, last: DayKey) {
 
 export const formatMonthDay = (day: DayKey) => monthDay.format(fromDayKey(day));
 
+// "Wed, Oct 28": the event popover's date line.
+export const formatWeekdayMonthDay = (day: DayKey) => weekdayMonthDay.format(fromDayKey(day));
+
 // Relative wording for deadlines and When: "Today", "Tomorrow", "Fri", "Nov 13".
 export function formatRelativeDay(day: DayKey, today: DayKey) {
   const diff = Math.round((fromDayKey(day).getTime() - fromDayKey(today).getTime()) / 86_400_000);

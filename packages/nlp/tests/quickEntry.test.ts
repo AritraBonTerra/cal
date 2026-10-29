@@ -768,6 +768,12 @@ describe("parseQuickEntry: review cases", () => {
     });
   });
 
+  test("a time and a duration don't overlap", () => {
+    const entry = event("Call at 3 for 45m");
+    const [time, length] = entry.tokens;
+    expect(time?.end).toBeLessThanOrEqual(length?.start ?? 0);
+  });
+
   test("odd inputs don't throw", () => {
     for (const text of [
       "",

@@ -22,7 +22,8 @@ export interface TimeMatch {
 const ZONE = `(?:\\s*(${Object.keys(ZONE_ABBREVIATIONS).join("|")})\\b)?`;
 const MERIDIEM = "(a\\.m\\.|p\\.m\\.|am|pm|a|p)";
 // hour[:minutes][am|pm], or noon / midnight.
-const CLOCK = `(noon|midnight|(\\d{1,2})(?::(\\d{2}))?\\s*${MERIDIEM}?)`;
+// The space before am/pm belongs to it, so a bare clock never swallows trailing space.
+const CLOCK = `(noon|midnight|(\\d{1,2})(?::(\\d{2}))?(?:\\s*${MERIDIEM})?)`;
 
 const RANGE = new RegExp(
   `(?<![\\w:/])(?:(from|at|between)\\s+)?${CLOCK}${ZONE}\\s*(?:-|to|until|till|and)\\s*${CLOCK}${ZONE}(?![\\w:])`,

@@ -52,7 +52,13 @@ await page.mouse.down();
 await page.mouse.move(c.x + c.width / 2, y(15 * 60 + 30), { steps: 4 });
 await page.mouse.move(c.x + c.width / 2, y(16 * 60), { steps: 4 });
 await page.mouse.up();
-await page.waitForTimeout(100);
+await page.waitForTimeout(150);
+// Drag-create opens the popover on an Event draft; ⌘2 switches it to a to-do.
+check(
+  "drag to create opens the popover",
+  (await page.locator("[role=dialog][aria-label='New event']").count()) === 1,
+);
+await page.keyboard.press("Meta+2");
 await page.keyboard.type("Smoke block");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(300);
@@ -206,7 +212,8 @@ await page.mouse.down();
 await page.mouse.move(wed.x + wed.width / 2, y(19 * 60 + 30), { steps: 4 });
 await page.mouse.move(thu.x + thu.width / 2, y(20 * 60), { steps: 6 });
 await page.mouse.up();
-await page.waitForTimeout(100);
+await page.waitForTimeout(150);
+await page.keyboard.press("Meta+2");
 await page.keyboard.type("Overnight");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(300);
@@ -246,6 +253,137 @@ await inColumn("2026-10-28").click();
 await page.keyboard.press("Backspace");
 await page.waitForTimeout(300);
 check("Backspace removes the overnight block", (await blocks()) === before);
+
+// 13c. drag-create an event on Fri 18:00–19:00 and save it
+const eventChips = () => page.locator("[data-item^='event:'] > div");
+const eventsBefore = await eventChips().count();
+// Clicks above may have scrolled the grid; `y()` assumes the opening scroll position.
+await page.locator("[data-grid-body]").evaluate((element, top) => {
+  element.scrollTop = top;
+}, body.scrollTop);
+const fri = await col("2026-10-30");
+await page.mouse.move(fri.x + fri.width / 2, y(18 * 60));
+await page.mouse.down();
+await page.mouse.move(fri.x + fri.width / 2, y(18 * 60 + 30), { steps: 4 });
+await page.mouse.move(fri.x + fri.width / 2, y(19 * 60), { steps: 4 });
+await page.mouse.up();
+await page.waitForTimeout(150);
+// The popover remembers the last kind used (To-do above), so pick Event.
+await page.keyboard.press("Meta+1");
+await page.keyboard.type("Smoke event");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(400);
+const smokeEvent = page.locator("[data-item^='event:'] > div", { hasText: "Smoke event" });
+check(
+  "drag-create → Event saves a device event at 6–7 PM",
+  (await eventChips().count()) === eventsBefore + 1 &&
+    ((await smokeEvent.textContent())?.includes("6–7 PM") ?? false),
+);
+
+// 13d. click it, rename it, ⌘↩ saves
+await smokeEvent.click();
+await page.waitForTimeout(200);
+check(
+  "clicking an event opens the popover",
+  (await page.locator("[role=dialog][aria-label='Event'] input[aria-label=Title]").inputValue()) ===
+    "Smoke event",
+);
+await page.keyboard.press("Meta+a");
+await page.keyboard.type("Renamed event");
+await page.keyboard.press("Meta+Enter");
+await page.waitForTimeout(400);
+const renamed = page.locator("[data-item^='event:'] > div", { hasText: "Renamed event" });
+check("editing the title renames the event", (await renamed.count()) === 1);
+
+// 13e. delete it with ⌫, then Undo from the toast
+await renamed.click();
+await page.waitForTimeout(200);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(100);
+await page.keyboard.press("Backspace");
+await page.waitForTimeout(400);
+check(
+  "⌫ deletes the selected event and offers Undo",
+  (await renamed.count()) === 0 &&
+    (await page.locator("[data-toast]", { hasText: "Undo" }).count()) === 1,
+);
+await page.click("[data-toast] button:has-text('Undo')");
+await page.waitForTimeout(400);
+check("Undo brings the event back", (await renamed.count()) === 1);
+await renamed.click();
+await page.waitForTimeout(200);
+await page.keyboard.press("Meta+Backspace");
+await page.waitForTimeout(400);
+check("⌘⌫ in the popover deletes it again", (await renamed.count()) === 0);
+
+// 13f. saving a change to a repeating event asks for the span
+const standup = page.locator("[data-column='2026-10-29'] [data-item^='event:'] > div", {
+  hasText: "Standup",
+});
+await standup.click();
+await page.waitForTimeout(200);
+await page.keyboard.press("Meta+a");
+await page.keyboard.type("Daily standup");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+check(
+  "a repeating event asks which occurrences to change",
+  (await page.locator("[role=dialog][aria-label='Repeating event']").count()) === 1,
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+check(
+  "Esc leaves the repeating event unchanged",
+  (await page.locator("[role=dialog][aria-label='Repeating event']").count()) === 0 &&
+    (await standup.count()) === 1,
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
+// 13g. Quick Entry in Event mode creates an event
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.press("Meta+1");
+await page.keyboard.type("Lunch tomorrow 1pm for 1h");
+await page.waitForTimeout(100);
+check(
+  "Quick Entry shows the parsed chips",
+  (await page.locator("[data-chip=duration]").count()) === 1 &&
+    (await page.locator("[data-chip=time]").count()) === 1,
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(400);
+const lunch = page.locator("[data-column='2026-10-29'] [data-item^='event:'] > div", {
+  hasText: "Lunch",
+});
+check(
+  "Quick Entry in Event mode makes a 1–2 PM event tomorrow",
+  (await lunch.filter({ hasText: "1–2 PM" }).count()) === 1,
+);
+
+// 13h. un-parsing a token keeps its text in the title
+await page.keyboard.press("Escape");
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.type("Call Sam tomorrow ");
+await page.waitForTimeout(100);
+await page.locator("[data-token=when]").click();
+await page.waitForTimeout(100);
+check(
+  "clicking a token un-parses it",
+  (await page.locator("[data-chip=when]").count()) === 0 &&
+    ((await page.locator("footer").textContent())?.includes("“Call Sam tomorrow”") ?? false),
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+1");
+await page.waitForTimeout(200);
+check(
+  "the un-parsed text stays in the to-do's title",
+  (await page.locator("li", { hasText: "Call Sam tomorrow" }).count()) === 1,
+);
+await page.keyboard.press("Meta+2");
+await page.waitForTimeout(200);
 
 // 14. nav keys and palette
 await page.keyboard.press("ArrowRight");

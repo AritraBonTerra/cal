@@ -51,6 +51,13 @@ for (const scene of scenes.filter((each) => !wanted.length || wanted.includes(ea
     await page.waitForTimeout(120);
   }
   if (scene.click) await page.click(scene.click);
+  for (const step of scene.steps ?? []) {
+    if ("press" in step) await page.keyboard.press(step.press);
+    else if ("type" in step) await page.keyboard.type(step.type, { delay: 10 });
+    else if ("click" in step) await page.click(step.click);
+    else await page.waitForTimeout(step.wait);
+    await page.waitForTimeout(150);
+  }
   await page.waitForTimeout(300);
   const path = join(outDir, `${scene.name}.png`);
   await page.screenshot({ path });

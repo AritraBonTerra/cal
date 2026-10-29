@@ -36,14 +36,36 @@ type Seed = [
   extra?: Partial<ExternalEvent>,
 ];
 
+// Every weekday's Standup is one occurrence of the same series, with reminders.
+const standup: Partial<ExternalEvent> = {
+  recurring: true,
+  recurrence: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+  alarms: [10, 60],
+  timeZone: "America/Los_Angeles",
+};
+
 const seeds: Seed[] = [
-  ["work", "Standup", at(day(0), 9, 30), at(day(0), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(1), 9, 30), at(day(1), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(2), 9, 30), at(day(2), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(3), 9, 30), at(day(3), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(4), 9, 30), at(day(4), 9, 45), { recurring: true }],
+  ["work", "Standup", at(day(0), 9, 30), at(day(0), 9, 45), standup],
+  ["work", "Standup", at(day(1), 9, 30), at(day(1), 9, 45), standup],
+  ["work", "Standup", at(day(2), 9, 30), at(day(2), 9, 45), standup],
+  ["work", "Standup", at(day(3), 9, 30), at(day(3), 9, 45), standup],
+  ["work", "Standup", at(day(4), 9, 30), at(day(4), 9, 45), standup],
   ["work", "Planning", at(day(0), 11), at(day(0), 12), { location: "Room 4" }],
-  ["work", "Design review", at(day(1), 14), at(day(1), 15, 30)],
+  [
+    "work",
+    "Design review",
+    at(day(1), 14),
+    at(day(1), 15, 30),
+    {
+      url: "https://meet.google.com/abc-defg-hij",
+      attendees: [
+        { name: "Priya Nair", email: "priya@work.com", status: "accepted", organizer: true },
+        { name: "Sam Okafor", email: "sam@work.com", status: "tentative", organizer: false },
+        { email: "lee@work.com", status: "pending", organizer: false },
+      ],
+      myStatus: "accepted",
+    },
+  ],
   ["work", "1:1 with Sam", at(day(2), 11, 30), at(day(2), 12)],
   ["work", "Prep for All Hands", at(day(2), 13), at(day(2), 13, 30)],
   ["work", "All Hands", at(day(2), 16), at(day(2), 17), { location: "Zoom" }],
@@ -93,21 +115,30 @@ export class FixtureCalendar implements CalendarSource {
         (!calendarIds || calendarIds.includes(event.calendarId)),
     );
   }
+  // Ids never repeat, so an undo that recreates a deleted event gets a fresh one.
+  private nextId = events.length;
+
   async createEvent(input: EventInput) {
     const event: ExternalEvent = {
-      ...input,
-      id: `fixture-${events.length}`,
-      recurring: false,
       busy: true,
+      ...input,
+      recurrence: input.recurrence || undefined,
+      id: `fixture-${this.nextId++}`,
+      recurring: Boolean(input.recurrence),
     };
     events.push(event);
     return event;
   }
+  // Spans are ignored: fixture occurrences are separate events, so only this one changes.
   async updateEvent(id: string, input: Partial<EventInput>, _span: EventSpan) {
     const index = events.findIndex((event) => event.id === id);
     const current = events[index];
     if (!current) throw new Error(`no event ${id}`);
-    const next = { ...current, ...input };
+    const next: ExternalEvent = { ...current, ...input };
+    if (input.recurrence !== undefined) {
+      next.recurrence = input.recurrence || undefined;
+      next.recurring = Boolean(input.recurrence);
+    }
     events[index] = next;
     return next;
   }

@@ -68,6 +68,12 @@
     transform: translateY(-12px);
   }
 }
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
 @keyframes flash-out {
   to {
     opacity: 0;
@@ -81,6 +87,11 @@
 @utility sheet-in {
   @media (prefers-reduced-motion: no-preference) {
     animation: sheet-in 220ms var(--ease-out);
+  }
+}
+@utility toast-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: toast-in 220ms var(--ease-out);
   }
 }
 @utility flash-out {
