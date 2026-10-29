@@ -877,6 +877,26 @@ describe("eventWriter: ids that change under a series", () => {
     expect(days(await titled("Thursday sync"))).toEqual(["2026-10-29"]);
   });
 
+  test("a 'future' split keeps a moved occurrence reachable by its original start", async () => {
+    const { history, writer, titled } = setup();
+    const standupOn = async (day: string) => {
+      const found = (await titled("Standup")).find((each) => each.start.startsWith(day));
+      if (!found) throw new Error(`no standup on ${day}`);
+      return found;
+    };
+    const thursday = await standupOn("2026-10-29");
+    const later = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 60 * 60_000));
+    await writer.update(
+      thursday,
+      { start: later(thursday.start), end: later(thursday.end) },
+      "this",
+    );
+    await writer.update(await standupOn("2026-10-28"), { location: "Room 2" }, "future");
+    await history.undo();
+    await history.undo();
+    expect((await standupOn("2026-10-29")).start.slice(11, 16)).toBe("09:30");
+  });
+
   test("a new rule that drops the picked occurrence can still be undone", async () => {
     const { history, writer, titled } = setup();
     const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));

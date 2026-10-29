@@ -178,6 +178,13 @@ export class FixtureCalendar implements CalendarSource {
     const series = span === "future" && current.series ? `fixture-${this.nextId++}` : undefined;
     const shift = (key: "start" | "end", time: string) =>
       Date.parse(time) - Date.parse(current[key]);
+    // A member's id under `series`: like EventKit's occurrence date, its original start
+    // (not a detached occurrence's own) moved by the span's shift.
+    const renamed = (series: string, member: Stored) => {
+      const original = Date.parse(member.id.split("|")[1] ?? member.start);
+      const moved = input.start ? shift("start", input.start) : 0;
+      return occurrenceId(series, new Date(original + moved));
+    };
     let written: Stored | undefined;
     for (const member of retained) {
       const next: Stored = { ...member, ...input, ...blankToUndefined(input) };
@@ -188,7 +195,7 @@ export class FixtureCalendar implements CalendarSource {
       // Like a device calendar, a series' occurrences are named by their start: moving
       // the series renames each one. A detached ("this") occurrence keeps its name.
       if (input.start && span !== "this" && next.series && next.id.includes("|"))
-        next.id = occurrenceId(next.series, new Date(next.start));
+        next.id = renamed(next.series, member);
       if (input.recurrence !== undefined) {
         next.recurrence = input.recurrence || undefined;
         next.recurring = Boolean(input.recurrence);
@@ -202,7 +209,7 @@ export class FixtureCalendar implements CalendarSource {
       // A split ("future") series has its own identifier, which names its occurrences.
       if (series && next.series) {
         next.series = series;
-        next.id = occurrenceId(series, new Date(next.start));
+        next.id = renamed(series, member);
       }
       this.stored[this.stored.indexOf(member)] = next;
       if (input.recurrence) this.expand(next);
