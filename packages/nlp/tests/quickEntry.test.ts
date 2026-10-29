@@ -863,3 +863,12 @@ test("a to-do's range across zones is as long as the instants are apart", () => 
   if (entry.kind !== "task") throw new Error("expected a to-do");
   expect(entry.estimate_min).toBe(6 * 60);
 });
+
+test("an end in a zone far ahead still lands after the start", () => {
+  const task = quick("task Flight Nov 2 11pm PST to 1am JST");
+  if (task.kind !== "task") throw new Error("expected a to-do");
+  expect(task.estimate_min).toBe(9 * 60);
+  const event = quick("event Flight Nov 2 11pm PST to 1am JST");
+  if (event.kind !== "event") throw new Error("expected an event");
+  expect(Date.parse(event.end) - Date.parse(event.start)).toBe(9 * 60 * 60_000);
+});

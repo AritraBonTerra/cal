@@ -109,3 +109,16 @@ test("BYMONTH limits a rule to its months", () => {
     "2028/11/23",
   ]);
 });
+
+test("BYMONTHDAY with BYDAY needs both: Friday the 13th", () => {
+  const start = new Date(2026, 10, 13, 9); // Friday, November 13
+  const days = expandRule(
+    "FREQ=MONTHLY;BYMONTHDAY=13;BYDAY=FR;COUNT=3",
+    start,
+    new Date(start.getTime() + 3_600_000),
+    1200,
+  ).map(
+    (each) => `${each.start.getFullYear()}/${each.start.getMonth() + 1}/${each.start.getDate()}`,
+  );
+  expect(days).toEqual(["2026/11/13", "2027/8/13", "2028/10/13"]);
+});

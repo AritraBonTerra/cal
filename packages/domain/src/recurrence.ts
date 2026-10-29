@@ -100,19 +100,21 @@ function monthlyDue(parts: Map<string, string>, key: DayKey, first: DayKey) {
     .some((n) => (n > 0 ? days[n - 1] : days[days.length + n]) === key);
 }
 
-// Whether `key` is a day a monthly rule falls on: its BYMONTHDAY, its BYDAY with an
+// Whether `key` is a day a monthly rule falls on: its BYMONTHDAY and its BYDAY with an
 // ordinal ("1FR" first Friday, "-1FR" last), or the start's day of the month.
 function monthlyDay(parts: Map<string, string>, key: DayKey, first: DayKey) {
   const date = Number(key.slice(8));
   const length = daysInMonth(key);
   const monthDay = parts.get("BYMONTHDAY");
-  if (monthDay !== undefined) {
-    return monthDay.split(",").some((n) => {
+  const byDay = parts.get("BYDAY");
+  // Both given ("Friday the 13th"): a day must match both.
+  const dayMatches =
+    monthDay === undefined ||
+    monthDay.split(",").some((n) => {
       const value = Number(n);
       return value > 0 ? date === value : date === length + value + 1;
     });
-  }
-  const byDay = parts.get("BYDAY");
+  if (!dayMatches) return false;
   if (byDay !== undefined) {
     const weekday = WEEKDAYS[fromDayKey(key).getDay()];
     return byDay.split(",").some((entry) => {
@@ -123,7 +125,7 @@ function monthlyDay(parts: Map<string, string>, key: DayKey, first: DayKey) {
       return nth > 0 ? Math.ceil(date / 7) === nth : Math.ceil((length - date + 1) / 7) === -nth;
     });
   }
-  return date === Number(first.slice(8));
+  return monthDay !== undefined || date === Number(first.slice(8));
 }
 
 // The last instant an UNTIL allows: a date form covers its whole local day, a time form

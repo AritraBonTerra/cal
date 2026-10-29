@@ -562,10 +562,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
         endZone = spanTimes.last.zone ?? t.zone;
         endMs = zonedInstant(range, spanTimes.last.startMin, endZone ?? home);
       } else if (t.endMin !== undefined) {
-        const zoneForEnd = endZone ?? home;
-        endMs = zonedInstant(day, t.endMin, zoneForEnd);
-        // An end before the start is on the next day, at that clock time (DST-safe).
-        if (endMs <= startMs) endMs = zonedInstant(addDays(day, 1), t.endMin, zoneForEnd);
+        endMs = endAfter(startMs, day, t.endMin, endZone ?? home);
       } else {
         endMs = startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000;
       }
@@ -609,10 +606,8 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     entry.start_at = isoIn(startMs, t.zone ?? context.timeZone);
     if (t.endMin !== undefined) {
       // The length between the two instants, each in its own zone ("3pm EST to 6pm
-      // PST" is six hours); an end at or before the start is the next day's.
-      const endZone = t.endZone ?? t.zone ?? home;
-      let endMs = zonedInstant(day, t.endMin, endZone);
-      if (endMs <= startMs) endMs = zonedInstant(addDays(day, 1), t.endMin, endZone);
+      // PST" is six hours).
+      const endMs = endAfter(startMs, day, t.endMin, t.endZone ?? t.zone ?? home);
       entry.estimate_min = Math.round((endMs - startMs) / 60_000);
     }
   }
@@ -672,6 +667,19 @@ function unblank(s: Scanner, token: Token) {
 }
 
 // The title: everything no applied token claimed, with quote marks dropped and space tidied.
+/*
+ * The first instant after `startMs` at `endMin` on the clock in `zone`, from `day` on:
+ * an end at or before the start falls on a later day at that clock time (DST-safe). A
+ * zone far ahead of the start's ("11pm PST to 1am JST") can need more than one day.
+ */
+function endAfter(startMs: number, day: DayKey, endMin: number, zone: string) {
+  let endMs = zonedInstant(day, endMin, zone);
+  for (let ahead = 1; endMs <= startMs && ahead <= 3; ahead++) {
+    endMs = zonedInstant(addDays(day, ahead), endMin, zone);
+  }
+  return endMs;
+}
+
 function buildTitle(s: Scanner) {
   const drop = new Array<boolean>(s.text.length).fill(false);
   for (const token of s.tokens) {
