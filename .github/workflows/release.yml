@@ -78,8 +78,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.ASC_ISSUER_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
+        # Only the calkit helper is built here: scripts/prepare.ts also patches the dev
+        # Electron.app, which packaging doesn't use (electron-builder fetches its own).
         run: |
-          bun scripts/prepare.ts
+          swift build -c release --package-path native/calkit
           env -u ELECTRON_RUN_AS_NODE bunx electron-vite build
           bunx electron-builder --mac \
             --publish "$([ "$PUBLISH" = true ] && echo always || echo never)" \
