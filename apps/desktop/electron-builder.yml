@@ -1,5 +1,8 @@
-# Packages the Mac app: `bun run dist` → release/Cal-<version>-arm64.dmg.
-# Signs with the identity named by CSC_NAME if set (not notarized: for this Mac).
+# Packages the Mac app: `bun run dist` → release/Cal-<version>-arm64.dmg (+ .zip).
+# Locally it signs with the identity named by CSC_NAME, if set, and isn't notarized.
+# CI (.github/workflows/release.yml) signs with the Developer ID certificate in
+# CSC_LINK, notarizes with the App Store Connect key in APPLE_API_KEY*, and publishes
+# to GitHub Releases, which the app's updater reads (src/main/updater.ts).
 appId: dev.aritra.cal
 productName: Cal
 directories:
@@ -16,10 +19,14 @@ mac:
   target:
     - target: dmg
       arch: [arm64]
+    # The updater installs from the zip; the DMG is for first installs.
+    - target: zip
+      arch: [arm64]
   category: public.app-category.productivity
   icon: build/icon.icns
-  hardenedRuntime: false
-  notarize: false
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSCalendarsFullAccessUsageDescription: Cal shows and edits the events in your calendars.
     NSCalendarsUsageDescription: Cal shows and edits the events in your calendars.
@@ -29,3 +36,8 @@ dmg:
 protocols:
   - name: Cal
     schemes: [dev.aritra.cal]
+publish:
+  provider: github
+  owner: AritraBonTerra
+  repo: cal
+  releaseType: release

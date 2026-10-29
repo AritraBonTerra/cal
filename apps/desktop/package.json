@@ -14,7 +14,7 @@
     "screenshots": "bun scripts/screenshot.ts",
     "smoke": "bun scripts/smoke.ts",
     "test": "TZ=America/Los_Angeles bun test",
-    "dist": "bun scripts/prepare.ts && env -u ELECTRON_RUN_AS_NODE electron-vite build && electron-builder --mac"
+    "dist": "bun scripts/prepare.ts && env -u ELECTRON_RUN_AS_NODE electron-vite build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@better-auth/electron": "1.6.33",
@@ -37,6 +37,7 @@
     "convex": "1.48.0",
     "electron": "45.1.0",
     "electron-builder": "26.18.0",
+    "electron-updater": "6.8.11",
     "electron-vite": "6.0.0",
     "lucide-react": "1.63.0",
     "playwright": "1.64.1",
