@@ -331,8 +331,10 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
       form.start.getTime() + (entry.estimate_min ?? length(base) / MINUTE) * MINUTE,
     );
   } else if (entry.when_date && hasDate) {
+    // "tomorrow": the slot's time on that day, for a typed length ("for 2h") if any.
     form.start = zonedInstant(entry.when_date, zonedMinutes(base.start, zone), zone);
-    form.end = new Date(form.start.getTime() + length(base));
+    const minutes = entry.estimate_min;
+    form.end = new Date(form.start.getTime() + (minutes ? minutes * MINUTE : length(base)));
   } else if (entry.estimate_min !== undefined) {
     form.end = new Date(base.start.getTime() + entry.estimate_min * MINUTE);
   }

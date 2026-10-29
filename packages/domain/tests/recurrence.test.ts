@@ -133,3 +133,14 @@ test("a daily rule with BYDAY skips the other weekdays", () => {
   ).map((each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`);
   expect(days).toEqual(["11/6", "11/9", "11/10"]);
 });
+
+test("a daily rule with BYMONTHDAY counts only those dates", () => {
+  const start = new Date(2026, 10, 15, 9);
+  const days = expandRule(
+    "FREQ=DAILY;BYMONTHDAY=15;COUNT=3",
+    start,
+    new Date(start.getTime() + 3_600_000),
+    120,
+  ).map((each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`);
+  expect(days).toEqual(["11/15", "12/15", "1/15"]);
+});

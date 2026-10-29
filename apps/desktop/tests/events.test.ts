@@ -223,6 +223,12 @@ describe("applyEntry", () => {
     expect(form.end.getTime() - form.start.getTime()).toBe(2 * 60 * 60_000);
   });
 
+  test("a to-do moved to a date takes its typed length", () => {
+    const entry = parseQuickEntry("task Read tomorrow for 2h", { now: typedAt, surface: "grid" });
+    const form = applyEntry(draftForm(), entry);
+    expect(form.end.getTime() - form.start.getTime()).toBe(2 * 60 * 60_000);
+  });
+
   test("typed invitees are kept in the notes", () => {
     const form = applyEntry(
       draftForm({ notes: "Agenda" }),

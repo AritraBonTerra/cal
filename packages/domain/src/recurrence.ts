@@ -66,7 +66,7 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
     const inMonth = !byMonth || byMonth.includes(Number(key.slice(5, 7)));
     const due =
       freq === "DAILY"
-        ? offset % interval === 0 && (!parts.has("BYDAY") || byDay.includes(weekdayOf(key)))
+        ? offset % interval === 0 && dailyLimits(parts, key)
         : freq === "WEEKLY"
           ? Math.floor((offset + intoWeek) / 7) % interval === 0 && byDay.includes(weekdayOf(key))
           : freq === "MONTHLY"
@@ -80,6 +80,22 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
     result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
   }
   return result;
+}
+
+// Whether `key` passes a daily rule's limiting parts (RFC 5545): its BYMONTHDAY days
+// and BYDAY weekdays, when given. BYMONTH is checked for every rule.
+function dailyLimits(parts: Map<string, string>, key: DayKey) {
+  const monthDays = parts.get("BYMONTHDAY");
+  const weekdays = parts.get("BYDAY");
+  const date = Number(key.slice(8));
+  const length = daysInMonth(key);
+  const onDate =
+    monthDays === undefined ||
+    monthDays.split(",").some((n) => {
+      const value = Number(n);
+      return value > 0 ? date === value : date === length + value + 1;
+    });
+  return onDate && (weekdays === undefined || weekdays.split(",").includes(weekdayOf(key)));
 }
 
 // The RRULE weekday code of `key` ("MO", "TU", …).
