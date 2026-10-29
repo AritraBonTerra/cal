@@ -1,10 +1,11 @@
-import { type History, useActions, useCal } from "@cal/app-core";
-import type { Attendee, EventSpan, ExternalEvent } from "@cal/calendar-source";
+import { useActions, useCal } from "@cal/app-core";
+import type { Attendee } from "@cal/calendar-source";
 import { addDays, type DayKey, fromDayKey, toDayKey, toOffsetIso } from "@cal/domain";
 import { parseQuickEntry, type QuickEntry, type TaskEntry, type Token } from "@cal/nlp";
 import {
   AlignLeft,
   ArrowRight,
+  ArrowUpRight,
   Bell,
   Clock,
   Flag,
@@ -30,25 +31,29 @@ import { parseClock, parseDurationText } from "../lib/clockText";
 import { type Literal, shiftLiterals } from "../lib/entryText";
 import {
   closeEditor,
+  deleteWithUndo,
   type EditorState,
-  type EventWriter,
   editorStore,
   eventPatch,
   eventWriter,
   formDay,
+  parseDraft,
   patchForm,
   setFormText,
   spanFor,
+  spanStore,
   toEventInput,
   useEditor,
 } from "../lib/events";
 import { inTextField } from "../lib/keyboard";
+import { mapsLabel, mapsUrl } from "../lib/maps";
 import { describeRule, repeatPresets } from "../lib/recurrence";
 import {
   formatDuration,
   formatMinutes,
   formatRelativeDay,
   formatWeekdayMonthDay,
+  usesHour12,
 } from "../lib/time";
 import { showToast } from "../lib/toast";
 import { openZonePicker, select, ui } from "../lib/ui";
@@ -171,15 +176,13 @@ function Popover({ editor }: { editor: EditorState }) {
 
   // New titles parse live; an existing event's title is text, never re-read.
   const parse = (text: string, literals: readonly Literal[]) =>
-    parseQuickEntry(text, {
+    parseDraft(editor, text, literals, {
       now: now(),
-      surface: "grid",
-      kind: form.kind,
       calendars: writable,
       projects: data.projects,
-      literals,
       weekStartsOn: account.weekStart,
       defaultEventMin: account.eventMinutes,
+      canCreateEvents,
     });
   const entry: QuickEntry | null = creating ? parse(form.text, form.literals) : null;
   const tokens: readonly Token[] = entry?.tokens ?? [];
@@ -330,11 +333,17 @@ function Popover({ editor }: { editor: EditorState }) {
     setConfirmDiscard(true);
   };
 
-  // Esc with focus elsewhere in the window (after a dialog closed) still dismisses.
+  // Esc with focus elsewhere in the window (after a dialog closed) still dismisses. An
+  // Esc meant for the span question or an overlay is theirs alone.
   useEffect(() => {
     const onKey = (keyboard: KeyboardEvent) => {
       if (keyboard.key !== "Escape" || keyboard.defaultPrevented) return;
-      if (panel.current?.contains(keyboard.target as Node) || ui.get().overlay !== null) return;
+      if (
+        panel.current?.contains(keyboard.target as Node) ||
+        ui.get().overlay !== null ||
+        spanStore.get().pending !== null
+      )
+        return;
       keyboard.preventDefault();
       dismiss();
     };
@@ -471,7 +480,7 @@ function Popover({ editor }: { editor: EditorState }) {
                 <TextField
                   value={formatMinutes(startMin)}
                   onCommit={(text) => {
-                    const minutes = parseClock(text);
+                    const minutes = parseClock(text, usesHour12());
                     if (minutes !== undefined) setStart(minutes);
                   }}
                   label="Start time"
@@ -486,7 +495,7 @@ function Popover({ editor }: { editor: EditorState }) {
                 <TextField
                   value={formatMinutes(endMin)}
                   onCommit={(text) => {
-                    const minutes = parseClock(text);
+                    const minutes = parseClock(text, usesHour12());
                     if (minutes !== undefined) setEnd(minutes);
                   }}
                   label="End time"
@@ -514,7 +523,7 @@ function Popover({ editor }: { editor: EditorState }) {
                   : formatWeekdayMonthDay(day)
               }
               onCommit={(text) => {
-                const parsed = parseQuickEntry(text, { now: now(), kind: "event" });
+                const parsed = parseQuickEntry(text, { now: now(), kind: "event", timeZone: zone });
                 const dated = parsed.tokens.some(
                   (token) =>
                     token.applied && (token.kind === "when" || token.kind === "date_range"),
@@ -590,6 +599,20 @@ function Popover({ editor }: { editor: EditorState }) {
                   onChange={(location) => patchForm({ location })}
                   placeholder="Location"
                 />
+                {form.location.trim() && (
+                  // A link, not a button: it works on read-only events too, and the
+                  // main process sends it to the Mac's browser or maps app.
+                  <a
+                    href={mapsUrl(form.location, account.maps)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={mapsLabel(account.maps)}
+                    title={mapsLabel(account.maps)}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-hover hover:text-ink"
+                  >
+                    <ArrowUpRight size={14} strokeWidth={1.5} absoluteStrokeWidth />
+                  </a>
+                )}
               </Row>
               <Row icon={Link2}>
                 <LineInput
@@ -786,24 +809,6 @@ function Popover({ editor }: { editor: EditorState }) {
       </footer>
     </div>
   );
-}
-
-/**
- * Deletes `event` as an undoable step and offers Undo in a toast. Shared with the
- * grid's ⌫ command.
- */
-export async function deleteWithUndo(
-  event: ExternalEvent,
-  span: EventSpan,
-  writer: EventWriter,
-  history: History,
-) {
-  try {
-    await writer.remove(event, span);
-    showToast(`Deleted “${event.title}”`, { label: "Undo", run: () => void history.undo() });
-  } catch (error) {
-    showToast(`Couldn't delete the event: ${error instanceof Error ? error.message : error}`);
-  }
 }
 
 // A hairline-separated group of rows.

@@ -6,7 +6,7 @@ import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
 import { dayNumber, formatMinutes, formatWeekday, weekNumber } from "../../lib/time";
 import { select, showDays, useUi } from "../../lib/ui";
-import { dayOf, minutesOf, withinDays } from "./model";
+import { barColumns, dayOf, minutesOf, withinDays } from "./model";
 
 const LINE = 20;
 const NUMBER_ROW = 26;
@@ -56,23 +56,13 @@ export function MonthView() {
       <div ref={ref} className="flex min-h-0 flex-1 flex-col">
         {weeks.map((week) => {
           const first = week[0] ?? "";
-          const last = week[week.length - 1] ?? "";
           const bars = events
             .filter((event) => event.allDay)
             .flatMap((event) => {
               const startDay = toDayKey(new Date(event.start));
               const endDay = toDayKey(new Date(Date.parse(event.end) - 1));
-              if (endDay < first || startDay > last) return [];
-              return [
-                {
-                  event,
-                  from: Math.max(
-                    0,
-                    week.findIndex((day) => day >= startDay),
-                  ),
-                  to: week.includes(endDay) ? week.indexOf(endDay) : lastIndexBefore(week, endDay),
-                },
-              ];
+              const columns = barColumns(week, startDay, endDay);
+              return columns ? [{ event, ...columns }] : [];
             });
           const placed = assignLanes(bars);
           const lanes = placed.reduce((max, { lane }) => Math.max(max, lane + 1), 0);
@@ -135,10 +125,6 @@ export function MonthView() {
     </div>
   );
 }
-
-// The index of the last day of `week` on or before `day` (an all-day bar's end).
-const lastIndexBefore = (week: readonly DayKey[], day: DayKey) =>
-  week.reduce((found, each, index) => (each <= day ? index : found), 0);
 
 function Cell({
   day,

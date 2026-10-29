@@ -2,12 +2,12 @@ import { type Command, useActions, useCommands, useHistory, useSettings } from "
 import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
-import { deleteWithUndo } from "./components/EventPopover";
 import type { AppState } from "./lib/app";
 import { now } from "./lib/clock";
 import {
   closeEditor,
   defaultCalendar,
+  deleteWithUndo,
   editorStore,
   eventWriter,
   nextFreeSlot,

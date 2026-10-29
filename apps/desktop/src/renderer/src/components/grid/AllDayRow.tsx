@@ -4,6 +4,7 @@ import { graphite } from "../../lib/calendars";
 import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
 import { select, useUi } from "../../lib/ui";
+import { barColumns } from "./model";
 
 const LANE = 21;
 
@@ -20,10 +21,10 @@ export function AllDayRow({ days }: { days: readonly DayKey[] }) {
     .flatMap((event) => {
       const startDay = toDayKey(new Date(event.start));
       const endDay = toDayKey(new Date(Date.parse(event.end) - 1));
-      if (endDay < first || startDay > last) return [];
-      const from = Math.max(0, days.indexOf(startDay));
-      const to = days.includes(endDay) ? days.indexOf(endDay) : days.length - 1;
-      return [{ event, from, to, clippedStart: startDay < first, clippedEnd: endDay > last }];
+      // Hidden weekends leave gaps: the bar runs over the visible days it touches.
+      const columns = barColumns(days, startDay, endDay);
+      if (!columns) return [];
+      return [{ event, ...columns, clippedStart: startDay < first, clippedEnd: endDay > last }];
     });
   const placed = assignLanes(bars);
   const lanes = placed.reduce((max, { lane }) => Math.max(max, lane + 1), 0);

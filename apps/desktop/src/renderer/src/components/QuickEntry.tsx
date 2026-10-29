@@ -20,7 +20,7 @@ import { useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
 import { type Literal, shiftLiterals } from "../lib/entryText";
-import { defaultCalendar, type EntryKind, eventWriter } from "../lib/events";
+import { defaultCalendar, type EntryKind, entryInput, eventWriter } from "../lib/events";
 import { showToast } from "../lib/toast";
 import { closeOverlay, select } from "../lib/ui";
 import { TokenText } from "./TokenText";
@@ -77,6 +77,8 @@ export function QuickEntry() {
     literals,
     weekStartsOn: account.weekStart,
     defaultEventMin: account.eventMinutes,
+    // "9am" is 9am in the zone the grid shows.
+    timeZone: zone,
   });
   const kind: EntryKind = entry.kind;
   const chips = entry.tokens.filter((token) => token.applied && token.kind !== "mode");
@@ -102,25 +104,10 @@ export function QuickEntry() {
       showToast("No calendar accepts new events. Allow calendar access in Settings.");
       return;
     }
-    const timed = !entry.allDay;
     try {
-      const id = await eventWriter(history, refreshEvents).create({
-        calendarId: calendar.id,
-        title: entry.title,
-        start: timed ? entry.start : `${entry.start}T00:00:00`,
-        end: timed ? entry.end : `${entry.end}T00:00:00`,
-        allDay: entry.allDay,
-        location: entry.location,
-        url: entry.url,
-        // Device calendars can't invite, so typed emails go into the notes.
-        notes: entry.attendees?.length ? `With ${entry.attendees.join(", ")}` : undefined,
-        recurrence: entry.rrule,
-        busy: timed,
-        timeZone: timed ? (entry.timeZone ?? zone) : undefined,
-        alarms:
-          entry.alertsMin ??
-          (timed && account.eventReminder !== null ? [account.eventReminder] : []),
-      });
+      const id = await eventWriter(history, refreshEvents).create(
+        entryInput(entry, { calendarId: calendar.id, zone, reminder: account.eventReminder }),
+      );
       if (id) select({ kind: "event", id });
     } catch (error) {
       showToast(`Couldn't save the event: ${error instanceof Error ? error.message : error}`);

@@ -65,6 +65,17 @@ export const instant = (day: DayKey, minutes: number, zone = deviceZone) =>
 
 // Whether [start, end) touches any of the days `first` through `last`, with the day
 // boundaries at midnight in `zone`.
+/**
+ * The columns an all-day bar from `startDay` through `endDay` (both inclusive) covers
+ * among `days`, which may skip weekends: from the first visible day on or after its
+ * start to the last on or before its end. Undefined when no visible day falls inside it.
+ */
+export function barColumns(days: readonly DayKey[], startDay: DayKey, endDay: DayKey) {
+  const from = days.findIndex((day) => day >= startDay);
+  const to = days.findLastIndex((day) => day <= endDay);
+  return from === -1 || to < from ? undefined : { from, to };
+}
+
 export const withinDays = ({ start, end }: Span, first: DayKey, last: DayKey, zone = deviceZone) =>
   end.getTime() > instant(first, 0, zone).getTime() &&
   start.getTime() < instant(addDays(last, 1), 0, zone).getTime();

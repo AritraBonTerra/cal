@@ -48,9 +48,17 @@ export function useHourHeight(bodyRef: RefObject<HTMLDivElement | null>) {
     anchor.current = 0;
   }, [hour, bodyRef]);
 
+  // A wheel gesture's unsaved height and the timer that will save it.
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveValue = useRef<number | null>(null);
+
   // Persists a height: at (or under) fit it's saved as 0, "fit", so it tracks resizes.
+  // Any wheel save still pending is dropped, so it can't overwrite this one.
   const persist = useCallback(
     (next: number) => {
+      if (pending.current) clearTimeout(pending.current);
+      pending.current = null;
+      liveValue.current = null;
       const value = next <= latest.current.fit + 0.5 ? 0 : Math.round(next * 10) / 10;
       setLive(null);
       if (value !== device.hourHeight) setDevice("hourHeight", value);
@@ -71,13 +79,10 @@ export function useHourHeight(bodyRef: RefObject<HTMLDivElement | null>) {
 
   const reset = useCallback(() => {
     anchor.current = bodyRef.current ? bodyRef.current.clientHeight / 2 : 0;
-    setLive(null);
-    setDevice("hourHeight", DEFAULT_HOUR);
-  }, [bodyRef, setDevice]);
+    persist(DEFAULT_HOUR);
+  }, [bodyRef, persist]);
 
   // Pinch (ctrl+wheel) and ⌥-scroll zoom continuously around the pointer.
-  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveValue = useRef<number | null>(null);
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return;

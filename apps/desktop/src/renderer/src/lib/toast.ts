@@ -18,11 +18,13 @@ export const toasts = createStore<{ toast: Toast | null }>({ toast: null });
 let nextId = 1;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
+// Shows a toast and returns its id, for dismissing it early.
 export function showToast(message: string, action?: Toast["action"]) {
   const id = nextId++;
   toasts.set({ toast: { id, message, action } });
   clearTimeout(timer);
   timer = setTimeout(() => dismissToast(id), TOAST_MS);
+  return id;
 }
 
 // Clears the toast if it's still the one shown.

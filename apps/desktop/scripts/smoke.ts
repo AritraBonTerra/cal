@@ -349,6 +349,12 @@ check(
   (await page.locator("[role=dialog][aria-label='Repeating event']").count()) === 0 &&
     (await standup.count()) === 1,
 );
+// That Esc belonged to the span dialog alone: the editor stays open, with no discard prompt.
+check(
+  "Esc in the span dialog leaves the editor open without asking to discard",
+  (await page.locator("[role=dialog][aria-label='Event']").count()) === 1 &&
+    (await page.locator("text=Discard changes?").count()) === 0,
+);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
 await page.keyboard.press("Escape");
@@ -572,6 +578,21 @@ check(
 await page.keyboard.press("Meta+Shift+0");
 await page.waitForTimeout(100);
 check("⇧⌘0 restores the default height", (await hourOf()) === 48);
+// A pinch saves its height 200ms after the last tick; a reset in between must stand.
+await grid.evaluate((element) => {
+  element.dispatchEvent(
+    new WheelEvent("wheel", {
+      deltaY: -20,
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+      clientY: element.getBoundingClientRect().top + 200,
+    }),
+  );
+});
+await page.keyboard.press("Meta+Shift+0");
+await page.waitForTimeout(400);
+check("⇧⌘0 right after a pinch keeps the default height", (await hourOf()) === 48);
 
 // 20. "fit" in a tall window: 24 hours exactly fill the body
 await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 0 } }));

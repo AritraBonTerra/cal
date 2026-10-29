@@ -17,9 +17,10 @@ import {
   toOffsetIso,
   withCount,
 } from "@cal/domain";
-import type { QuickEntry, TokenKind } from "@cal/nlp";
-import type { Literal } from "./entryText";
+import { type EventEntry, parseQuickEntry, type QuickEntry, type TokenKind } from "@cal/nlp";
+import { type Literal, prefixKind } from "./entryText";
 import { createStore, useStore } from "./store";
+import { dismissToast, showToast } from "./toast";
 import { zonedDayKey, zonedInstant, zonedMinutes } from "./zones";
 
 /*
@@ -68,6 +69,9 @@ export interface EditorState {
   // `data-item` key of the chip the popover grows from ("draft" or "event:<id>").
   anchor: string;
   dirty: boolean;
+  // Whether the user picked Event or To-do (⌘1/⌘2, the switch); until then a typed
+  // "task " / "event " prefix decides.
+  kindChosen: boolean;
 }
 
 export const editorStore = createStore<{ editor: EditorState | null }>({ editor: null });
@@ -107,7 +111,9 @@ export function openCreate(span: { start: Date; end: Date }, defaults: CreateDef
     projectUuid: null,
     deadline: null,
   };
-  editorStore.set({ editor: { mode: "create", anchor: "draft", dirty: false, base: form, form } });
+  editorStore.set({
+    editor: { mode: "create", anchor: "draft", dirty: false, kindChosen: false, base: form, form },
+  });
 }
 
 // Opens the popover on an existing event, fields filled from it.
@@ -132,7 +138,15 @@ export function openEdit(event: ExternalEvent, deviceZone: string) {
     deadline: null,
   };
   editorStore.set({
-    editor: { mode: "edit", event, anchor: `event:${event.id}`, dirty: false, base: form, form },
+    editor: {
+      mode: "edit",
+      event,
+      anchor: `event:${event.id}`,
+      dirty: false,
+      kindChosen: true,
+      base: form,
+      form,
+    },
   });
 }
 
@@ -148,6 +162,7 @@ export function patchForm(patch: Partial<EventForm>) {
             base: { ...editor.base, ...patch },
             form: { ...editor.form, ...patch },
             dirty: true,
+            kindChosen: editor.kindChosen || patch.kind !== undefined,
           },
         }
       : {},
@@ -176,23 +191,64 @@ export function setFormZone(zone: string) {
   patchForm({ timeZone: zone, start, end: new Date(start.getTime() + length(form)) });
 }
 
-const length = (form: Pick<EventForm, "start" | "end">) =>
-  form.end.getTime() - form.start.getTime();
+const length = (span: { start: Date | string; end: Date | string }) =>
+  new Date(span.end).getTime() - new Date(span.start).getTime();
+
+// What the popover hands the parser besides the text.
+export interface DraftContext {
+  now: Date;
+  calendars: readonly { id: string; title: string }[];
+  projects: readonly { uuid: string; title: string }[];
+  weekStartsOn: number;
+  defaultEventMin: number;
+  canCreateEvents: boolean;
+}
+
+/**
+ * Parses a draft's title. Times without a zone are read in the form's zone, and the
+ * kind is the one the user switched to, else what a typed "task " / "event " prefix
+ * names, else the draft's own; the text's shape never flips a grid draft.
+ */
+export function parseDraft(
+  editor: Pick<EditorState, "base" | "kindChosen">,
+  text: string,
+  literals: readonly Literal[],
+  context: DraftContext,
+): QuickEntry {
+  const typed =
+    context.canCreateEvents && !editor.kindChosen ? typedKind(text, literals) : undefined;
+  return parseQuickEntry(text, {
+    now: context.now,
+    surface: "grid",
+    kind: typed ?? editor.base.kind,
+    calendars: context.calendars,
+    projects: context.projects,
+    literals,
+    weekStartsOn: context.weekStartsOn,
+    defaultEventMin: context.defaultEventMin,
+    timeZone: editor.base.timeZone,
+  });
+}
+
+// The kind a leading prefix names, unless the user un-parsed it (a literal from 0).
+const typedKind = (text: string, literals: readonly Literal[]) =>
+  literals.some((literal) => literal.start === 0) ? undefined : prefixKind(text);
 
 /**
  * `base` with the fields a parse set laid over it. A date token moves the day and keeps
  * the slot's time; a time token sets the time and keeps the slot's day unless the text
- * named one; "all day" and date ranges make it all-day. Fields the text didn't mention
- * stay as they are, so un-parsing a token restores the slot.
+ * named one; a duration alone lengthens the slot; "all day" and date ranges without
+ * times make it all-day. A "task " / "event " prefix sets the kind. Fields the text
+ * didn't mention stay as they are, so un-parsing a token restores the slot.
  */
 export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
   const has = (kind: TokenKind) => entry.tokens.some((t) => t.applied && t.kind === kind);
   const zone = base.timeZone;
   const hasDate = has("when") || has("date_range");
   const hasTime = has("time") || has("time_range");
-  const form = { ...base };
+  const form = { ...base, kind: entry.kind };
   if (entry.kind === "event") {
-    if (has("date_range")) {
+    if (entry.allDay && has("date_range")) {
       form.allDay = true;
       form.start = fromDayKey(entry.start);
       form.end = fromDayKey(entry.end);
@@ -208,10 +264,14 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
         form.start = start;
         form.end = end;
       } else {
+        // The slot's day as shown, at the typed time in its own zone ("9am EST").
+        const timeZone = entry.timeZone ?? zone;
         const day = zonedDayKey(base.start, zone);
-        form.start = zonedInstant(day, zonedMinutes(start, zone), zone);
+        form.start = zonedInstant(day, zonedMinutes(start, timeZone), timeZone);
         form.end = new Date(form.start.getTime() + (end.getTime() - start.getTime()));
       }
+    } else if (!entry.allDay && has("duration")) {
+      form.end = new Date(base.start.getTime() + length({ start: entry.start, end: entry.end }));
     }
     if (has("all_day")) form.allDay = true;
     if (entry.location !== undefined) form.location = entry.location;
@@ -251,6 +311,7 @@ export function defaultCalendar(
 }
 
 const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
 
 // All-day events are stored as local midnights, so the day boundaries hold anywhere.
 const dayInstant = (day: DayKey) => toOffsetIso(fromDayKey(day));
@@ -273,6 +334,32 @@ export function toEventInput(form: EventForm, title: string): EventInput {
     busy: form.busy,
     timeZone: timed ? form.timeZone : undefined,
     alarms: form.alarms,
+  };
+}
+
+/**
+ * The calendar input a Quick Entry parse describes. All-day entries come as day keys
+ * and go out as local midnights with an offset, the only form every calendar accepts.
+ */
+export function entryInput(
+  entry: EventEntry,
+  options: { calendarId: string; zone: string; reminder: number | null },
+): EventInput {
+  const timed = !entry.allDay;
+  return {
+    calendarId: options.calendarId,
+    title: entry.title,
+    start: timed ? entry.start : dayInstant(entry.start),
+    end: timed ? entry.end : dayInstant(entry.end),
+    allDay: entry.allDay,
+    location: entry.location,
+    url: entry.url,
+    // Device calendars can't invite, so typed emails go into the notes.
+    notes: entry.attendees?.length ? `With ${entry.attendees.join(", ")}` : undefined,
+    recurrence: entry.rrule,
+    busy: timed,
+    timeZone: timed ? (entry.timeZone ?? options.zone) : undefined,
+    alarms: entry.alertsMin ?? (timed && options.reminder !== null ? [options.reminder] : []),
   };
 }
 
@@ -428,7 +515,10 @@ class EventAliases {
     return current;
   }
   renamed(from: string, to: string) {
-    if (from !== to) this.ids.set(from, to);
+    if (from === to) return;
+    // Back to an id an earlier rename left behind: drop that rename rather than loop.
+    if (this.current(to) === from) this.ids.delete(to);
+    this.ids.set(from, to);
   }
   forget(from: string) {
     this.ids.delete(from);
@@ -499,9 +589,12 @@ export function eventWriter(
       label = "Edit Event",
     ) {
       const previous = previousValues(event, patch);
+      // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
+      const undoSpan: EventSpan =
+        span === "this" && patch.recurrence && !event.recurring && !event.recurrence ? "all" : span;
       // The occurrence id an "all" write collapsed onto the one event left.
       let collapsed: string | undefined;
-      const place = async (input: Partial<EventInput>) => {
+      const place = async (input: Partial<EventInput>, span: EventSpan) => {
         const id = ids.current(event.id);
         const written = await api.updateEvent(id, input, span);
         if (span !== "all") {
@@ -511,18 +604,37 @@ export function eventWriter(
           // Clearing the repeat leaves one event, whichever occurrence was picked.
           ids.renamed(id, written.id);
           collapsed = id;
-        } else if (collapsed) {
-          // The repeat is back, and with it the occurrence's own id.
-          ids.forget(collapsed);
-          collapsed = undefined;
+        } else {
+          if (collapsed) {
+            // The repeat is back, and with it the occurrence's own id.
+            ids.forget(collapsed);
+            collapsed = undefined;
+          }
+          // An "all" write answers with the series' first occurrence, not this one, and
+          // new times rename every occurrence: find this one where it went.
+          if (input.start) ids.renamed(id, await movedId(id, input.start));
         }
-        // Otherwise an "all" write answers with the series' first occurrence, not this one.
         await refresh();
+      };
+      // The id of the occurrence `id` once its series moved it to `start`.
+      const movedId = async (id: string, start: string) => {
+        const [identifier, original] = splitId(id);
+        if (!original) return id;
+        const target = Date.parse(start);
+        const nearby = await api.events(
+          toOffsetIso(new Date(target - DAY)),
+          toOffsetIso(new Date(target + DAY)),
+        );
+        const distance = (each: ExternalEvent) => Math.abs(Date.parse(each.start) - target);
+        const moved = nearby
+          .filter((each) => splitId(each.id)[0] === identifier)
+          .sort((a, b) => distance(a) - distance(b))[0];
+        return moved?.id ?? id;
       };
       return history.transact(label, (tx) =>
         tx.external(
-          () => place(patch),
-          () => place(previous),
+          () => place(patch, span),
+          () => place(previous, undoSpan),
         ),
       );
     },
@@ -549,6 +661,33 @@ export function eventWriter(
 }
 
 export type EventWriter = ReturnType<typeof eventWriter>;
+
+/**
+ * Deletes `event` as an undoable step and offers Undo in a toast. The offer is for
+ * that step alone: once another step lands (or the delete is undone some other way)
+ * the toast goes, so Undo never reverses something else. Shared with the grid's ⌫.
+ */
+export async function deleteWithUndo(
+  event: ExternalEvent,
+  span: EventSpan,
+  writer: EventWriter,
+  history: History,
+) {
+  try {
+    await writer.remove(event, span);
+  } catch (error) {
+    showToast(`Couldn't delete the event: ${error instanceof Error ? error.message : error}`);
+    return;
+  }
+  const id = showToast(`Deleted “${event.title}”`, {
+    label: "Undo",
+    run: () => void history.undo(),
+  });
+  const stop = history.subscribe(() => {
+    stop();
+    dismissToast(id);
+  });
+}
 
 /*
  * The span question for repeating events. `askSpan` resolves with the user's choice,
@@ -604,5 +743,7 @@ export function nextFreeSlot(
   return { start: new Date(start), end: new Date(start + minutes * MINUTE) };
 }
 
-// The day a form's start falls on, in the zone its times are typed in.
-export const formDay = (form: EventForm) => zonedDayKey(form.start, form.timeZone);
+// The day a form's start falls on: an all-day event's calendar day (stored as a local
+// midnight), else the day of its start in the zone its times are typed in.
+export const formDay = (form: EventForm) =>
+  form.allDay ? toDayKey(form.start) : zonedDayKey(form.start, form.timeZone);

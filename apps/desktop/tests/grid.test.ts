@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { dragged, dragSpan, withinDays } from "../src/renderer/src/components/grid/model";
+import {
+  barColumns,
+  dragged,
+  dragSpan,
+  withinDays,
+} from "../src/renderer/src/components/grid/model";
 
 /*
  * Pure grid math behind the pointer gestures. Dates are local, built the way the grid
@@ -80,5 +85,38 @@ describe("withinDays", () => {
     expect(withinDays(tokyo, "2026-10-29", "2026-10-29", "Asia/Tokyo")).toBe(false);
     expect(withinDays(tokyo, "2026-10-29", "2026-10-29", "America/Los_Angeles")).toBe(true);
     expect(withinDays(tokyo, "2026-10-30", "2026-10-30", "America/Los_Angeles")).toBe(false);
+  });
+});
+
+describe("barColumns", () => {
+  // Two weeks with weekends hidden.
+  const weekdays = [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28",
+    "2026-10-29",
+    "2026-10-30",
+    "2026-11-02",
+    "2026-11-03",
+    "2026-11-04",
+    "2026-11-05",
+    "2026-11-06",
+  ];
+
+  test("a bar over a hidden weekend starts on the next visible day", () => {
+    // Sat Oct 31 → Mon Nov 2 shows on Monday only, not from Friday.
+    expect(barColumns(weekdays, "2026-10-31", "2026-11-02")).toEqual({ from: 5, to: 5 });
+    // Fri → Sat ends on Friday.
+    expect(barColumns(weekdays, "2026-10-30", "2026-10-31")).toEqual({ from: 4, to: 4 });
+  });
+
+  test("a bar that lies entirely in hidden days is not drawn", () => {
+    expect(barColumns(weekdays, "2026-10-31", "2026-11-01")).toBeUndefined();
+  });
+
+  test("a bar past either edge is clipped to the visible days", () => {
+    expect(barColumns(weekdays, "2026-10-20", "2026-10-27")).toEqual({ from: 0, to: 1 });
+    expect(barColumns(weekdays, "2026-11-05", "2026-11-20")).toEqual({ from: 8, to: 9 });
+    expect(barColumns(weekdays, "2026-11-09", "2026-11-10")).toBeUndefined();
   });
 });

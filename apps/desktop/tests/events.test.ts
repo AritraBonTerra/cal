@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { type DataSource, History } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
+import { fromDayKey, toOffsetIso } from "@cal/domain";
 import { FixtureCalendar } from "@cal/fixtures";
+import { parseQuickEntry } from "@cal/nlp";
 import { parseClock, parseDurationText } from "../src/renderer/src/lib/clockText";
 import {
   backspaceTarget,
@@ -10,13 +12,26 @@ import {
   shiftLiterals,
 } from "../src/renderer/src/lib/entryText";
 import {
+  applyEntry,
+  closeEditor,
+  deleteWithUndo,
+  type EventForm,
+  editorStore,
+  entryInput,
   eventPatch,
   eventWriter,
+  formDay,
   nextFreeSlot,
+  openCreate,
+  parseDraft,
+  patchForm,
   previousValues,
   restoreInput,
 } from "../src/renderer/src/lib/events";
+import { mapsUrl } from "../src/renderer/src/lib/maps";
 import { describeRule, repeatPresets } from "../src/renderer/src/lib/recurrence";
+import { toasts } from "../src/renderer/src/lib/toast";
+import { deviceZone, zonedDayKey, zonedMinutes } from "../src/renderer/src/lib/zones";
 
 /*
  * Pure helpers behind the event popover and Quick Entry: typed times, literal spans
@@ -33,6 +48,15 @@ describe("parseClock", () => {
     expect(parseClock("12")).toBe(12 * 60);
     expect(parseClock("12am")).toBe(0);
     expect(parseClock("lunch")).toBeUndefined();
+  });
+
+  test("takes 24-hour input literally, and a leading zero in either format", () => {
+    expect(parseClock("06:30", false)).toBe(6 * 60 + 30);
+    expect(parseClock("6:30", false)).toBe(6 * 60 + 30);
+    expect(parseClock("3", false)).toBe(3 * 60);
+    expect(parseClock("3pm", false)).toBe(15 * 60);
+    expect(parseClock("06:30")).toBe(6 * 60 + 30);
+    expect(parseClock("18:30")).toBe(18 * 60 + 30);
   });
 
   test("reads durations", () => {
@@ -115,6 +139,174 @@ describe("repeatPresets", () => {
   test("describes a custom rule", () => {
     expect(describeRule("FREQ=WEEKLY;INTERVAL=3;BYDAY=TU,TH")).toBe("Every 3 weeks on Tue, Thu");
     expect(describeRule("FREQ=DAILY;COUNT=5")).toBe("Every day, 5 times");
+  });
+});
+
+/*
+ * The draft form behind the popover: how a parsed title lays over the slot, the day it
+ * shows, and what it hands the parser.
+ */
+const slot = { start: new Date(2026, 9, 28, 10, 0), end: new Date(2026, 9, 28, 10, 30) };
+const typedAt = new Date(2026, 9, 28, 10, 0);
+const draftForm = (patch: Partial<EventForm> = {}): EventForm => ({
+  text: "",
+  literals: [],
+  title: "",
+  kind: "event",
+  start: slot.start,
+  end: slot.end,
+  allDay: false,
+  timeZone: deviceZone,
+  recurrence: "",
+  location: "",
+  url: "",
+  notes: "",
+  calendarId: "work",
+  busy: true,
+  alarms: [],
+  projectUuid: null,
+  deadline: null,
+  ...patch,
+});
+const parseEvent = (text: string, timeZone = deviceZone) =>
+  parseQuickEntry(text, {
+    now: typedAt,
+    surface: "grid",
+    kind: "event",
+    defaultEventMin: 30,
+    timeZone,
+  });
+
+describe("applyEntry", () => {
+  test("a timed multi-day range keeps the parser's instants", () => {
+    const form = applyEntry(draftForm(), parseEvent("Trip Nov 20 8am to Nov 22 6pm"));
+    expect(form.allDay).toBe(false);
+    expect(form.start).toEqual(new Date(2026, 10, 20, 8));
+    expect(form.end).toEqual(new Date(2026, 10, 22, 18));
+  });
+
+  test("a date range without times is all-day", () => {
+    const form = applyEntry(draftForm(), parseEvent("Trip Nov 20 to Nov 22"));
+    expect(form.allDay).toBe(true);
+    expect(form.start).toEqual(fromDayKey("2026-11-20"));
+    expect(form.end).toEqual(fromDayKey("2026-11-23"));
+  });
+
+  test("a duration alone lengthens the slot from its start", () => {
+    const form = applyEntry(draftForm(), parseEvent("Lunch for 2h"));
+    expect(form.start).toEqual(slot.start);
+    expect(form.end).toEqual(new Date(2026, 9, 28, 12, 0));
+  });
+
+  test("a time without a date lands on the slot's day in the form's zone", () => {
+    const base = draftForm({ timeZone: "Asia/Tokyo" });
+    const form = applyEntry(base, parseEvent("Lunch 9am", "Asia/Tokyo"));
+    expect(zonedDayKey(form.start, "Asia/Tokyo")).toBe(zonedDayKey(slot.start, "Asia/Tokyo"));
+    expect(zonedMinutes(form.start, "Asia/Tokyo")).toBe(9 * 60);
+    expect(form.end.getTime() - form.start.getTime()).toBe(30 * 60_000);
+  });
+
+  test("a typed prefix shows as the form's kind", () => {
+    const entry = parseQuickEntry("task Buy stamps", { now: typedAt, surface: "grid" });
+    expect(applyEntry(draftForm(), entry).kind).toBe("task");
+  });
+});
+
+describe("formDay", () => {
+  test("an all-day event shows its calendar day whatever the form's zone", () => {
+    const form = draftForm({
+      allDay: true,
+      start: fromDayKey("2026-10-30"),
+      end: fromDayKey("2026-10-31"),
+    });
+    expect(formDay({ ...form, timeZone: "Pacific/Pago_Pago" })).toBe("2026-10-30");
+    expect(formDay({ ...form, timeZone: "Pacific/Kiritimati" })).toBe("2026-10-30");
+  });
+
+  test("a timed event shows the day of its start in the form's zone", () => {
+    // 10:00 on the 28th in Honolulu is already the 29th in Tokyo.
+    const start = new Date("2026-10-28T20:00:00Z");
+    const form = draftForm({ start, end: new Date(start.getTime() + 30 * 60_000) });
+    expect(formDay({ ...form, timeZone: "Pacific/Honolulu" })).toBe("2026-10-28");
+    expect(formDay({ ...form, timeZone: "Asia/Tokyo" })).toBe("2026-10-29");
+  });
+});
+
+describe("parseDraft", () => {
+  const context = {
+    now: typedAt,
+    calendars: [],
+    projects: [],
+    weekStartsOn: 1,
+    defaultEventMin: 30,
+    canCreateEvents: true,
+  };
+  const open = (timeZone: string) => {
+    openCreate(slot, { calendarId: "work", timeZone, reminder: null, canCreateEvents: true });
+    const { editor } = editorStore.get();
+    if (!editor) throw new Error("no draft");
+    return editor;
+  };
+
+  test("reads times without a zone in the form's zone", () => {
+    const editor = open("Asia/Tokyo");
+    const entry = parseDraft(editor, "Lunch 9am", [], context);
+    if (entry.kind !== "event") throw new Error("expected an event");
+    expect(entry.start.endsWith("+09:00")).toBe(true);
+    expect(zonedMinutes(new Date(entry.start), "Asia/Tokyo")).toBe(9 * 60);
+    closeEditor();
+  });
+
+  test("a typed prefix names the kind until the switch is used", () => {
+    const editor = open(deviceZone);
+    expect(parseDraft(editor, "task Buy stamps", [], context).kind).toBe("task");
+    expect(parseDraft(editor, "Buy stamps", [], context).kind).toBe("event");
+    // An un-parsed prefix is title text.
+    expect(parseDraft(editor, "task Buy stamps", [{ start: 0, end: 5 }], context).kind).toBe(
+      "event",
+    );
+    patchForm({ kind: "event" });
+    const chosen = editorStore.get().editor;
+    if (!chosen) throw new Error("no draft");
+    expect(parseDraft(chosen, "task Buy stamps", [], context).kind).toBe("event");
+    closeEditor();
+  });
+});
+
+describe("entryInput", () => {
+  test("an all-day entry is sent as local midnights with an offset", () => {
+    const entry = parseEvent("Picnic tomorrow");
+    if (entry.kind !== "event") throw new Error("expected an event");
+    const input = entryInput(entry, { calendarId: "work", zone: deviceZone, reminder: 10 });
+    expect(input.start).toBe(toOffsetIso(fromDayKey("2026-10-29")));
+    expect(input.end).toBe(toOffsetIso(fromDayKey("2026-10-30")));
+    expect(Number.isNaN(Date.parse(input.start))).toBe(false);
+    expect(input).toMatchObject({ allDay: true, busy: false, timeZone: undefined, alarms: [] });
+  });
+
+  test("a timed entry keeps the parser's instants, the grid zone and the default reminder", () => {
+    const entry = parseEvent("Lunch tomorrow 1pm");
+    if (entry.kind !== "event") throw new Error("expected an event");
+    const input = entryInput(entry, { calendarId: "work", zone: "Asia/Tokyo", reminder: 10 });
+    expect(input).toMatchObject({
+      start: entry.start,
+      end: entry.end,
+      allDay: false,
+      busy: true,
+      timeZone: "Asia/Tokyo",
+      alarms: [10],
+    });
+  });
+});
+
+describe("mapsUrl", () => {
+  test("builds a search link for the chosen maps app", () => {
+    expect(mapsUrl("Blue Bottle, Oakland", "apple")).toBe(
+      "https://maps.apple.com/?q=Blue%20Bottle%2C%20Oakland",
+    );
+    expect(mapsUrl("Blue Bottle, Oakland", "google")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=Blue%20Bottle%2C%20Oakland",
+    );
   });
 });
 
@@ -234,8 +426,8 @@ describe("eventWriter", () => {
     const calendar = new FixtureCalendar();
     const history = new History(noSource);
     const writer = eventWriter(history, async () => {}, calendar);
-    const titled = async (title: string) =>
-      (await calendar.events("2026-10-26T00:00:00", "2026-11-02T00:00:00")).filter(
+    const titled = async (title: string, from = "2026-10-26", to = "2026-11-02") =>
+      (await calendar.events(`${from}T00:00:00`, `${to}T00:00:00`)).filter(
         (each) => each.title === title,
       );
     return { calendar, history, writer, titled };
@@ -416,6 +608,100 @@ describe("eventWriter", () => {
     expect((await titled("Sprint planning")).length).toBe(0);
     await history.redo();
     expect((await titled("Sprint planning")).length).toBe(1);
+  });
+});
+
+describe("eventWriter: ids that change under a series", () => {
+  const setup = () => {
+    const calendar = new FixtureCalendar();
+    const history = new History({
+      list: async () => [],
+      get: async () => undefined,
+      insert: async () => "",
+      update: async () => false,
+      remove: async () => false,
+      subscribe: () => () => {},
+    });
+    const writer = eventWriter(history, async () => {}, calendar);
+    const titled = async (title: string, from = "2026-10-26", to = "2026-11-02") =>
+      (await calendar.events(`${from}T00:00:00`, `${to}T00:00:00`)).filter(
+        (each) => each.title === title,
+      );
+    return { calendar, history, writer, titled };
+  };
+  const days = (events: readonly ExternalEvent[]) =>
+    events.map((each) => each.start.slice(0, 10)).sort();
+
+  test("undoing an 'all' move made from a later occurrence reaches the moved series", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    const shift = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 24 * 60 * 60_000));
+    await writer.update(
+      wednesday,
+      { start: shift(wednesday.start), end: shift(wednesday.end) },
+      "all",
+    );
+    const moved = await titled("Standup");
+    expect(days(moved)).toEqual([
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+    ]);
+    // A device calendar names an occurrence by its start, so the moved one has a new id.
+    expect(moved.find((each) => each.start === shift(wednesday.start))?.id).not.toBe(wednesday.id);
+    await history.undo();
+    expect(days(await titled("Standup"))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
+    await history.redo();
+    expect(days(await titled("Standup"))).toEqual([
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+    ]);
+    await history.undo();
+    expect(days(await titled("Standup"))[0]).toBe("2026-10-26");
+  });
+
+  test("undoing a repeat added to a one-off leaves one event", async () => {
+    const { history, writer, titled } = setup();
+    const [planning] = await titled("Planning");
+    if (!planning) throw new Error("no Planning");
+    await writer.update(planning, { recurrence: "FREQ=DAILY;COUNT=3" }, "this");
+    expect((await titled("Planning")).length).toBe(3);
+    await history.undo();
+    const back = await titled("Planning");
+    expect(back.length).toBe(1);
+    expect(back[0]?.recurring).toBe(false);
+    await history.redo();
+    expect((await titled("Planning")).length).toBe(3);
+    await history.undo();
+    expect((await titled("Planning")).length).toBe(1);
+  });
+
+  test("the delete toast's Undo goes away once another step lands", async () => {
+    const { history, writer, titled } = setup();
+    const [planning] = await titled("Planning");
+    if (!planning) throw new Error("no Planning");
+    await deleteWithUndo(planning, "this", writer, history);
+    expect(toasts.get().toast?.action?.label).toBe("Undo");
+    const [retro] = await titled("Retro");
+    if (!retro) throw new Error("no Retro");
+    await writer.update(retro, { title: "Retrospective" }, "this");
+    expect(toasts.get().toast).toBeNull();
+    // Undo now reverses the rename, not the delete; the toast no longer offers it.
+    await history.undo();
+    expect((await titled("Planning")).length).toBe(0);
+    expect((await titled("Retro")).length).toBe(1);
   });
 });
 

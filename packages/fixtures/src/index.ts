@@ -185,6 +185,10 @@ export class FixtureCalendar implements CalendarSource {
         next.start = toOffsetIso(new Date(Date.parse(member.start) + shift("start", input.start)));
       if (input.end)
         next.end = toOffsetIso(new Date(Date.parse(member.end) + shift("end", input.end)));
+      // Like a device calendar, a series' occurrences are named by their start: moving
+      // the series renames each one. A detached ("this") occurrence keeps its name.
+      if (input.start && span !== "this" && next.series && next.id.includes("|"))
+        next.id = occurrenceId(next.series, new Date(next.start));
       if (input.recurrence !== undefined) {
         next.recurrence = input.recurrence || undefined;
         next.recurring = Boolean(input.recurrence);
