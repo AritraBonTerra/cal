@@ -24,9 +24,13 @@ export function startUpdates() {
     note.on("click", () => autoUpdater.quitAndInstall());
     note.show();
   });
-  // Offline or a failed check: try again at the next interval.
+  // Offline, or a failed check or download: try again at the next interval.
   autoUpdater.on("error", () => {});
-  const check = () => void autoUpdater.checkForUpdates().catch(() => {});
+  const check = () =>
+    void autoUpdater
+      .checkForUpdates()
+      .then((result) => result?.downloadPromise)
+      .catch(() => {});
   check();
   setInterval(check, EVERY);
 }
@@ -44,6 +48,14 @@ export async function checkNow() {
       await dialog.showMessageBox({ message: `Cal ${app.getVersion()} is the latest version.` });
       return;
     }
+    // The download runs on after this dialog; say so if it fails.
+    result.downloadPromise?.catch((error: unknown) => {
+      void dialog.showMessageBox({
+        type: "warning",
+        message: `Couldn't download Cal ${latest}.`,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    });
     await dialog.showMessageBox({
       message: `Downloading Cal ${latest}…`,
       detail: "You'll get a notification when it's ready to install.",

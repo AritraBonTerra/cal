@@ -2,9 +2,9 @@ name: Release
 
 # Every merge to main ships: the Mac app to this repo's GitHub Releases, which the
 # installed app updates from (apps/desktop/src/main/updater.ts), and the iOS app to
-# TestFlight, which keeps installed iPhones current. Pull requests run the same
-# builds without publishing, so a broken pipeline shows before merge, and leave the
-# DMG and IPA as run artifacts.
+# TestFlight, which keeps installed iPhones current. Pull requests (and manual runs
+# on other branches) build the same things without publishing, so a broken pipeline
+# shows before merge, and leave the DMG and IPA as run artifacts. Only main publishes.
 #
 # Secrets: MAC_CERT_P12 (base64 Developer ID Application certificate + key) and
 # MAC_CERT_PASSWORD; ASC_KEY (an App Store Connect API key's .p8 text, Admin role),
@@ -25,7 +25,9 @@ permissions:
   contents: write
 
 env:
-  PUBLISH: ${{ github.event_name != 'pull_request' }}
+  PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+  # Expo SDK 58 needs Xcode 26.4 or later; pinned so a runner image change can't move it.
+  XCODE: /Applications/Xcode_26.6.app
 
 jobs:
   version:
@@ -43,17 +45,29 @@ jobs:
 
   mac:
     needs: version
-    runs-on: macos-15
+    # Signing needs the repo's secrets, which PRs from forks and Dependabot don't get.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - run: sudo xcode-select -s "$XCODE"
       - name: App Store Connect key
         env:
           ASC_KEY: ${{ secrets.ASC_KEY }}
         run: printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
+      # The release's tag names the commit that was built; electron-builder would
+      # otherwise tag main's head when it creates the release, which may have moved on.
+      - name: Tag the release
+        if: env.PUBLISH == 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git tag "v$VERSION" "$GITHUB_SHA"
+          git push origin "v$VERSION"
       - name: Build, sign and notarize
         working-directory: apps/desktop
         env:
@@ -77,7 +91,8 @@ jobs:
 
   ios:
     needs: version
-    runs-on: macos-15
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: macos-26
     env:
       AUTH: >-
         -allowProvisioningUpdates
@@ -90,6 +105,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - run: sudo xcode-select -s "$XCODE"
       - name: App Store Connect key
         env:
           ASC_KEY: ${{ secrets.ASC_KEY }}
