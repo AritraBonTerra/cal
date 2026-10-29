@@ -1,14 +1,16 @@
 import { type DayKey, toDayKey } from "@cal/domain";
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
+import { openEdit } from "../../lib/events";
 import { assignLanes } from "../../lib/layout";
 import { select, useUi } from "../../lib/ui";
+import { barColumns } from "./model";
 
 const LANE = 21;
 
 // All-day events as bars spanning their days, stacked in lanes (20px chips, 1px gaps).
 export function AllDayRow({ days }: { days: readonly DayKey[] }) {
-  const { events, palette, mode } = useApp();
+  const { events, palette, mode, zone } = useApp();
   const selected = useUi((state) =>
     state.selection?.kind === "event" ? state.selection.id : null,
   );
@@ -19,10 +21,10 @@ export function AllDayRow({ days }: { days: readonly DayKey[] }) {
     .flatMap((event) => {
       const startDay = toDayKey(new Date(event.start));
       const endDay = toDayKey(new Date(Date.parse(event.end) - 1));
-      if (endDay < first || startDay > last) return [];
-      const from = Math.max(0, days.indexOf(startDay));
-      const to = days.includes(endDay) ? days.indexOf(endDay) : days.length - 1;
-      return [{ event, from, to, clippedStart: startDay < first, clippedEnd: endDay > last }];
+      // Hidden weekends leave gaps: the bar runs over the visible days it touches.
+      const columns = barColumns(days, startDay, endDay);
+      if (!columns) return [];
+      return [{ event, ...columns, clippedStart: startDay < first, clippedEnd: endDay > last }];
     });
   const placed = assignLanes(bars);
   const lanes = placed.reduce((max, { lane }) => Math.max(max, lane + 1), 0);
@@ -36,7 +38,11 @@ export function AllDayRow({ days }: { days: readonly DayKey[] }) {
           <button
             type="button"
             key={item.event.id}
-            onClick={() => select({ kind: "event", id: item.event.id })}
+            data-item={`event:${item.event.id}`}
+            onClick={() => {
+              select({ kind: "event", id: item.event.id });
+              openEdit(item.event, zone);
+            }}
             className={`absolute flex h-5 items-center truncate border-l-[3px] px-1.5 text-small font-medium ${
               item.clippedStart ? "" : "rounded-l-sm"
             } ${item.clippedEnd ? "" : "rounded-r-sm"}`}

@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
-import { type DayKey, daysBetween, toDayKey, toOffsetIso, weekday } from "@cal/domain";
-import { mix, colors as tokens } from "@cal/theme";
+import { type DayKey, daysBetween, toOffsetIso, weekday } from "@cal/domain";
+import { blockColors, mix, colors as tokens } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -12,17 +12,28 @@ import {
 import { useApp } from "../../lib/app";
 import { graphite } from "../../lib/calendars";
 import { useNow } from "../../lib/clock";
+import { hueFor } from "../../lib/data";
 import { DRAG_THRESHOLD, drag, geometry, overTaskPane, useDrag } from "../../lib/drag";
+import {
+  defaultCalendar,
+  type EventForm,
+  eventWriter,
+  openCreate,
+  openEdit,
+  spanFor,
+  useEditor,
+} from "../../lib/events";
 import { layoutColumn } from "../../lib/layout";
-import { formatHour, formatTime } from "../../lib/time";
+import { formatHour, formatMinuteRange, formatMinutes, formatZoneHour } from "../../lib/time";
 import { select, ui, useUi } from "../../lib/ui";
-import { BlockChip, EventChip, frameStyle } from "./chips";
+import { zonedMinutes } from "../../lib/zones";
+import { BlockChip, EventChip, type Frame, frameStyle } from "./chips";
 import {
   DAY_MINUTES,
+  dayOf,
   dragged,
   dragSpan,
   GUTTER,
-  HOUR,
   type Item,
   instant,
   minutesOf,
@@ -32,14 +43,18 @@ import {
   type Span,
   segments,
   snap,
+  ZONE_COLUMN,
 } from "./model";
 
 /*
- * The hour grid: a scrolling body with the hour gutter and one column per day. All
- * pointer work happens here with plain pointer events: drag on empty space to create a
- * block, drag a chip to move it, drag its edge to resize, and drop a block on the to-do
- * pane to remove it. Fifteen-minute snapping, off with ⇧. Escape or a cancelled pointer
- * drops the gesture without writing anything.
+ * The hour grid: a scrolling body with the hour gutter (extra zones first, then the
+ * main one) and one column per day. All pointer work happens here with plain pointer
+ * events: drag (or click) on empty space to open the event popover on a draft, click a
+ * device event to open it, drag a chip to move it, drag its edge to resize, and drop a
+ * block on the to-do pane to remove it. Fifteen-minute snapping, off with ⇧. Escape or
+ * a cancelled pointer drops the gesture without writing anything. Every y position is
+ * minutes × the hour height the view measured; wall-clock minutes are in the grid's
+ * zone.
  */
 
 type Gesture =
@@ -55,9 +70,6 @@ type Gesture =
       moved: boolean;
     };
 
-// The block being typed into after a create gesture; may run past midnight.
-type Draft = Span;
-
 // The half-hour outline under a resting pointer, in minutes of one day.
 interface Hover {
   day: DayKey;
@@ -66,26 +78,43 @@ interface Hover {
 }
 
 const SCROLL_TO_HOUR = 7.5;
-const CLICK_LENGTH = 30;
 
 interface TimeGridProps {
   days: readonly DayKey[];
   items: readonly Item[];
   bodyRef: RefObject<HTMLDivElement | null>;
+  // Effective pixels per hour, and the height that fits the day in the body.
+  hour: number;
+  fit: number;
 }
 
-export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
-  const { today, mode, palette, calendars, refreshEvents } = useApp();
+export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
+  const {
+    gridToday: today,
+    mode,
+    palette,
+    calendars,
+    refreshEvents,
+    zone,
+    account,
+    device,
+  } = useApp();
   const now = useNow();
   const actions = useActions();
   const { history } = useCal();
   const selection = useUi((state) => state.selection);
   const flashDay = useUi((state) => state.flashDay);
   const ghost = useDrag((state) => state.ghost);
+  const editor = useEditor();
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const live = useRef<Gesture | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
+  const writer = eventWriter(history, refreshEvents);
+  const extras = account.timeZones;
+  const gutter = GUTTER + ZONE_COLUMN * extras.length;
+  const dayHeight = 24 * hour;
+  const px = (minutes: number) => pixelsFor(minutes, hour);
+  const clickLength = account.eventMinutes;
 
   const setLive = (next: Gesture | null) => {
     live.current = next;
@@ -97,19 +126,19 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     const body = bodyRef.current;
     if (!body) return null;
     const rect = body.getBoundingClientRect();
-    const width = (body.clientWidth - GUTTER) / days.length;
-    const x = clientX - rect.left - GUTTER;
+    const width = (body.clientWidth - gutter) / days.length;
+    const x = clientX - rect.left - gutter;
     const index = Math.min(days.length - 1, Math.max(0, Math.floor(x / width)));
     const day = days[index];
     if (!day) return null;
     const y = clientY - rect.top + body.scrollTop;
-    return { day, minute: Math.min(DAY_MINUTES, Math.max(0, (y / HOUR) * 60)) };
+    return { day, minute: Math.min(DAY_MINUTES, Math.max(0, (y / hour) * 60)) };
   };
   const inside = (clientX: number, clientY: number) => {
     const rect = bodyRef.current?.getBoundingClientRect();
     return (
       rect !== undefined &&
-      clientX >= rect.left + GUTTER &&
+      clientX >= rect.left + gutter &&
       clientX <= rect.right &&
       clientY >= rect.top &&
       clientY <= rect.bottom
@@ -127,14 +156,20 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     };
   });
 
+  // Opens on the working morning. Later height changes keep their own anchor.
+  const scrolled = useRef(false);
   useLayoutEffect(() => {
     const body = bodyRef.current;
-    if (body) body.scrollTop = SCROLL_TO_HOUR * HOUR;
-  }, [bodyRef]);
+    if (body && !scrolled.current) {
+      scrolled.current = true;
+      body.scrollTop = SCROLL_TO_HOUR * hour;
+    }
+  }, [bodyRef, hour]);
 
   // Pointer gestures. Capture goes to the body so moves keep arriving outside the chip.
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || draft) return;
+    // With the popover open, a press anywhere else closes it first (it saves itself).
+    if (event.button !== 0 || editor) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest("input, button")) return;
     const point = locate(event.clientX, event.clientY);
@@ -146,7 +181,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       if (!item) return;
       const edge = target?.closest<HTMLElement>("[data-edge]")?.dataset.edge;
       if (!isWritable(item)) {
-        selectItem(item);
+        openItem(item);
         return;
       }
       setLive({
@@ -160,7 +195,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
         moved: false,
       });
     } else if (column) {
-      const anchor = instant(point.day, snap(point.minute - SNAP / 2));
+      const anchor = instant(point.day, snap(point.minute - SNAP / 2), zone);
       setLive({ kind: "create", anchor, ...dragSpan(anchor, anchor), moved: false });
       select(null);
     } else return;
@@ -181,7 +216,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       ) {
         const start = snap(point.minute - SNAP / 2);
         if (hover?.day !== point.day || hover.start !== start) {
-          setHover({ day: point.day, start, end: Math.min(DAY_MINUTES, start + CLICK_LENGTH) });
+          setHover({ day: point.day, start, end: Math.min(DAY_MINUTES, start + clickLength) });
         }
       } else if (hover) setHover(null);
       return;
@@ -189,7 +224,7 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     if (!point) return;
     const step = event.shiftKey ? 1 : SNAP;
     if (current.kind === "create") {
-      const pointer = instant(point.day, snap(point.minute, step));
+      const pointer = instant(point.day, snap(point.minute, step), zone);
       const moved =
         current.moved || Math.abs(pointer.getTime() - current.anchor.getTime()) >= SNAP * 60_000;
       setLive({ ...current, ...dragSpan(current.anchor, pointer), moved });
@@ -197,12 +232,11 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     }
     const deltaMinutes = point.minute - current.originMinute;
     const deltaDays = daysBetween(current.originDay, point.day);
-    const moved =
-      current.moved || Math.abs(pixelsFor(deltaMinutes)) >= DRAG_THRESHOLD || deltaDays !== 0;
+    const moved = current.moved || Math.abs(px(deltaMinutes)) >= DRAG_THRESHOLD || deltaDays !== 0;
     if (!moved) return;
     const { item } = current;
     const kind = current.kind === "move" ? "move" : current.edge;
-    setLive({ ...current, ...dragged(item, kind, deltaDays, deltaMinutes, step), moved });
+    setLive({ ...current, ...dragged(item, kind, deltaDays, deltaMinutes, step, zone), moved });
     if (kind === "move" && item.kind === "block") {
       drag.set({ removing: overTaskPane(event.clientX, event.clientY) });
     }
@@ -227,22 +261,31 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
     return () => window.removeEventListener("keydown", onKey, true);
   });
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = live.current;
     setLive(null);
     if (!current) return;
     if (current.kind === "create") {
-      // A click makes a half-hour block, cut short at midnight like the old grid.
-      const dayEnd = instant(toDayKey(current.start), DAY_MINUTES);
+      // A click makes a default-length draft, cut short at midnight like the old grid.
+      const dayEnd = instant(dayOf(current.start, zone), DAY_MINUTES, zone);
       const end = current.moved
         ? current.end
-        : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + CLICK_LENGTH * 60_000));
-      setDraft({ start: current.start, end });
+        : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + clickLength * 60_000));
+      const calendar = defaultCalendar(calendars, device.defaultCalendar);
+      openCreate(
+        { start: current.start, end },
+        {
+          calendarId: calendar?.id ?? "",
+          timeZone: zone,
+          reminder: account.eventReminder,
+          canCreateEvents: calendar !== undefined,
+        },
+      );
       return;
     }
     const { item } = current;
     if (!current.moved) {
-      selectItem(item);
+      openItem(item);
       return;
     }
     if (item.kind === "block") {
@@ -255,35 +298,65 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       return;
     }
     // Device events live outside Cal's tables, so the move is recorded as an external
-    // History step: ⌘Z puts the event back, ⇧⌘Z moves it again.
-    const previous = { start: toOffsetIso(item.start), end: toOffsetIso(item.end) };
+    // History step: ⌘Z puts the event back, ⇧⌘Z moves it again. A repeating event asks
+    // which occurrences to move; ⌘-drag means "this event" without asking.
+    const label = current.kind === "move" ? "Move Event" : "Resize Event";
     const next = { start: toOffsetIso(current.start), end: toOffsetIso(current.end) };
-    const place = (times: typeof next) =>
-      window.cal.calendar.updateEvent(item.event.id, times, "this").then(refreshEvents);
-    void history.transact(current.kind === "move" ? "Move Event" : "Resize Event", (tx) =>
-      tx.external(
-        () => place(next),
-        () => place(previous),
-      ),
-    );
+    const question = event.metaKey
+      ? Promise.resolve<"this">("this")
+      : spanFor(item.event, `${label.split(" ")[0]} repeating event`);
+    void question.then((span) => span && writer.update(item.event, next, span, label));
+  };
+
+  // A click on a chip: blocks select, device events open the popover (view-only on a
+  // read-only calendar).
+  const openItem = (item: Item) => {
+    selectItem(item);
+    if (item.kind === "event") openEdit(item.event, zone);
   };
 
   // Items drawn where the gesture has them, plus the original slot shown as an outline.
-  const shown =
-    gesture && gesture.kind !== "create"
-      ? items.map((item) =>
-          item.id === gesture.item.id ? { ...item, start: gesture.start, end: gesture.end } : item,
-        )
-      : items;
-  const byDay = segments(shown, days);
+  // An event being edited follows its popover's fields.
+  const editing = editor?.mode === "edit" ? editor : null;
+  const shown = items.map((item) => {
+    if (gesture && gesture.kind !== "create" && item.id === gesture.item.id) {
+      return { ...item, start: gesture.start, end: gesture.end };
+    }
+    if (editing && item.kind === "event" && item.event.id === editing.event?.id) {
+      const { form } = editing;
+      if (form.allDay) return item;
+      return {
+        ...item,
+        start: form.start,
+        end: form.end,
+        event: { ...item.event, title: form.title || item.event.title, location: form.location },
+      };
+    }
+    return item;
+  });
+  const byDay = segments(shown, days, zone);
   const original =
-    gesture && gesture.kind !== "create" && gesture.moved ? segments([gesture.item], days) : null;
+    gesture && gesture.kind !== "create" && gesture.moved
+      ? segments([gesture.item], days, zone)
+      : null;
   // The create gesture and the draft, cut per day like items are.
-  const creating = gesture?.kind === "create" ? segments([gesture], days) : null;
-  const drafting = draft ? segments([draft], days) : null;
-  const nowMinute = minutesOf(now);
+  const creating = gesture?.kind === "create" ? segments([gesture], days, zone) : null;
+  const draft = editor?.mode === "create" && !editor.form.allDay ? editor.form : null;
+  const drafting = draft ? segments([draft], days, zone) : null;
+  const nowMinute = minutesOf(now, zone);
   const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
-  const nowTop = pixelsFor(nowMinute);
+  const nowTop = px(nowMinute);
+  const showNow = days.includes(today);
+  // Labels of an extra column follow the main zone's hour lines on one reference day.
+  const reference = days.includes(today) ? today : (days[0] ?? today);
+  const hours = Array.from({ length: 23 }, (_, index) => index + 1);
+  // Opaque hairline colors; half-hour lines sit halfway between the grid line and the canvas.
+  const halfLine = mix(tokens.grid[mode], tokens.canvas[mode], 0.5);
+  const { start: workStart, end: workEnd } = account.workingHours;
+  const lines = `repeating-linear-gradient(to bottom, var(--cal-grid) 0 1px, transparent 1px ${hour}px)`;
+  const halfLines = device.halfHourLines
+    ? `, repeating-linear-gradient(to bottom, transparent 0 ${hour / 2}px, ${halfLine} ${hour / 2}px ${hour / 2 + 1}px, transparent ${hour / 2 + 1}px ${hour}px)`
+    : "";
 
   return (
     <div
@@ -295,26 +368,61 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
       onPointerCancel={cancel}
       onPointerLeave={() => setHover(null)}
       data-dense
+      data-grid-body
+      data-hour={hour.toFixed(2)}
+      data-fit={fit.toFixed(2)}
     >
-      <div className="relative shrink-0" style={{ width: GUTTER, height: 24 * HOUR }}>
-        {Array.from({ length: 23 }, (_, index) => index + 1).map((hour) => (
+      {extras.map((column) => (
+        <div
+          key={column.zone}
+          className="relative shrink-0 border-r border-grid"
+          style={{ width: ZONE_COLUMN, height: dayHeight }}
+          data-zone-column={column.zone}
+        >
+          {hours.map((line) => {
+            const at = zonedMinutes(instant(reference, line * 60, zone), column.zone);
+            return (
+              <div
+                key={line}
+                className="absolute inset-x-0 text-center text-caption leading-[14px] text-ink-3 tnum"
+                style={{
+                  top: line * hour - 7,
+                  visibility: showNow && Math.abs(line * hour - nowTop) < 16 ? "hidden" : undefined,
+                }}
+              >
+                {formatZoneHour(Math.floor(at / 60), at % 60)}
+              </div>
+            );
+          })}
+          {showNow && (
+            <div
+              className="absolute inset-x-1 flex h-4 items-center justify-center rounded-sm text-caption font-medium text-white tnum"
+              style={{ top: nowTop - 8, background: nowFaded }}
+            >
+              {formatMinutes(zonedMinutes(now, column.zone), true)}
+            </div>
+          )}
+        </div>
+      ))}
+      <div className="relative shrink-0" style={{ width: GUTTER, height: dayHeight }}>
+        {hours.map((line) => (
           <div
-            key={hour}
+            key={line}
             className="absolute right-2 text-caption leading-[14px] text-ink-3 tnum"
             style={{
-              top: hour * HOUR - 7,
-              visibility: Math.abs(hour * HOUR - nowTop) < 16 ? "hidden" : undefined,
+              top: line * hour - 7,
+              visibility: showNow && Math.abs(line * hour - nowTop) < 16 ? "hidden" : undefined,
             }}
           >
-            {formatHour(hour)}
+            {formatHour(line)}
           </div>
         ))}
-        {days.includes(today) && (
+        {showNow && (
           <div
             className="absolute right-1.5 flex h-[18px] items-center rounded-sm bg-now px-1 text-caption font-semibold text-white tnum"
             style={{ top: nowTop - 9 }}
           >
-            {formatTime(now, true)}
+            {formatMinutes(nowMinute, true)}
           </div>
         )}
       </div>
@@ -335,21 +443,25 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
         const dayGhost: Segment<Span> | null =
           ghost?.day === day
             ? {
-                item: { start: instant(day, ghost.start), end: instant(day, ghost.end) },
+                item: {
+                  start: instant(day, ghost.start, zone),
+                  end: instant(day, ghost.end, zone),
+                },
                 day,
                 start: ghost.start,
                 end: ghost.end,
               }
             : (creating?.get(day)?.[0] ?? null);
-        const dayHover = !gesture && !draft && hover?.day === day ? hover : null;
+        const dayHover = !gesture && !editor && hover?.day === day ? hover : null;
+        const working = weekend ? "var(--cal-offhours)" : "var(--cal-canvas)";
         return (
           <div
             key={day}
             data-column={day}
             className="relative min-w-0 flex-1 border-l border-grid"
             style={{
-              height: 24 * HOUR,
-              backgroundImage: `repeating-linear-gradient(to bottom, var(--cal-grid) 0 1px, transparent 1px ${HOUR}px), linear-gradient(to bottom, var(--cal-offhours) 0 ${9 * HOUR}px, ${weekend ? "var(--cal-offhours)" : "var(--cal-canvas)"} ${9 * HOUR}px ${18 * HOUR}px, var(--cal-offhours) ${18 * HOUR}px)`,
+              height: dayHeight,
+              backgroundImage: `${lines}${halfLines}, linear-gradient(to bottom, var(--cal-offhours) 0 ${px(workStart)}px, ${working} ${px(workStart)}px ${px(workEnd)}px, var(--cal-offhours) ${px(workEnd)}px)`,
             }}
           >
             {flashDay === day && (
@@ -363,8 +475,8 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
                 key={`original-${segment.item.id}`}
                 className="pointer-events-none absolute inset-x-0.5 rounded-sm border border-dashed border-edge-strong"
                 style={{
-                  top: pixelsFor(segment.start),
-                  height: pixelsFor(segment.end - segment.start) - 1,
+                  top: px(segment.start),
+                  height: px(segment.end - segment.start) - 1,
                 }}
               />
             ))}
@@ -374,21 +486,23 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
               const dragging =
                 gesture?.kind !== "create" && gesture?.item.id === item.id && gesture.moved;
               const frame = {
-                top: pixelsFor(segment.start),
-                height: pixelsFor(segment.end - segment.start),
+                top: px(segment.start),
+                height: px(segment.end - segment.start),
                 left: slot.left,
                 width: slot.width,
                 z: dragging ? 30 : slot.z + 1,
               };
               const past = item.end.getTime() < now.getTime();
+              const start = minutesOf(item.start, zone);
+              const end = minutesOf(item.end, zone);
               return (
                 <div key={item.id} data-item={item.id} className="contents">
                   {item.kind === "event" ? (
                     <EventChip
                       title={item.event.title}
                       location={item.event.location}
-                      start={item.start}
-                      end={item.end}
+                      start={start}
+                      end={end}
                       colors={palette.get(item.event.calendarId) ?? graphite(mode)}
                       frame={frame}
                       selected={selection?.kind === "event" && selection.id === item.event.id}
@@ -401,8 +515,8 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
                       block={item.block}
                       task={item.task}
                       project={item.project}
-                      start={item.start}
-                      end={item.end}
+                      start={start}
+                      end={end}
                       frame={frame}
                       selected={selection?.kind === "block" && selection.uuid === item.block.uuid}
                       past={past}
@@ -416,49 +530,50 @@ export function TimeGrid({ days, items, bodyRef }: TimeGridProps) {
               <div
                 className="pointer-events-none absolute inset-x-0.5 z-20 rounded-sm border border-dashed border-accent bg-accent-soft px-1.5 pt-0.5 text-small font-medium text-accent"
                 style={{
-                  top: pixelsFor(dayGhost.start),
-                  height: pixelsFor(dayGhost.end - dayGhost.start) - 1,
+                  top: px(dayGhost.start),
+                  height: px(dayGhost.end - dayGhost.start) - 1,
                 }}
               >
-                <GhostLabel span={dayGhost.item} />
+                <GhostLabel span={dayGhost.item} zone={zone} />
               </div>
             )}
             {dayHover && (
               <div
                 className="pointer-events-none absolute inset-x-0.5 z-0 rounded-sm border border-dashed border-edge-strong"
                 style={{
-                  top: pixelsFor(dayHover.start),
-                  height: pixelsFor(dayHover.end - dayHover.start) - 1,
+                  top: px(dayHover.start),
+                  height: px(dayHover.end - dayHover.start) - 1,
                 }}
               >
                 <span className="absolute right-1 top-0.5 text-caption text-ink-3 tnum">
-                  {formatTime(instant(day, dayHover.start))}
+                  {formatMinutes(dayHover.start)}
                 </span>
               </div>
             )}
-            {dayDraft && day === toDayKey(dayDraft.item.start) && (
+            {dayDraft && day === dayOf(dayDraft.item.start, zone) && (
               <DraftChip
-                draft={dayDraft.item}
-                onDone={() => setDraft(null)}
-                style={frameStyle({
-                  top: pixelsFor(dayDraft.start),
-                  height: pixelsFor(dayDraft.end - dayDraft.start),
+                form={dayDraft.item}
+                start={dayDraft.start}
+                end={dayDraft.end}
+                frame={{
+                  top: px(dayDraft.start),
+                  height: px(dayDraft.end - dayDraft.start),
                   left: 0,
                   width: 1,
                   z: 25,
-                })}
-              />
-            )}
-            {dayDraft && day !== toDayKey(dayDraft.item.start) && (
-              <div
-                className="pointer-events-none absolute inset-x-0.5 z-20 rounded-sm border border-dashed border-accent bg-accent-soft"
-                style={{
-                  top: pixelsFor(dayDraft.start),
-                  height: pixelsFor(dayDraft.end - dayDraft.start) - 1,
                 }}
               />
             )}
-            {days.includes(today) && (
+            {dayDraft && day !== dayOf(dayDraft.item.start, zone) && (
+              <div
+                className="pointer-events-none absolute inset-x-0.5 z-20 rounded-sm border border-dashed border-accent bg-accent-soft"
+                style={{
+                  top: px(dayDraft.start),
+                  height: px(dayDraft.end - dayDraft.start) - 1,
+                }}
+              />
+            )}
+            {showNow && (
               <div
                 className="pointer-events-none absolute inset-x-0 z-20 h-px"
                 style={{ top: nowTop, background: isToday ? "var(--cal-now)" : nowFaded }}
@@ -482,69 +597,69 @@ const selectItem = (item: Item) =>
       : { kind: "event", id: item.event.id },
   );
 
-function GhostLabel({ span }: { span: Span }) {
+function GhostLabel({ span, zone }: { span: Span; zone: string }) {
   const title = useDrag((state) => state.task?.title);
   return (
     <div className="flex flex-col">
       {title && <span className="truncate">{title}</span>}
       <span className="text-caption font-normal tnum">
-        {formatTime(span.start)}–{formatTime(span.end)}
+        {formatMinuteRange(minutesOf(span.start, zone), minutesOf(span.end, zone))}
       </span>
     </div>
   );
 }
 
-// The chip being created: type a title, Enter makes a to-do and its block, Escape drops it.
+// The chip of the draft the popover is editing: an event in its calendar's color, or a
+// to-do block with its project stripe. Its title and times follow the popover's fields.
 function DraftChip({
-  draft,
-  onDone,
-  style,
+  form,
+  start,
+  end,
+  frame,
 }: {
-  draft: Draft;
-  onDone: () => void;
-  style: ReturnType<typeof frameStyle>;
+  form: EventForm;
+  start: number;
+  end: number;
+  frame: Frame;
 }) {
-  const actions = useActions();
-  const [title, setTitle] = useState("");
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-
-  const commit = async () => {
-    const text = title.trim();
-    onDone();
-    if (!text) return;
-    const uuid = await actions.createTask({
-      title: text,
-      position: -1,
-      when: "date",
-      when_date: toDayKey(draft.start),
-      estimate_min: Math.round((draft.end.getTime() - draft.start.getTime()) / 60_000),
-    });
-    await actions.scheduleTask(uuid, draft.start, draft.end);
-  };
-
+  const { palette, mode, data } = useApp();
+  if (form.kind === "event") {
+    return (
+      <div data-item="draft" className="contents">
+        <EventChip
+          title={form.title || "New event"}
+          location={form.location || undefined}
+          start={start}
+          end={end}
+          colors={palette.get(form.calendarId) ?? graphite(mode)}
+          frame={frame}
+          selected
+          past={false}
+          dragging={false}
+          writable={false}
+        />
+      </div>
+    );
+  }
+  const project = data.projects.find((each) => each.uuid === form.projectUuid);
+  const colors = project ? blockColors(hueFor(project), mode) : null;
   return (
     <div
-      className="absolute overflow-hidden rounded-sm border border-accent border-l-[3px] bg-canvas pl-1.5 pr-1 pt-0.5 shadow-drag"
-      style={style}
+      data-item="draft"
+      className="absolute overflow-hidden rounded-sm border border-l-[3px] bg-canvas pl-1.5 pr-1 pt-0.5"
+      style={{
+        ...frameStyle(frame),
+        borderColor: colors?.border ?? "var(--cal-edge)",
+        borderLeftColor: colors?.stripe ?? "var(--cal-edge-strong)",
+        boxShadow: "inset 0 0 0 2px var(--cal-accent)",
+      }}
     >
-      <input
-        ref={ref}
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        onBlur={() => void commit()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") void commit();
-          else if (event.key === "Escape") onDone();
-          event.stopPropagation();
-        }}
-        placeholder="New To-Do"
-        aria-label="Title"
-        className="w-full bg-transparent text-small font-medium leading-4 text-ink outline-none placeholder:text-ink-3"
-      />
-      <div className="truncate text-caption text-ink-2 tnum">
-        {formatTime(draft.start)}–{formatTime(draft.end)}
+      <div
+        className={`truncate text-small font-medium leading-4 ${form.title ? "text-ink" : "text-ink-3"}`}
+      >
+        {form.title || "New to-do"}
       </div>
+      <div className="truncate text-caption text-ink-2 tnum">{formatMinuteRange(start, end)}</div>
     </div>
   );
 }

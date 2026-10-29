@@ -63,14 +63,20 @@ export function useEvents(start: string, end: string) {
   return { ...state, refresh };
 }
 
-// Chip colors per calendar for the current mode, computed once per calendar.
-export function useChipPalette(calendars: readonly DeviceCalendar[], mode: Mode) {
+// Chip colors per calendar for the current mode, computed once per calendar. A color
+// override from Settings replaces the calendar's own color here, never in the calendar.
+export function useChipPalette(
+  calendars: readonly DeviceCalendar[],
+  mode: Mode,
+  overrides: Readonly<Record<string, string>>,
+) {
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
-    for (const calendar of calendars)
-      palette.set(calendar.id, chipColorsFromHex(calendar.color, mode));
+    for (const calendar of calendars) {
+      palette.set(calendar.id, chipColorsFromHex(overrides[calendar.id] ?? calendar.color, mode));
+    }
     return palette;
-  }, [calendars, mode]);
+  }, [calendars, mode, overrides]);
 }
 
 // A fallback for events whose calendar isn't listed (shouldn't happen, but never crash).

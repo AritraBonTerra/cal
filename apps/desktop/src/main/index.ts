@@ -13,7 +13,14 @@ import {
   nativeTheme,
   shell,
 } from "electron";
-import { type AuthCall, type CalendarCall, channels, type DataCall } from "../shared/api";
+import {
+  type AuthCall,
+  type CalendarCall,
+  channels,
+  type DataCall,
+  type Theme,
+} from "../shared/api";
+import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { openDatabase } from "./db";
 import { encryptedFile } from "./session";
@@ -52,9 +59,37 @@ const broadcast = (channel: string, payload: unknown) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload);
 };
 
-const session = new Session(CONVEX_URL, store, encryptedFile(join(dataDir, "session.bin")), {
-  auth: (state) => broadcast(channels.authChanged, state),
-  sync: (status) => broadcast(channels.syncChanged, status),
+// Google sign-in through Better Auth on the deployment's site URL (research/11).
+const auth = createDesktopAuth(
+  CONVEX_URL.replace(".convex.cloud", ".convex.site"),
+  join(dataDir, "auth.json"),
+);
+const session = new Session(
+  CONVEX_URL,
+  store,
+  encryptedFile(join(dataDir, "session.bin")),
+  auth.adapter,
+  {
+    auth: (state) => broadcast(channels.authChanged, state),
+    sync: (status) => broadcast(channels.syncChanged, status),
+  },
+);
+
+// Finishes Google sign-in from the callback link or a pasted code.
+async function completeSignIn(linkOrCode: string) {
+  await auth.complete(linkOrCode);
+  return session.signedIn();
+}
+
+// The browser hands sign-in back as dev.aritra.cal://auth/callback#token=…. Registered
+// before `ready` so a link that launches the app isn't missed (works in packaged builds).
+app.setAsDefaultProtocolClient(SCHEME);
+app.on("open-url", (event, url) => {
+  if (!url.startsWith(`${SCHEME}://auth/callback`)) return;
+  event.preventDefault();
+  completeSignIn(url).catch((error: unknown) =>
+    broadcast(channels.authError, error instanceof Error ? error.message : String(error)),
+  );
 });
 
 data.subscribe((tables) => broadcast(channels.dataChanged, tables));
@@ -112,8 +147,10 @@ handle(channels.auth, (call: AuthCall) => {
   switch (call.method) {
     case "state":
       return session.state();
-    case "signIn":
-      return session.signIn(...call.args);
+    case "signInWithGoogle":
+      return auth.start();
+    case "submitCode":
+      return completeSignIn(...call.args);
     case "signOut":
       return session.signOut();
   }
@@ -138,6 +175,11 @@ handle(channels.calendar, (call: CalendarCall) => {
     case "deleteEvent":
       return calendar.deleteEvent(...call.args);
   }
+});
+
+// The window's theme setting. Electron re-evaluates `prefers-color-scheme` from this.
+handle(channels.theme, (theme: Theme) => {
+  nativeTheme.themeSource = theme;
 });
 
 function createWindow() {
@@ -188,7 +230,22 @@ const command = (label: string, id: string, accelerator?: string): MenuItemConst
 
 function buildMenu() {
   const template: MenuItemConstructorOptions[] = [
-    { role: "appMenu" },
+    {
+      role: "appMenu",
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        command("Settings…", "settings.open", "CmdOrCtrl+,"),
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
     {
       label: "File",
       submenu: [
@@ -215,6 +272,14 @@ function buildMenu() {
       submenu: [
         command("Command Menu", "palette.open", "CmdOrCtrl+K"),
         command("Toggle Sidebar", "view.sidebar", "CmdOrCtrl+\\"),
+        command("Toggle To-Do List", "view.tasks", "CmdOrCtrl+/"),
+        { type: "separator" },
+        command("Zoom Hours In", "grid.zoomIn", "CmdOrCtrl+Shift+."),
+        command("Zoom Hours Out", "grid.zoomOut", "CmdOrCtrl+Shift+,"),
+        command("Default Hour Height", "grid.zoomReset", "CmdOrCtrl+Shift+0"),
+        { type: "separator" },
+        command("Travel to Time Zone…", "zone.travel"),
+        command("Add Time Zone…", "zone.add"),
         { type: "separator" },
         { role: "reload" },
         { role: "toggleDevTools" },

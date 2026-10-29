@@ -58,14 +58,21 @@ function parseBinding(binding: string): Binding {
   };
 }
 
+// Punctuation typed without ⇧ on common layouts, so `mod+,` must not fire for ⇧⌘,.
+const UNSHIFTED_PUNCTUATION = ",./;'[]\\-=`";
+
 /**
  * Whether `input` triggers `binding`. Shift is part of the binding: `?` matches with
- * or without shift (it's shifted on most layouts), but `t` doesn't match `shift+t`.
+ * or without shift (it's shifted on most layouts), but `t` doesn't match `shift+t` and
+ * `mod+,` doesn't match `mod+shift+,`.
  */
 export function matches(binding: string, input: KeyInput, mac: boolean) {
   const want = parseBinding(binding);
   const key = input.key.toLowerCase();
-  const printableShifted = want.key.length === 1 && !/[a-z0-9]/.test(want.key);
+  const printableShifted =
+    want.key.length === 1 &&
+    !/[a-z0-9]/.test(want.key) &&
+    !UNSHIFTED_PUNCTUATION.includes(want.key);
   return (
     key === want.key &&
     (mac ? input.metaKey : input.ctrlKey) === want.mod &&

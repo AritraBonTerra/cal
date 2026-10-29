@@ -161,8 +161,9 @@ async function world() {
   const clock = { now: () => clockValue, set: (value: number) => (clockValue = value) };
 
   const signUp = async () => {
-    const userId = await backend.run((ctx) => ctx.db.insert("users", {}));
-    return { userId, client: backend.withIdentity({ subject: `${userId}|session` }) };
+    const authId = crypto.randomUUID();
+    const userId = await backend.run((ctx) => ctx.db.insert("users", { authId }));
+    return { userId, client: backend.withIdentity({ subject: authId }) };
   };
 
   // A device with its own SQLite file; `restart` reopens it like an app relaunch.

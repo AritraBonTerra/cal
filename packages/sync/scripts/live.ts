@@ -29,15 +29,26 @@ function openSqlite(path: string) {
   return { db, adapter };
 }
 
+// Signs up a throwaway user through Better Auth's email route, then mints a Convex JWT
+// with the session (the apps do the same through Google).
+const site = url.replace(".convex.cloud", ".convex.site");
 const email = `cal-live-${Date.now()}@example.test`;
-const password = crypto.randomUUID();
-const signUp = await new ConvexHttpClient(url).action(api.auth.signIn, {
-  provider: "password",
-  params: { email, password, flow: "signUp" },
+const signUp = await fetch(`${site}/api/auth/sign-up/email`, {
+  method: "POST",
+  headers: { "content-type": "application/json", origin: "cal://" },
+  body: JSON.stringify({ email, password: crypto.randomUUID(), name: "Cal live check" }),
 });
-const token = signUp.tokens?.token;
-if (!token) throw new Error("Sign-up returned no token");
-const userId = JSON.parse(atob(token.split(".")[1] ?? "")).sub.split("|")[0];
+const created = (await signUp.json()) as { token?: string };
+const sessionToken = signUp.headers.get("set-auth-token") ?? created.token;
+if (!signUp.ok || !sessionToken) throw new Error(`Sign-up failed: ${signUp.status}`);
+const minted = await fetch(`${site}/api/auth/convex/token`, {
+  headers: { authorization: `Bearer ${sessionToken}` },
+});
+const { token } = (await minted.json()) as { token?: string };
+if (!token) throw new Error(`No Convex token: ${minted.status}`);
+const me = new ConvexHttpClient(url);
+me.setAuth(token);
+const { userId } = await me.query(api.users.me, {});
 console.log(`signed up ${email}`);
 
 // A device: its own SQLite file, Convex connection and engine; `online` starts syncing.

@@ -16,5 +16,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.3",
     "typescript": "7.0.2"
+  },
+  "patchedDependencies": {
+    "@better-auth/electron@1.6.33": "patches/@better-auth%2Felectron@1.6.33.patch"
   }
 }

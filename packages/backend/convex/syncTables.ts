@@ -62,6 +62,10 @@ export const syncedTables = {
     priority: v.optional(v.number()),
     recurrence_rule: v.optional(v.string()),
     recurrence_mode: v.optional(v.union(v.literal("fixed"), v.literal("after_completion"))),
+    // Tag names joined by commas ("admin,deep"); no arrays in synced rows.
+    tags: v.optional(v.string()),
+    // When to remind, ISO 8601 with offset.
+    reminder_at: v.optional(v.string()),
     completed_at: v.optional(v.number()),
     canceled_at: v.optional(v.number()),
   },
@@ -114,6 +118,14 @@ export const syncedTables = {
       v.literal("menu_bar"),
     ),
   },
+
+  // Account-wide preferences, one row per key with a JSON value (week start, extra time
+  // zones…). Two devices may each create a row for a key; readers take the newest.
+  settings: {
+    ...syncFields,
+    key: v.string(),
+    value: v.string(),
+  },
 };
 
 export type SyncedTable = keyof typeof syncedTables;
@@ -125,6 +137,7 @@ export const syncedTable: Validator<SyncedTable> = v.union(
   v.literal("time_blocks"),
   v.literal("habits"),
   v.literal("habit_entries"),
+  v.literal("settings"),
 );
 
 // A record as a device stores it, e.g. `SyncedRow<"tasks">`.

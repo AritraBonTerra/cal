@@ -37,12 +37,27 @@ for (const scene of scenes.filter((each) => !wanted.length || wanted.includes(ea
   );
   await page.emulateMedia({ colorScheme: scene.dark ? "dark" : "light", reducedMotion: "reduce" });
   await page.waitForSelector("[data-ready]", { timeout: 15_000 });
+  if (scene.settings) {
+    await page.evaluate((settings) => window.calTest?.seed(settings), scene.settings);
+    await page.waitForTimeout(200);
+  }
   for (const key of scene.keys ?? []) {
     await page.keyboard.press(key);
     await page.waitForTimeout(120);
   }
   if (scene.text) await page.keyboard.type(scene.text, { delay: 10 });
+  for (const key of scene.after ?? []) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(120);
+  }
   if (scene.click) await page.click(scene.click);
+  for (const step of scene.steps ?? []) {
+    if ("press" in step) await page.keyboard.press(step.press);
+    else if ("type" in step) await page.keyboard.type(step.type, { delay: 10 });
+    else if ("click" in step) await page.click(step.click);
+    else await page.waitForTimeout(step.wait);
+    await page.waitForTimeout(150);
+  }
   await page.waitForTimeout(300);
   const path = join(outDir, `${scene.name}.png`);
   await page.screenshot({ path });

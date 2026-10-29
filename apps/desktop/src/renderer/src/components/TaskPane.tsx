@@ -59,7 +59,7 @@ export function TaskPane() {
       ref={(element) => {
         geometry.taskPane = element;
       }}
-      className={`relative flex w-80 shrink-0 flex-col border-r border-grid bg-canvas ${
+      className={`relative flex h-full w-80 shrink-0 flex-col border-r border-grid bg-canvas ${
         removing ? "bg-hover" : ""
       }`}
       data-dense

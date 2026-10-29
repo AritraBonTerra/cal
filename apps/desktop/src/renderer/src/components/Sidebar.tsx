@@ -47,7 +47,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
     ).length;
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col bg-sidebar" data-dense>
+    <aside className="flex h-full w-56 shrink-0 flex-col bg-sidebar" data-dense>
       <div className="drag-region flex h-13 shrink-0 items-center justify-end pr-2 pl-20">
         <IconButton label="Hide sidebar (⌘\\)" onClick={() => ui.set({ sidebar: false })}>
           <PanelLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />

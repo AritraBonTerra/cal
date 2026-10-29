@@ -14,6 +14,23 @@ export function inTextField(target: EventTarget | null) {
   );
 }
 
+// Keys whose ⇧ variant is another character on most layouts (⇧⌘. arrives as ">"):
+// with ⌘ and ⇧ held, bindings name the unshifted key.
+const UNSHIFTED: Record<string, string> = {
+  Period: ".",
+  Comma: ",",
+  Digit0: "0",
+  Digit1: "1",
+  Digit2: "2",
+  Digit3: "3",
+  Digit4: "4",
+  Digit5: "5",
+  Digit6: "6",
+  Digit7: "7",
+  Digit8: "8",
+  Digit9: "9",
+};
+
 /**
  * Routes window key presses to the command registry. Inside a text field only ⌘
  * shortcuts run, so typing "t" never jumps to today. Overlays and inputs that handle a
@@ -28,9 +45,13 @@ export function useKeyboard(cal: Cal) {
       if (typing && !mod) return;
       // The field's own undo and redo, and clipboard, stay native.
       if (typing && /^[zxcva]$/i.test(event.key)) return;
+      // ⌥ with a letter types a symbol ("†" for ⌥T); bindings name the letter.
+      const letter =
+        event.altKey && /^Key[A-Z]$/.test(event.code) ? event.code.slice(3) : undefined;
+      const unshifted = mod && event.shiftKey ? UNSHIFTED[event.code] : undefined;
       const handled = cal.commands.handle(
         {
-          key: event.key,
+          key: letter ?? unshifted ?? event.key,
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,

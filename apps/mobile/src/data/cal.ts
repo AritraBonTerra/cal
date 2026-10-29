@@ -4,6 +4,8 @@ import { LocalStore, Session, type SessionStorage } from "@cal/sync";
 import { randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseSync } from "expo-sqlite";
+import { SQLiteStorage } from "expo-sqlite/kv-store";
+import { createMobileAuth } from "./auth";
 import { deviceCalendar } from "./calendar";
 import { openDatabase } from "./db";
 
@@ -13,7 +15,7 @@ const CONVEX_URL =
 
 const SESSION_KEY = "cal.session";
 
-// The session's tokens in the iOS Keychain.
+// Who is signed in (user id and email), in the iOS Keychain.
 const keychain: SessionStorage = {
   read: () => SecureStore.getItem(SESSION_KEY) ?? undefined,
   write: (value) => SecureStore.setItem(SESSION_KEY, value),
@@ -55,7 +57,10 @@ type Listener<T> = (value: T) => void;
 const authListeners = new Set<Listener<ReturnType<Session["state"]>>>();
 const syncListeners = new Set<Listener<ReturnType<Session["status"]>>>();
 
-export const session = new Session(CONVEX_URL, store, keychain, {
+// Google sign-in through Better Auth on the deployment's site URL.
+export const auth = createMobileAuth(CONVEX_URL.replace(".convex.cloud", ".convex.site"));
+
+export const session = new Session(CONVEX_URL, store, keychain, auth.adapter, {
   auth: (state) => {
     for (const listener of authListeners) listener(state);
   },
@@ -65,7 +70,16 @@ export const session = new Session(CONVEX_URL, store, keychain, {
 });
 if (!fixture) session.init();
 
-export const cal = createCal(storeSource(store), now);
+// Device settings in their own small SQLite key-value store (in memory for fixtures).
+const deviceSettings = fixture ? undefined : new SQLiteStorage("cal-settings.db");
+export const cal = createCal(
+  storeSource(store),
+  now,
+  deviceSettings && {
+    getItem: (key) => deviceSettings.getItemSync(key),
+    setItem: (key, value) => deviceSettings.setItemSync(key, value),
+  },
+);
 // Undo steps belong to the account that made them; see History.clear.
 onAuthChange(() => void cal.history.clear());
 

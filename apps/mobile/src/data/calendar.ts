@@ -9,6 +9,7 @@ import type {
 import { toOffsetIso } from "@cal/domain";
 import * as Calendar from "expo-calendar/legacy";
 import { AppState } from "react-native";
+import { fromExpoRule, toExpoRule } from "./rules";
 
 const iso = (value: string | Date) => toOffsetIso(new Date(value));
 
@@ -41,10 +42,35 @@ function toExternal(event: Calendar.Event): ExternalEvent {
     location: event.location || undefined,
     notes: event.notes || undefined,
     url: event.url || undefined,
-    recurring: event.recurrenceRule !== null,
+    recurring: repeats(event),
+    ...(repeats(event) &&
+      event.recurrenceRule && { recurrence: fromExpoRule(event.recurrenceRule) }),
     busy: event.availability !== Calendar.Availability.FREE,
+    ...(!event.allDay && event.timeZone && { timeZone: event.timeZone }),
+    ...(event.alarms.length && {
+      alarms: event.alarms.flatMap((alarm) =>
+        alarm.relativeOffset === undefined ? [] : [-alarm.relativeOffset],
+      ),
+    }),
   };
 }
+
+// The rule written to remove a repeat: one occurrence, so just this event.
+const ONCE = "FREQ=DAILY;COUNT=1";
+
+// Whether an event really repeats (a one-occurrence rule is how Cal removes repeats).
+const repeats = (event: Calendar.Event) =>
+  event.recurrenceRule !== null && event.recurrenceRule.occurrence !== 1;
+
+/*
+ * expo-calendar's save resets reminders and busy/free when they aren't given, so every
+ * update carries the event's current ones unless the edit changes them.
+ */
+const keepCurrent = (event: Calendar.Event, details: ReturnType<typeof toDetails>) => ({
+  alarms: event.alarms,
+  availability: event.availability,
+  ...details,
+});
 
 const toDetails = (input: Partial<EventInput>) => ({
   ...(input.title !== undefined && { title: input.title }),
@@ -53,6 +79,18 @@ const toDetails = (input: Partial<EventInput>) => ({
   ...(input.allDay !== undefined && { allDay: input.allDay }),
   ...(input.location !== undefined && { location: input.location }),
   ...(input.notes !== undefined && { notes: input.notes }),
+  ...(input.url !== undefined && { url: input.url }),
+  ...(input.timeZone !== undefined && { timeZone: input.timeZone }),
+  ...(input.busy !== undefined && {
+    availability: input.busy ? Calendar.Availability.BUSY : Calendar.Availability.FREE,
+  }),
+  ...(input.alarms !== undefined && {
+    alarms: input.alarms.map((minutes) => ({ relativeOffset: -minutes })),
+  }),
+  ...(input.recurrence !== undefined && {
+    // expo-calendar ignores a null rule, so "no repeat" is a rule that ends after this one.
+    recurrenceRule: toExpoRule(input.recurrence || ONCE),
+  }),
 });
 
 // The device's calendars on iPhone and iPad, through expo-calendar (EventKit).
@@ -85,8 +123,38 @@ export const deviceCalendar: CalendarSource = {
 
   async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
     const { eventIdentifier, instanceStartDate } = parseId(id);
+    if (span === "all") {
+      // The whole series: edit its first event, and turn new times for this occurrence
+      // into a shift ("30 minutes later") so every occurrence moves, not just to this date.
+      const occurrence = await Calendar.getEventAsync(eventIdentifier, {
+        instanceStartDate: instanceStartDate?.toISOString(),
+      });
+      const first = await Calendar.getEventAsync(eventIdentifier);
+      const shift = (to: string | undefined, from: string | Date, base: string | Date) =>
+        to === undefined
+          ? undefined
+          : new Date(
+              new Date(base).getTime() + Date.parse(to) - new Date(from).getTime(),
+            ).toISOString();
+      const shifted = {
+        ...input,
+        start: shift(input.start, occurrence.startDate, first.startDate),
+        end: shift(input.end, occurrence.endDate, first.endDate),
+      };
+      await Calendar.updateEventAsync(eventIdentifier, keepCurrent(first, toDetails(shifted)), {
+        futureEvents: true,
+      });
+      return toExternal(await Calendar.getEventAsync(eventIdentifier));
+    }
     const options = { instanceStartDate, futureEvents: span === "future" };
-    const savedId = await Calendar.updateEventAsync(eventIdentifier, toDetails(input), options);
+    const current = await Calendar.getEventAsync(eventIdentifier, {
+      instanceStartDate: instanceStartDate?.toISOString(),
+    });
+    const savedId = await Calendar.updateEventAsync(
+      eventIdentifier,
+      keepCurrent(current, toDetails(input)),
+      options,
+    );
     // expo-calendar finds an occurrence by its current start, which may have just moved.
     const readStart =
       instanceStartDate && (input.start ? new Date(input.start) : instanceStartDate);
@@ -100,8 +168,8 @@ export const deviceCalendar: CalendarSource = {
   async deleteEvent(id: string, span: EventSpan) {
     const { eventIdentifier, instanceStartDate } = parseId(id);
     await Calendar.deleteEventAsync(eventIdentifier, {
-      instanceStartDate,
-      futureEvents: span === "future",
+      instanceStartDate: span === "all" ? undefined : instanceStartDate,
+      futureEvents: span !== "this",
     });
   },
 

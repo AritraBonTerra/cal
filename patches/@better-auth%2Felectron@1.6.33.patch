@@ -1,0 +1,26 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 574bd6844cbe894e71b292aa7adf1cc1c31f3d69..9597b96482b800e5644d5ca98e5fa063b7e925e8 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -5,8 +5,8 @@ import { base64Url } from "@better-auth/utils/base64";
+ import { defineErrorCodes, safeJSONParse } from "better-auth";
+ import { generateRandomString } from "better-auth/crypto";
+ import * as z from "zod";
+-import { Buffer } from "node:buffer";
+-import { timingSafeEqual } from "node:crypto";
++// Patched for Convex (no Node built-ins there): constant-time byte compare.
++const timingSafeEqual = (a, b) => { let diff = 0; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]; return diff === 0; };
+ import { SocialProviderListEnum } from "@better-auth/core/social-providers";
+ import { safeJSONParse as safeJSONParse$1 } from "@better-auth/core/utils/json";
+ import { createHash } from "@better-auth/utils/hash";
+@@ -64,8 +64,8 @@ const electronToken = (_opts) => createAuthEndpoint("/electron/token", {
+ 	if (tokenRecord.state !== ctx.body.state) throw APIError.from("BAD_REQUEST", ELECTRON_ERROR_CODES.STATE_MISMATCH);
+ 	if (!tokenRecord.codeChallenge) throw APIError.from("BAD_REQUEST", ELECTRON_ERROR_CODES.MISSING_CODE_CHALLENGE);
+ 	if (tokenRecord.codeChallengeMethod !== "s256") throw APIError.from("BAD_REQUEST", ELECTRON_ERROR_CODES.INVALID_PKCE_METHOD);
+-	const codeChallenge = Buffer.from(base64Url.decode(tokenRecord.codeChallenge));
+-	const codeVerifier = Buffer.from(await createHash("SHA-256").digest(ctx.body.code_verifier));
++	const codeChallenge = new Uint8Array(base64Url.decode(tokenRecord.codeChallenge));
++	const codeVerifier = new Uint8Array(await createHash("SHA-256").digest(ctx.body.code_verifier));
+ 	if (codeChallenge.length !== codeVerifier.length || !timingSafeEqual(codeChallenge, codeVerifier)) throw APIError.from("BAD_REQUEST", ELECTRON_ERROR_CODES.INVALID_CODE_VERIFIER);
+ 	const user = await ctx.context.internalAdapter.findUserById(tokenRecord.userId);
+ 	if (!user) throw APIError.from("INTERNAL_SERVER_ERROR", BASE_ERROR_CODES.USER_NOT_FOUND);

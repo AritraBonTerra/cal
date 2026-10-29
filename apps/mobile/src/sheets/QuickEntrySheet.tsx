@@ -1,14 +1,24 @@
 import { useActions } from "@cal/app-core";
-import { parseQuickEntry, type TokenKind } from "@cal/nlp";
+import { parseQuickEntry, pieces, type TokenKind } from "@cal/nlp";
 import { router } from "expo-router";
-import { CalendarDays, Flag, Folder, Hourglass, Moon, Zap } from "lucide-react-native";
+import {
+  Bell,
+  CalendarDays,
+  Clock,
+  Flag,
+  Folder,
+  Hash,
+  Hourglass,
+  Moon,
+  Repeat,
+  Zap,
+} from "lucide-react-native";
 import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
 import { type ListId, newTaskIn } from "../lib/lists";
 import { useColors } from "../lib/theme";
-import { formatDuration, formatRelativeDay, formatTime } from "../lib/time";
 import { HeaderAction, SheetHeader } from "../ui/controls";
 
 /*
@@ -17,13 +27,21 @@ import { HeaderAction, SheetHeader } from "../ui/controls";
  * creates the to-do, and a block when a time was given.
  */
 
-const TOKEN_ICONS: Record<TokenKind, typeof Flag> = {
+const TOKEN_ICONS: Partial<Record<TokenKind, typeof Flag>> = {
   when: CalendarDays,
+  date_range: CalendarDays,
+  time: Clock,
+  time_range: Clock,
   evening: Moon,
+  later: CalendarDays,
   deadline: Flag,
   estimate: Hourglass,
+  duration: Hourglass,
   priority: Zap,
-  project: Folder,
+  list: Folder,
+  tag: Hash,
+  recurrence: Repeat,
+  reminder: Bell,
 };
 
 export function QuickEntrySheet({
@@ -38,55 +56,27 @@ export function QuickEntrySheet({
   const colors = useColors();
   const actions = useActions();
   const [text, setText] = useState(initialText);
-  const entry = parseQuickEntry(text, now(), data.projects);
-  const project = data.projects.find((each) => each.uuid === entry.project_uuid);
-
-  const chips: { kind: TokenKind; label: string }[] = [];
-  if (entry.when === "evening") chips.push({ kind: "evening", label: "This Evening" });
-  else if (entry.when === "date" && entry.when_date) {
-    chips.push({
-      kind: "when",
-      label: entry.start_at
-        ? `${formatRelativeDay(entry.when_date, today)} ${formatTime(entry.start_at)}`
-        : formatRelativeDay(entry.when_date, today),
-    });
-  } else if (entry.when)
-    chips.push({ kind: "when", label: entry.when === "someday" ? "Someday" : "Anytime" });
-  if (entry.deadline)
-    chips.push({ kind: "deadline", label: `Due ${formatRelativeDay(entry.deadline, today)}` });
-  if (entry.estimate_min)
-    chips.push({ kind: "estimate", label: formatDuration(entry.estimate_min) });
-  if (entry.priority) chips.push({ kind: "priority", label: `P${entry.priority}` });
-  if (project) chips.push({ kind: "project", label: project.title });
+  const entry = parseQuickEntry(text, {
+    now: now(),
+    surface: "list",
+    kind: "task",
+    projects: data.projects,
+  });
+  const chips = entry.tokens.filter((token) => token.applied && token.kind !== "mode");
 
   const submit = async () => {
     if (!entry.title) return;
     router.back();
-    const { tokens: _tokens, title, start_at, ...fields } = entry;
-    // The list's defaults (Today, a project…), overridden by anything typed; a typed
-    // When replaces the list's day too.
-    const defaults = newTaskIn(list, today);
-    const uuid = await actions.createTask({
-      ...defaults,
-      ...(fields.when && { when_date: undefined }),
-      title,
-      ...fields,
-    });
-    if (start_at) {
-      const end = new Date(start_at.getTime() + (entry.estimate_min ?? 30) * 60_000);
-      await actions.scheduleTask(uuid, start_at, end);
-    }
+    // The list's defaults (Today, a project…), overridden by anything typed.
+    await actions.createFromEntry(entry, newTaskIn(list, today));
   };
 
-  // The text as styled runs: recognized tokens get the accent tint.
-  const pieces: { text: string; kind?: TokenKind }[] = [];
-  let cursor = 0;
-  for (const token of entry.tokens) {
-    if (token.start > cursor) pieces.push({ text: text.slice(cursor, token.start) });
-    pieces.push({ text: text.slice(token.start, token.end), kind: token.kind });
-    cursor = token.end;
-  }
-  if (cursor < text.length) pieces.push({ text: text.slice(cursor) });
+  // The text as styled runs: recognized tokens get the accent tint. A token nested in
+  // another (a zone inside its time) is skipped, so no text shows twice.
+  const runs = pieces(
+    text,
+    entry.tokens.filter((each) => each.applied),
+  );
 
   return (
     <View className="flex-1 bg-raised">
@@ -111,11 +101,11 @@ export function QuickEntrySheet({
           multiline
         >
           <Text className="text-title-3 text-ink">
-            {pieces.map((piece, index) => (
+            {runs.map((piece, index) => (
               <Text
                 // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional text.
                 key={index}
-                className={piece.kind ? "bg-accent-soft text-accent" : ""}
+                className={piece.token ? "bg-accent-soft text-accent" : ""}
               >
                 {piece.text}
               </Text>
@@ -131,11 +121,11 @@ export function QuickEntrySheet({
               <Text className="text-ink-2">/project</Text>
             </Text>
           ) : (
-            chips.map(({ kind, label }) => {
-              const Icon = TOKEN_ICONS[kind];
+            chips.map(({ kind, label, start }) => {
+              const Icon = TOKEN_ICONS[kind] ?? CalendarDays;
               return (
                 <View
-                  key={kind}
+                  key={start}
                   className="h-8 flex-row items-center gap-1.5 rounded-full bg-hover pl-2.5 pr-3"
                 >
                   <Icon size={14} color={colors["ink-2"]} strokeWidth={1.5} absoluteStrokeWidth />

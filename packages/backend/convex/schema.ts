@@ -7,7 +7,25 @@ import { syncedTable, syncedTables } from "./syncTables";
 const owner_id = v.id("users");
 
 export default defineSchema({
+  // Convex Auth's tables from before Google sign-in, kept so this deploy drops no data;
+  // they can go once exported. Better Auth keeps its own tables in its component.
   ...authTables,
+
+  // Cal's users. `authId` is the Better Auth user id (the JWT subject); the other fields
+  // are Convex Auth's, so rows from before still validate.
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    authId: v.optional(v.string()),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"])
+    .index("authId", ["authId"]),
 
   // Each user's change counter. Every write to a user's records takes the next number,
   // so devices can pull "everything after N" (see sync.ts).
@@ -37,4 +55,5 @@ export default defineSchema({
   habit_entries: defineTable({ ...syncedTables.habit_entries, owner_id }).index("by_uuid", [
     "uuid",
   ]),
+  settings: defineTable({ ...syncedTables.settings, owner_id }).index("by_uuid", ["uuid"]),
 });

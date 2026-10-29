@@ -68,6 +68,12 @@
     transform: translateY(-12px);
   }
 }
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
 @keyframes flash-out {
   to {
     opacity: 0;
@@ -83,10 +89,22 @@
     animation: sheet-in 220ms var(--ease-out);
   }
 }
+@utility toast-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: toast-in 220ms var(--ease-out);
+  }
+}
 @utility flash-out {
   animation: flash-out 600ms var(--ease-out) forwards;
   @media (prefers-reduced-motion: reduce) {
     animation-duration: 150ms;
+  }
+}
+
+/* Side panes slide by width; under reduced motion they snap. */
+@utility pane-slide {
+  @media (prefers-reduced-motion: no-preference) {
+    transition: width 200ms var(--ease-out);
   }
 }
 

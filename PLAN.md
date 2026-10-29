@@ -50,7 +50,7 @@ Each principle comes from a complaint we found in the research.
 | iPhone / iPad    | **Expo** (SDK 58), Expo Router, Uniwind (Tailwind for React Native), Reanimated 4, Gesture Handler 3, Legend List. Device calendars come from `expo-calendar`. iPad keyboard shortcuts need a small custom Expo module.                                                                                                                               |
 | Sync and backend | **Convex** is the shared record for Cal's own data: tasks, blocks, habits, settings. **`@cal/sync`**, our own small sync engine, keeps a local SQLite copy on each device and queues edits made offline (§3.1). Device calendar events never go into Convex. Each device reads its own, and the Mac and iPhone usually have the same accounts anyway. |
 | Local storage    | SQLite through `@cal/sync`: `node:sqlite` in Electron's main process (the window reads it over IPC), and `expo-sqlite` on iPhone/iPad. Both apps share one schema, generated from the Convex table definitions.                                                                                                                                       |
-| Auth             | **Convex Auth** with email and password, which avoids OAuth redirects in Electron. Better Auth is the fallback if Convex Auth gets in the way.                                                                                                                                                                                                        |
+| Auth             | **Better Auth with Google**, running inside Convex as a component (research/11). The Mac signs in through the system browser and returns via the `dev.aritra.cal://` scheme; iOS uses a browser sheet. Devices trade a 60-day rolling session for 15-minute Convex JWTs, so the app works offline and sync resumes later.                             |
 | Shared TS        | Domain types, the scheduler, the natural-language parser, recurrence and time math, React hooks over Convex, the command and keyboard-shortcut list, and theme values.                                                                                                                                                                                |
 | Tooling          | bun workspaces with the hoisted linker (no Turborepo yet), one pinned React version, Biome, `tsc --noEmit`, `bun test`.                                                                                                                                                                                                                               |
 
@@ -279,7 +279,9 @@ Built and reviewed:
 - **M4.5:** the iPhone and iPad app on the same packages.
 - **M5 and M6 (engine only):** habit day strip and stats; the scheduler's `plan()` with reasons, risks and stability.
 
-Still to do: repeating tasks, headings, tags and checklists; Replan (`P`) and the workload bar; the scheduler's "Plan my day" preview UI; `.` date jump, time zone overlay, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey and widgets; habit heatmap; iPad hardware keyboard shortcuts (needs a native module); M7.
+v1.1 (after testing the first DMG): the grid fills the window with zoom, panes slide, a Settings window (synced account settings and per-device ones), up to three extra time-zone columns and `Z` travel, creating and editing calendar events with repeats, reminders and series edits, Quick Entry for events and to-dos with a rewritten parser (research/10), and Google sign-in through Better Auth.
+
+Still to do: repeating tasks, headings and checklists; showing tags and firing reminders on to-dos (both are stored); Replan (`P`) and the workload bar; the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
 
 ## 8. Not in v1
 
@@ -296,6 +298,7 @@ Still to do: repeating tasks, headings, tags and checklists; Replan (`P`) and th
 - 2026-10-28: Personal use for now, so Google OAuth verification is skipped. On the Mac, EventKit already covers Google accounts.
 - 2026-10-28: Offline edits must never be lost. First choice was PowerSync (Cloud) on top of Convex.
 - 2026-10-28: Auth uses Convex Auth (email and password).
+- 2026-10-28 (v1.1): Sign in with Google is the requirement; Better Auth chosen over Clerk (Clerk's free plan signs out weekly and its Electron SDK is beta). Pinned to Better Auth 1.6.33 until `@convex-dev/better-auth` supports 1.7.
 - 2026-10-28: PowerSync's Convex connector needs Convex's streaming export, which is Pro only ($25/month); the account is on Starter. Build our own sync engine (`@cal/sync`, §3.1) instead. PowerSync is dropped.
 - 2026-10-28: Speech input ("MIF 2") dropped. Not needed.
 

@@ -1,15 +1,28 @@
-import { type Command, useActions, useCommands, useHistory } from "@cal/app-core";
+import { type Command, useActions, useCommands, useHistory, useSettings } from "@cal/app-core";
 import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
 import type { AppState } from "./lib/app";
 import { now } from "./lib/clock";
+import {
+  closeEditor,
+  defaultCalendar,
+  deleteWithUndo,
+  editorStore,
+  eventWriter,
+  nextFreeSlot,
+  openCreate,
+  openEdit,
+  spanFor,
+} from "./lib/events";
 import { newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
 import {
   closeOverlay,
   goToday,
   moveView,
   moveWeek,
+  openSettings,
+  openZonePicker,
   select,
   showDays,
   showList,
@@ -17,6 +30,7 @@ import {
   toggleOverlay,
   ui,
 } from "./lib/ui";
+import { zonedDayKey } from "./lib/zones";
 
 /*
  * Every command the window offers, registered once. ⌘K, the `?` sheet, the menu bar
@@ -30,6 +44,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
+  const { setAccount } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -46,6 +61,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     };
     const hasTask = () => ui.get().selection?.kind === "task" && !ui.get().editing;
     const hasBlock = () => ui.get().selection?.kind === "block";
+    const selectedEvent = () => {
+      const { selection } = ui.get();
+      if (selection?.kind !== "event") return undefined;
+      return latest.current.events.find((event) => event.id === selection.id);
+    };
+    const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
+    const writer = () => eventWriter(history, latest.current.refreshEvents);
 
     // Moves the task selection within the visible list; with nothing selected, picks an end.
     const step = (direction: 1 | -1) => {
@@ -126,6 +148,50 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         aliases: ["tasks", "pane"],
         run: () => ui.set((state) => ({ tasks: !state.tasks })),
       },
+      {
+        id: "view.weekends",
+        title: "Toggle Weekends",
+        group: "View",
+        keys: ["mod+shift+e"],
+        aliases: ["hide weekends", "show weekends", "saturday", "sunday"],
+        run: () => void setAccount("showWeekends", !latest.current.account.showWeekends),
+      },
+      {
+        id: "view.declined",
+        title: "Toggle Declined Events",
+        group: "View",
+        keys: ["mod+shift+d"],
+        aliases: ["hide declined", "show declined"],
+        run: () => void setAccount("showDeclined", !latest.current.account.showDeclined),
+      },
+      {
+        id: "zone.add",
+        title: "Add Time Zone…",
+        group: "View",
+        aliases: ["timezone", "time zone column", "world clock"],
+        enabled: () => latest.current.account.timeZones.length < 3,
+        run: () => openZonePicker({ kind: "add" }),
+      },
+      {
+        id: "zone.travel",
+        title: "Travel to Time Zone…",
+        group: "View",
+        keys: ["z"],
+        aliases: ["time travel", "timezone", "view in zone"],
+        run: () => {
+          if (ui.get().travelZone) ui.set({ travelZone: null });
+          else openZonePicker({ kind: "travel" });
+        },
+      },
+      {
+        id: "zone.exit",
+        title: "Stop Travelling",
+        group: "View",
+        keys: ["escape"],
+        aliases: ["return to my time zone"],
+        enabled: () => ui.get().travelZone !== null && ui.get().overlay === null,
+        run: () => ui.set({ travelZone: null }),
+      },
     ];
 
     const navigate: Command[] = [
@@ -167,7 +233,17 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Navigate",
         keys: ["t"],
         aliases: ["now"],
-        run: () => goToday(latest.current.today),
+        // The grid's today, which can differ from the Mac's in another zone.
+        run: () =>
+          goToday(latest.current.gridToday, latest.current.account.todayKey === "left-align"),
+      },
+      {
+        id: "nav.todayLeft",
+        title: "Today, Left-Aligned",
+        group: "Navigate",
+        keys: ["alt+t"],
+        aliases: ["start from today"],
+        run: () => goToday(latest.current.gridToday, true),
       },
       ...SMART_LISTS.map(
         (list, index): Command => ({
@@ -317,7 +393,12 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
               actions.scheduleNext(
                 task.uuid,
                 events
-                  .filter((event) => event.busy && !event.allDay)
+                  .filter(
+                    (event) =>
+                      event.busy &&
+                      !event.allDay &&
+                      !latest.current.device.freeCalendars.includes(event.calendarId),
+                  )
                   .map((event) => ({ start: new Date(event.start), end: new Date(event.end) })),
               ),
             );
@@ -355,6 +436,80 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     const calendar: Command[] = [
+      {
+        id: "event.new",
+        title: "New Event",
+        group: "Calendar",
+        keys: ["c"],
+        aliases: ["create event", "add event", "meeting"],
+        run: async () => {
+          // The days around now are fetched here: the view may be showing another week,
+          // and a meeting that began yesterday still counts.
+          const from = now();
+          const today = toDayKey(from);
+          const before = editorStore.get();
+          const events = await window.cal.calendar
+            .events(
+              toOffsetIso(fromDayKey(addDays(today, -1))),
+              toOffsetIso(fromDayKey(addDays(today, 3))),
+            )
+            .catch(() => latest.current.events);
+          // Any draft opened, edited or closed meanwhile (a drag on the grid) wins.
+          if (editorStore.get() !== before) return;
+          const { calendars, device, account, data, gridToday, zone } = latest.current;
+          const calendar = defaultCalendar(calendars, device.defaultCalendar);
+          const busy = [
+            ...events.filter(
+              (event) =>
+                event.busy && !event.allDay && !device.freeCalendars.includes(event.calendarId),
+            ),
+            ...data.blocks.map((block) => ({ start: block.start_at, end: block.end_at })),
+          ].map((span) => ({ start: new Date(span.start), end: new Date(span.end) }));
+          const slot = nextFreeSlot(from, account.eventMinutes, busy);
+          closeOverlay();
+          // The slot's day in the grid's zone: while travelling, it may be "tomorrow" here.
+          if (!latest.current.days.includes(zonedDayKey(slot.start, zone))) goToday(gridToday);
+          select(null);
+          openCreate(slot, {
+            calendarId: calendar?.id ?? "",
+            timeZone: zone,
+            reminder: account.eventReminder,
+            canCreateEvents: calendar !== undefined,
+          });
+        },
+      },
+      {
+        id: "event.edit",
+        title: "Edit Event",
+        group: "Calendar",
+        keys: ["enter", "e"],
+        aliases: ["open event"],
+        enabled: hasEvent,
+        run: () => {
+          const event = selectedEvent();
+          if (event) openEdit(event, latest.current.zone);
+        },
+      },
+      {
+        id: "event.delete",
+        title: "Delete Event",
+        group: "Calendar",
+        keys: ["backspace", "delete", "mod+backspace"],
+        aliases: ["remove event"],
+        enabled: hasEvent,
+        run: () => {
+          const event = selectedEvent();
+          if (!event) return;
+          const calendar = latest.current.calendars.find((each) => each.id === event.calendarId);
+          if (!calendar?.writable) return;
+          void spanFor(event, "Delete repeating event").then((span) => {
+            if (!span) return;
+            select(null);
+            closeEditor();
+            return deleteWithUndo(event, span, writer(), history);
+          });
+        },
+      },
       {
         id: "block.delete",
         title: "Remove from Calendar",
@@ -446,6 +601,14 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => toggleOverlay("shortcuts"),
       },
       {
+        id: "settings.open",
+        title: "Settings…",
+        group: "General",
+        keys: ["mod+,"],
+        aliases: ["preferences", "options", "theme", "time format", "calendars"],
+        run: () => openSettings(),
+      },
+      {
         id: "edit.undo",
         title: "Undo",
         group: "General",
@@ -481,5 +644,5 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess]);
+  }, [actions, history, auth.status, requestAccess, setAccount]);
 }

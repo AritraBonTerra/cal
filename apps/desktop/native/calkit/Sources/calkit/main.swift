@@ -109,6 +109,45 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
   if let location = event.location, !location.isEmpty { json["location"] = location }
   if let notes = event.notes, !notes.isEmpty { json["notes"] = notes }
   if let url = event.url { json["url"] = url.absoluteString }
+  if let rule = event.recurrenceRules?.first {
+    json["recurrence"] = rruleString(from: rule)
+    // The series' first occurrence, which "delete all" is undone from.
+    if let identifier = event.eventIdentifier, let first = store.event(withIdentifier: identifier) {
+      json["seriesStart"] = isoOut.string(from: first.startDate)
+      json["seriesEnd"] = isoOut.string(from: first.endDate)
+    }
+  }
+  if let zone = event.timeZone, !event.isAllDay { json["timeZone"] = zone.identifier }
+  if let alarms = event.alarms, !alarms.isEmpty {
+    json["alarms"] = alarms.compactMap { alarm in
+      alarm.absoluteDate == nil ? Int((-alarm.relativeOffset / 60).rounded()) : nil
+    }
+  }
+  if let attendees = event.attendees, !attendees.isEmpty {
+    json["attendees"] = attendees.map(attendeeJSON)
+    if let me = attendees.first(where: \.isCurrentUser) { json["myStatus"] = statusName(me.participantStatus) }
+  }
+  return json
+}
+
+func statusName(_ status: EKParticipantStatus) -> String {
+  switch status {
+  case .accepted: return "accepted"
+  case .declined: return "declined"
+  case .tentative: return "tentative"
+  case .pending: return "pending"
+  default: return "unknown"
+  }
+}
+
+func attendeeJSON(_ attendee: EKParticipant) -> [String: Any] {
+  var json: [String: Any] = [
+    "status": statusName(attendee.participantStatus),
+    "organizer": attendee.participantRole == .chair,
+  ]
+  if let name = attendee.name { json["name"] = name }
+  let address = attendee.url.absoluteString
+  if address.lowercased().hasPrefix("mailto:") { json["email"] = String(address.dropFirst(7)) }
   return json
 }
 
@@ -137,16 +176,55 @@ func calendar(_ id: Any?) throws -> EKCalendar {
   return calendar
 }
 
-func span(_ value: Any?) -> EKSpan { (value as? String) == "future" ? .futureEvents : .thisEvent }
+func span(_ value: Any?) -> EKSpan { (value as? String) == "this" ? .thisEvent : .futureEvents }
+
+/*
+ * The event a change applies to: the occurrence for "this"/"future", the series' first
+ * occurrence for "all" (EventKit has no "whole series" span, so "all" is "this and
+ * future" from the start).
+ */
+func target(_ id: String, _ spanName: Any?) throws -> EKEvent {
+  let event = try findEvent(id)
+  guard (spanName as? String) == "all", let identifier = event.eventIdentifier else { return event }
+  return store.event(withIdentifier: identifier) ?? event
+}
 
 func apply(_ params: [String: Any], to event: EKEvent) throws {
   if let title = params["title"] as? String { event.title = title }
   if params["calendarId"] != nil { event.calendar = try calendar(params["calendarId"]) }
   if let allDay = params["allDay"] as? Bool { event.isAllDay = allDay }
+  if let zone = params["timeZone"] as? String { event.timeZone = TimeZone(identifier: zone) }
   if params["start"] != nil { event.startDate = try parseDate(params["start"]) }
   if params["end"] != nil { event.endDate = try parseDate(params["end"]) }
   if let location = params["location"] as? String { event.location = location }
   if let notes = params["notes"] as? String { event.notes = notes }
+  if let url = params["url"] as? String { event.url = url.isEmpty ? nil : URL(string: url) }
+  if let busy = params["busy"] as? Bool { event.availability = busy ? .busy : .free }
+  if let alarms = params["alarms"] as? [Int] {
+    event.alarms = alarms.map { EKAlarm(relativeOffset: TimeInterval(-$0 * 60)) }
+  }
+  if let rrule = params["recurrence"] as? String {
+    event.recurrenceRules = rrule.isEmpty ? nil : [try recurrenceRule(from: rrule)]
+  }
+}
+
+// `date` moved as `old` moved to `new` in `zone`: by whole days plus the change of clock
+// time, so a series moved across a DST change keeps its clock time.
+func wallMove(_ date: Date, from old: Date, to new: Date, in zone: TimeZone) -> Date {
+  var calendar = Calendar(identifier: .gregorian)
+  calendar.timeZone = zone
+  let days =
+    calendar.dateComponents(
+      [.day], from: calendar.startOfDay(for: old), to: calendar.startOfDay(for: new)
+    ).day ?? 0
+  let clock = { (date: Date) -> Int in
+    let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
+    return (parts.hour ?? 0) * 3600 + (parts.minute ?? 0) * 60 + (parts.second ?? 0)
+  }
+  var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+  parts.day = (parts.day ?? 1) + days
+  parts.second = (parts.second ?? 0) + clock(new) - clock(old)
+  return calendar.date(from: parts) ?? date.addingTimeInterval(new.timeIntervalSince(old))
 }
 
 func handle(_ method: String, _ params: [String: Any], reply: @escaping (Result<Any, Error>) -> Void) {
@@ -176,14 +254,35 @@ func handle(_ method: String, _ params: [String: Any], reply: @escaping (Result<
       try store.save(event, span: .thisEvent, commit: true)
       reply(.success(eventJSON(event)))
     case "updateEvent":
-      let event = try findEvent(params["id"] as? String ?? "")
-      try apply(params["input"] as? [String: Any] ?? [:], to: event)
+      let id = params["id"] as? String ?? ""
+      let event = try target(id, params["span"])
+      var input = params["input"] as? [String: Any] ?? [:]
+      if (params["span"] as? String) == "all" {
+        // New times for one occurrence become the same move of the whole series, on the
+        // event's wall clock.
+        let occurrence = try findEvent(id)
+        let zone = event.timeZone ?? TimeZone.current
+        if input["start"] != nil {
+          let start = try parseDate(input["start"])
+          input["start"] = isoIn.string(
+            from: wallMove(event.startDate, from: occurrence.startDate, to: start, in: zone))
+        }
+        if input["end"] != nil {
+          let end = try parseDate(input["end"])
+          input["end"] = isoIn.string(
+            from: wallMove(event.endDate, from: occurrence.endDate, to: end, in: zone))
+        }
+      }
+      try apply(input, to: event)
       try store.save(event, span: span(params["span"]), commit: true)
       reply(.success(eventJSON(event)))
     case "deleteEvent":
-      let event = try findEvent(params["id"] as? String ?? "")
+      let event = try target(params["id"] as? String ?? "", params["span"])
       try store.remove(event, span: span(params["span"]), commit: true)
       reply(.success(NSNull()))
+    case "roundtripRule":
+      // RRULE → EKRecurrenceRule → RRULE, for checking the conversion without calendar access.
+      reply(.success(rruleString(from: try recurrenceRule(from: params["rrule"] as? String ?? ""))))
     default:
       throw Failure(message: "unknown method \(method)")
     }

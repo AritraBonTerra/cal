@@ -2,24 +2,32 @@ import type { ExternalEvent } from "@cal/calendar-source";
 import {
   addDays,
   type DayKey,
-  fromDayKey,
   type Project,
   snapMinutes,
   type Task,
   type TimeBlock,
-  toDayKey,
 } from "@cal/domain";
 import { grid } from "@cal/theme";
+import { deviceZone, zonedDayKey, zonedInstant, zonedMinutes } from "../../lib/zones";
 
 /*
  * What the grid draws: device events and Cal's blocks, each cut into one segment per
  * visible day with minutes after midnight, so columns can lay them out the same way.
+ * Minutes and days are wall-clock values in the grid's zone (`zone`, the device's by
+ * default); pixel positions scale with the hour height the view measured.
  */
 
-export const HOUR = grid.hourHeight;
+// The default hour height; the view's effective height is at least the fit height.
+export const DEFAULT_HOUR = grid.hourHeight;
 export const SNAP = grid.snapMinutes;
 export const GUTTER = grid.gutterWidth;
+// Width of each extra time-zone column left of the main gutter.
+export const ZONE_COLUMN = 44;
 export const DAY_MINUTES = 24 * 60;
+
+// Hour heights the zoom keys step through; 0 is "fit the day to the window".
+export const ZOOM_STEPS = [0, 32, 40, 48, 56, 64, 80, 96] as const;
+export const MAX_HOUR = 96;
 
 export type Item =
   | { kind: "event"; id: string; event: ExternalEvent; start: Date; end: Date }
@@ -47,38 +55,55 @@ export interface Segment<T extends Span = Item> {
   end: number;
 }
 
-export const minutesOf = (date: Date) => date.getHours() * 60 + date.getMinutes();
+export const minutesOf = (date: Date, zone = deviceZone) => zonedMinutes(date, zone);
+
+export const dayOf = (date: Date, zone = deviceZone) => zonedDayKey(date, zone);
 
 // `minutes` after midnight on `day`, as an instant.
-export function instant(day: DayKey, minutes: number) {
-  const date = fromDayKey(day);
-  date.setMinutes(minutes);
-  return date;
+export const instant = (day: DayKey, minutes: number, zone = deviceZone) =>
+  zonedInstant(day, minutes, zone);
+
+// Whether [start, end) touches any of the days `first` through `last`, with the day
+// boundaries at midnight in `zone`.
+/**
+ * The columns an all-day bar from `startDay` through `endDay` (both inclusive) covers
+ * among `days`, which may skip weekends: from the first visible day on or after its
+ * start to the last on or before its end. Undefined when no visible day falls inside it.
+ */
+export function barColumns(days: readonly DayKey[], startDay: DayKey, endDay: DayKey) {
+  const from = days.findIndex((day) => day >= startDay);
+  const to = days.findLastIndex((day) => day <= endDay);
+  return from === -1 || to < from ? undefined : { from, to };
 }
 
-// Whether [start, end) touches any of the days `first` through `last`.
-export const withinDays = ({ start, end }: Span, first: DayKey, last: DayKey) =>
-  end.getTime() > fromDayKey(first).getTime() &&
-  start.getTime() < fromDayKey(addDays(last, 1)).getTime();
+export const withinDays = ({ start, end }: Span, first: DayKey, last: DayKey, zone = deviceZone) =>
+  end.getTime() > instant(first, 0, zone).getTime() &&
+  start.getTime() < instant(addDays(last, 1), 0, zone).getTime();
 
 // The part of each span falling on each of `days`, for timed items only.
-export function segments<T extends Span>(items: readonly T[], days: readonly DayKey[]) {
+export function segments<T extends Span>(
+  items: readonly T[],
+  days: readonly DayKey[],
+  zone = deviceZone,
+) {
   const byDay = new Map<DayKey, Segment<T>[]>(days.map((day) => [day, []]));
   for (const item of items) {
-    const firstDay = toDayKey(item.start);
-    const lastDay = toDayKey(new Date(item.end.getTime() - 1));
+    const firstDay = dayOf(item.start, zone);
+    const lastDay = dayOf(new Date(item.end.getTime() - 1), zone);
     for (const day of days) {
       if (day < firstDay || day > lastDay) continue;
-      const start = day === firstDay ? minutesOf(item.start) : 0;
+      const start = day === firstDay ? minutesOf(item.start, zone) : 0;
       const end =
-        day === lastDay ? Math.max(start + 1, minutesOf(item.end) || DAY_MINUTES) : DAY_MINUTES;
+        day === lastDay
+          ? Math.max(start + 1, minutesOf(item.end, zone) || DAY_MINUTES)
+          : DAY_MINUTES;
       byDay.get(day)?.push({ item, day, start, end: Math.max(end, start + SNAP) });
     }
   }
   return byDay;
 }
 
-export const pixelsFor = (minutes: number) => (minutes / 60) * HOUR;
+export const pixelsFor = (minutes: number, hour: number) => (minutes / 60) * hour;
 
 export const snap = (minutes: number, step: number = SNAP) =>
   Math.min(DAY_MINUTES, Math.max(0, Math.round(minutes / step) * step));
@@ -102,8 +127,18 @@ export function dragSpan(anchor: Date, pointer: Date): Span {
  * minutes stay separate so an item keeps its wall-clock time across a DST change, and
  * the minute delta may cross midnight in either direction.
  */
-export const shifted = (date: Date, days: number, minutes: number, step: number) =>
-  instant(addDays(toDayKey(date), days), snapMinutes(minutesOf(date) + minutes, step));
+export const shifted = (
+  date: Date,
+  days: number,
+  minutes: number,
+  step: number,
+  zone = deviceZone,
+) =>
+  instant(
+    addDays(dayOf(date, zone), days),
+    snapMinutes(minutesOf(date, zone) + minutes, step),
+    zone,
+  );
 
 /**
  * Where a move or resize gesture puts `item`, given how far the pointer travelled. A
@@ -116,17 +151,29 @@ export function dragged(
   days: number,
   minutes: number,
   step: number,
+  zone = deviceZone,
 ): Span {
   if (kind === "move") {
-    const start = shifted(item.start, days, minutes, step);
+    const start = shifted(item.start, days, minutes, step, zone);
     return { start, end: new Date(start.getTime() + item.end.getTime() - item.start.getTime()) };
   }
   if (kind === "end") {
-    const end = shifted(item.end, days, minutes, step);
+    const end = shifted(item.end, days, minutes, step, zone);
     const floor = item.start.getTime() + SNAP * MINUTE;
     return { start: item.start, end: new Date(Math.max(floor, end.getTime())) };
   }
-  const start = shifted(item.start, days, minutes, step);
+  const start = shifted(item.start, days, minutes, step, zone);
   const ceiling = item.end.getTime() - SNAP * MINUTE;
   return { start: new Date(Math.min(ceiling, start.getTime())), end: item.end };
+}
+
+/**
+ * The hour height one zoom step in `direction` from `current` (the effective height):
+ * the next ladder step above, or the next below, stopping at fit (0) when the step
+ * would drop under the fit height.
+ */
+export function zoomStep(current: number, fit: number, direction: 1 | -1) {
+  if (direction === 1) return ZOOM_STEPS.find((step) => step > current + 0.5) ?? MAX_HOUR;
+  const below = [...ZOOM_STEPS].reverse().find((step) => step < current - 0.5) ?? 0;
+  return below <= fit ? 0 : below;
 }

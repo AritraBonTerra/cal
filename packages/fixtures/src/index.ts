@@ -6,7 +6,17 @@ import type {
   EventSpan,
   ExternalEvent,
 } from "@cal/calendar-source";
-import { addDays, atMinute, type DayKey, startOfWeek, toDayKey, toOffsetIso } from "@cal/domain";
+import {
+  addDays,
+  atMinute,
+  type DayKey,
+  expandRule,
+  localTimeZone,
+  startOfWeek,
+  toDayKey,
+  toOffsetIso,
+  wallMove,
+} from "@cal/domain";
 import type { LocalStore, NewRow } from "@cal/sync";
 
 /*
@@ -28,22 +38,52 @@ const calendars: DeviceCalendar[] = [
   { id: "holidays", title: "Holidays", color: "#8e4ec6", account: "Subscribed", writable: false },
 ];
 
-type Seed = [
-  calendarId: string,
-  title: string,
-  start: Date,
-  end: Date,
-  extra?: Partial<ExternalEvent>,
-];
+/*
+ * A fixture event: an ExternalEvent plus the series it belongs to, so "this and
+ * following" and "all events" can reach the other occurrences. Occurrence ids follow
+ * EventKit's shape, `<identifier>|<original start>`, with the series' identifier in
+ * front; a one-off's id is just its identifier.
+ */
+type Stored = ExternalEvent & { series?: string };
+
+const occurrenceId = (series: string, start: Date) => `${series}|${toOffsetIso(start)}`;
+
+// The identifier before the "|" of an occurrence id (the whole id for a one-off).
+const identifierOf = (id: string) => id.split("|")[0] ?? id;
+
+type Seed = [calendarId: string, title: string, start: Date, end: Date, extra?: Partial<Stored>];
+
+// Every weekday's Standup is one occurrence of the same series, with reminders.
+const standup: Partial<Stored> = {
+  series: "standup",
+  recurring: true,
+  recurrence: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+  alarms: [10, 60],
+  timeZone: "America/Los_Angeles",
+};
 
 const seeds: Seed[] = [
-  ["work", "Standup", at(day(0), 9, 30), at(day(0), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(1), 9, 30), at(day(1), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(2), 9, 30), at(day(2), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(3), 9, 30), at(day(3), 9, 45), { recurring: true }],
-  ["work", "Standup", at(day(4), 9, 30), at(day(4), 9, 45), { recurring: true }],
+  ["work", "Standup", at(day(0), 9, 30), at(day(0), 9, 45), standup],
+  ["work", "Standup", at(day(1), 9, 30), at(day(1), 9, 45), standup],
+  ["work", "Standup", at(day(2), 9, 30), at(day(2), 9, 45), standup],
+  ["work", "Standup", at(day(3), 9, 30), at(day(3), 9, 45), standup],
+  ["work", "Standup", at(day(4), 9, 30), at(day(4), 9, 45), standup],
   ["work", "Planning", at(day(0), 11), at(day(0), 12), { location: "Room 4" }],
-  ["work", "Design review", at(day(1), 14), at(day(1), 15, 30)],
+  [
+    "work",
+    "Design review",
+    at(day(1), 14),
+    at(day(1), 15, 30),
+    {
+      url: "https://meet.google.com/abc-defg-hij",
+      attendees: [
+        { name: "Priya Nair", email: "priya@work.com", status: "accepted", organizer: true },
+        { name: "Sam Okafor", email: "sam@work.com", status: "tentative", organizer: false },
+        { email: "lee@work.com", status: "pending", organizer: false },
+      ],
+      myStatus: "accepted",
+    },
+  ],
   ["work", "1:1 with Sam", at(day(2), 11, 30), at(day(2), 12)],
   ["work", "Prep for All Hands", at(day(2), 13), at(day(2), 13, 30)],
   ["work", "All Hands", at(day(2), 16), at(day(2), 17), { location: "Zoom" }],
@@ -60,8 +100,8 @@ const seeds: Seed[] = [
   ["personal", "Trip to Tahoe", at(day(5), 0), at(day(7), 0), { allDay: true }],
 ];
 
-const events: ExternalEvent[] = seeds.map(([calendarId, title, start, end, extra], index) => ({
-  id: `fixture-${index}`,
+const seeded: Stored[] = seeds.map(([calendarId, title, start, end, extra], index) => ({
+  id: extra?.series ? occurrenceId(extra.series, start) : `fixture-${index}`,
   calendarId,
   title,
   start: toOffsetIso(start),
@@ -74,6 +114,11 @@ const events: ExternalEvent[] = seeds.map(([calendarId, title, start, end, extra
 
 // Device calendars for fixture mode: fixed, read-mostly, in memory.
 export class FixtureCalendar implements CalendarSource {
+  // Each instance edits its own copy, so tests and scenes never see each other's changes.
+  private readonly stored: Stored[] = seeded.map((event) => ({ ...event }));
+  // Ids never repeat, so an undo that recreates a deleted event gets a fresh one.
+  private nextId = seeded.length;
+
   async access(): Promise<CalendarAccess> {
     return "fullAccess";
   }
@@ -86,38 +131,155 @@ export class FixtureCalendar implements CalendarSource {
   async events(start: string, end: string, calendarIds?: readonly string[]) {
     const from = Date.parse(start);
     const to = Date.parse(end);
-    return events.filter(
-      (event) =>
-        Date.parse(event.end) > from &&
-        Date.parse(event.start) < to &&
-        (!calendarIds || calendarIds.includes(event.calendarId)),
-    );
+    return this.stored
+      .filter(
+        (event) =>
+          Date.parse(event.end) > from &&
+          Date.parse(event.start) < to &&
+          (!calendarIds || calendarIds.includes(event.calendarId)),
+      )
+      .map((event) => this.publish(event));
   }
+
+  // A repeating event is stored as one occurrence per date, all in one series.
   async createEvent(input: EventInput) {
-    const event: ExternalEvent = {
-      ...input,
-      id: `fixture-${events.length}`,
-      recurring: false,
+    const identifier = `fixture-${this.nextId++}`;
+    const start = new Date(input.start);
+    const end = new Date(input.end);
+    const [first] = input.recurrence ? expandRule(input.recurrence, start, end) : [{ start, end }];
+    if (!first) throw new Error("rule has no occurrences");
+    const created: Stored = {
       busy: true,
+      ...input,
+      ...blankToUndefined(input),
+      id: input.recurrence ? occurrenceId(identifier, first.start) : identifier,
+      start: toOffsetIso(first.start),
+      end: toOffsetIso(first.end),
+      recurring: Boolean(input.recurrence),
+      recurrence: input.recurrence || undefined,
+      series: input.recurrence ? identifier : undefined,
     };
-    events.push(event);
-    return event;
+    this.stored.push(created);
+    this.expand(created);
+    return this.publish(created);
   }
-  async updateEvent(id: string, input: Partial<EventInput>, _span: EventSpan) {
-    const index = events.findIndex((event) => event.id === id);
-    const current = events[index];
+
+  /*
+   * "this" changes one occurrence, "future" this and the later ones (which become a
+   * series of their own), "all" the whole series; new times shift each occurrence by
+   * the same amount. A changed repeat keeps the span's first occurrence and drops the
+   * rest: a cleared rule leaves it alone, a new rule expands again from it. The answer
+   * is the occurrence `id` names, or the kept one when `id` was dropped.
+   */
+  async updateEvent(id: string, input: Partial<EventInput>, span: EventSpan) {
+    const current = this.stored.find((event) => event.id === id);
     if (!current) throw new Error(`no event ${id}`);
-    const next = { ...current, ...input };
-    events[index] = next;
-    return next;
+    const members = this.members(current, span);
+    const retained = input.recurrence === undefined ? members : members.slice(0, 1);
+    for (const member of members) if (!retained.includes(member)) this.drop(member);
+    const series = span === "future" && current.series ? `fixture-${this.nextId++}` : undefined;
+    // How new times move each member: whole days plus the change of clock time on the
+    // event zone's wall clock, as a calendar re-expands a moved series.
+    const moveFor = (key: "start" | "end", time: string | undefined) => {
+      if (!time) return undefined;
+      const move = wallMove(
+        new Date(current[key]),
+        new Date(time),
+        current.timeZone ?? localTimeZone(),
+      );
+      return (instant: string) => toOffsetIso(move(new Date(instant)));
+    };
+    const moveStart = moveFor("start", input.start);
+    const moveEnd = moveFor("end", input.end);
+    // A member's id under `series`: like EventKit's occurrence date, its original start
+    // (not a detached occurrence's own) moved like the span.
+    const renamed = (series: string, member: Stored) => {
+      const original = toOffsetIso(new Date(member.id.split("|")[1] ?? member.start));
+      return `${series}|${moveStart ? moveStart(original) : original}`;
+    };
+    let written: Stored | undefined;
+    for (const member of retained) {
+      const next: Stored = { ...member, ...input, ...blankToUndefined(input) };
+      if (moveStart) next.start = moveStart(member.start);
+      if (moveEnd) next.end = moveEnd(member.end);
+      // Like a device calendar, a series' occurrences are named by their start: moving
+      // the series renames each one. A detached ("this") occurrence keeps its name.
+      if (input.start && span !== "this" && next.series && next.id.includes("|"))
+        next.id = renamed(next.series, member);
+      if (input.recurrence !== undefined) {
+        next.recurrence = input.recurrence || undefined;
+        next.recurring = Boolean(input.recurrence);
+        next.series = input.recurrence ? (next.series ?? identifierOf(next.id)) : undefined;
+        // Like a device calendar, the one event a cleared repeat leaves has a plain id.
+        if (!next.series) next.id = identifierOf(next.id);
+        // A one-off given a rule becomes its series' first occurrence.
+        if (next.series && !next.id.includes("|"))
+          next.id = occurrenceId(next.series, new Date(next.start));
+      }
+      // A split ("future") series has its own identifier, which names its occurrences.
+      if (series && next.series) {
+        next.series = series;
+        next.id = renamed(series, member);
+      }
+      this.stored[this.stored.indexOf(member)] = next;
+      if (input.recurrence) this.expand(next);
+      if (member === current || !written) written = next;
+    }
+    if (!written) throw new Error(`no event ${id}`);
+    return this.publish(written);
   }
-  async deleteEvent(id: string, _span: EventSpan) {
-    const index = events.findIndex((event) => event.id === id);
-    if (index >= 0) events.splice(index, 1);
+  async deleteEvent(id: string, span: EventSpan) {
+    const current = this.stored.find((event) => event.id === id);
+    if (!current) return;
+    for (const member of this.members(current, span)) this.drop(member);
   }
   onChange() {
     return () => {};
   }
+
+  // The occurrences a span covers, from `current`, earliest first.
+  private members(current: Stored, span: EventSpan) {
+    if (span === "this" || !current.series) return [current];
+    const from = span === "future" ? Date.parse(current.start) : Number.NEGATIVE_INFINITY;
+    return this.stored
+      .filter((event) => event.series === current.series && Date.parse(event.start) >= from)
+      .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  }
+  // Adds the occurrences that follow `first` under its rule, skipping any already stored.
+  private expand(first: Stored) {
+    if (!first.recurrence || !first.series) return;
+    const times = expandRule(first.recurrence, new Date(first.start), new Date(first.end));
+    for (const time of times.slice(1)) {
+      const id = occurrenceId(first.series, time.start);
+      if (this.stored.some((event) => event.id === id)) continue;
+      this.stored.push({
+        ...first,
+        id,
+        start: toOffsetIso(time.start),
+        end: toOffsetIso(time.end),
+      });
+    }
+  }
+  private drop(event: Stored) {
+    this.stored.splice(this.stored.indexOf(event), 1);
+  }
+  // The event as callers see it: no series key, plus the series' first times.
+  private publish({ series, ...event }: Stored): ExternalEvent {
+    if (!series) return event;
+    const first = this.stored
+      .filter((each) => each.series === series)
+      .reduce((a, b) => (Date.parse(b.start) < Date.parse(a.start) ? b : a));
+    return { ...event, seriesStart: first.start, seriesEnd: first.end };
+  }
+}
+
+// Empty text or lists mean "cleared", stored as absent like a device calendar reports them.
+function blankToUndefined(input: Partial<EventInput>) {
+  const cleared: Partial<Record<"location" | "notes" | "url" | "alarms", undefined>> = {};
+  for (const key of ["location", "notes", "url"] as const)
+    if (input[key] === "") cleared[key] = undefined;
+  if (input.alarms?.length === 0) cleared.alarms = undefined;
+  return cleared;
 }
 
 // Fills an empty store with areas, projects, tasks, blocks and habits for the fixture week.

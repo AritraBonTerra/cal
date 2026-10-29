@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "TZ=America/Los_Angeles bun test",
     "typecheck": "tsc -p ."
   },
   "dependencies": {

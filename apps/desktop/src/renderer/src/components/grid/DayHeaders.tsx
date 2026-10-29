@@ -3,8 +3,8 @@ import { useApp } from "../../lib/app";
 import { dayNumber, formatWeekday } from "../../lib/time";
 import { showDays } from "../../lib/ui";
 
-// Weekday and date per column; today gets the red badge. Click a day to open it.
-// Narrow columns keep one weekday letter so nothing truncates mid-word.
+// Weekday and date per column; today (in the grid's zone) gets the red badge. Click a
+// day to open it. Narrow columns keep one weekday letter so nothing truncates mid-word.
 export function DayHeaders({
   days,
   columnWidth,
@@ -12,12 +12,12 @@ export function DayHeaders({
   days: readonly DayKey[];
   columnWidth: number;
 }) {
-  const { today } = useApp();
+  const { today, gridToday } = useApp();
   const narrow = columnWidth < 88;
   return (
     <>
       {days.map((day) => {
-        const isToday = day === today;
+        const isToday = day === gridToday;
         const weekday = formatWeekday(day, days.length === 1);
         return (
           <button

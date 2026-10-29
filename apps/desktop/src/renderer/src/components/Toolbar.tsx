@@ -1,22 +1,32 @@
 import type { DayKey } from "@cal/domain";
-import { ChevronLeft, ChevronRight, PanelLeft, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, PanelLeft, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
-import { formatMonthYear, formatSpan } from "../lib/time";
+import { formatMonthYear, formatSpan, weekNumber } from "../lib/time";
 import { goToday, moveView, showDays, showMonth, toggleOverlay, ui, useUi } from "../lib/ui";
+import { zoneCity } from "../lib/zones";
 import { IconButton, Keycaps } from "./ui";
 
 /*
  * The band above the grid: the date title, Today, previous/next, the view picker and
  * ⌘K. It's the window's drag region when the sidebar is hidden, so it keeps clear of
- * the traffic lights.
+ * the traffic lights: a spacer slides open in step with the sidebar so the title
+ * never jumps.
  */
 export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
-  const { today } = useApp();
+  const { today, account } = useApp();
   const sidebar = useUi((state) => state.sidebar);
+  const tasks = useUi((state) => state.tasks);
+  // Room for the show-sidebar button, plus the traffic lights when nothing else covers them.
+  const spacer = sidebar ? 0 : tasks ? 36 : 96;
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
+  const travelZone = useUi((state) => state.travelZone);
   const title = view.kind === "month" ? formatMonthYear(anchor) : formatSpan(first, last);
+  const weeks =
+    view.kind === "days" && account.weekNumbers
+      ? [weekNumber(first, account.weekStart), weekNumber(last, account.weekStart)]
+      : null;
   const label =
     view.kind === "month"
       ? "Month"
@@ -27,19 +37,36 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
           : `${view.count} days`;
 
   return (
-    <header
-      className={`drag-region flex h-13 shrink-0 items-center gap-1 pr-3 ${sidebar ? "pl-4" : "pl-20"}`}
-    >
-      {!sidebar && (
-        <IconButton
-          label="Show sidebar (⌘\\)"
-          onClick={() => ui.set({ sidebar: true })}
-          className="mr-1"
-        >
-          <PanelLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />
-        </IconButton>
-      )}
+    <header className="drag-region flex h-13 shrink-0 items-center gap-1 pr-3 pl-4">
+      <div
+        className="pane-slide flex shrink-0 justify-end overflow-hidden"
+        style={{ width: spacer }}
+        inert={sidebar}
+      >
+        <div className="flex shrink-0 justify-end pr-1">
+          <IconButton label="Show sidebar (⌘\\)" onClick={() => ui.set({ sidebar: true })}>
+            <PanelLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />
+          </IconButton>
+        </div>
+      </div>
       <h1 className="mr-2 truncate text-title-1 font-bold text-ink tnum">{title}</h1>
+      {weeks && (
+        <span className="mt-1 shrink-0 text-small text-ink-3 tnum" data-week-number>
+          {weeks[0] === weeks[1] ? `Week ${weeks[0]}` : `Weeks ${weeks[0]}–${weeks[1]}`}
+        </span>
+      )}
+      {travelZone && (
+        <button
+          type="button"
+          onClick={() => ui.set({ travelZone: null })}
+          title="Stop travelling (Esc)"
+          className="no-drag ml-2 flex h-6 shrink-0 items-center gap-1 rounded-full bg-now pr-1.5 pl-2.5 text-caption font-medium text-white"
+          data-travel
+        >
+          {zoneCity(travelZone)} time
+          <X size={12} strokeWidth={2} absoluteStrokeWidth />
+        </button>
+      )}
       <div className="flex-1" />
       <button
         type="button"
