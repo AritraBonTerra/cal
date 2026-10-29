@@ -30,7 +30,7 @@ import type {
   Token,
   TokenKind,
 } from "./types";
-import { isoIn, zonedInstant } from "./zones";
+import { isoIn, wallDate, zonedInstant } from "./zones";
 
 export type * from "./types";
 
@@ -143,7 +143,11 @@ export function parseQuickEntry(
 ): EventEntry;
 export function parseQuickEntry(text: string, context: ParseContext): QuickEntry;
 export function parseQuickEntry(text: string, context: ParseContext): QuickEntry {
-  const now = context.now;
+  // The zone unzoned times mean: the form's zone, else the device's. Dates are worked
+  // out against that zone's wall clock; `realNow` stays the actual instant.
+  const home = context.timeZone ?? localTimeZone();
+  const realNow = context.now;
+  const now = context.timeZone ? wallDate(realNow.getTime(), home) : realNow;
   const today = toDayKey(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const s = new Scanner(text, context.literals ?? []);
@@ -464,8 +468,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   // Whether today's instant of the time has passed, in the time's zone ("9am ET" at 10:40
   // Pacific is already over).
   const passedToday =
-    startMin !== undefined &&
-    zonedInstant(today, startMin, t?.zone ?? localTimeZone()) <= now.getTime();
+    startMin !== undefined && zonedInstant(today, startMin, t?.zone ?? home) <= realNow.getTime();
   let day = date?.day;
   if (rule && !date) day = firstOccurrence(rule, today, passedToday);
   if (date?.bareWeekday && day === today && passedToday) day = addDays(day, 7);
@@ -498,7 +501,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
         until:
           untilDay &&
           (kind === "event" && startMin !== undefined && !allDay
-            ? utcStamp(zonedInstant(untilDay, startMin, zone ?? localTimeZone()))
+            ? utcStamp(zonedInstant(untilDay, startMin, zone ?? home))
             : untilDay.replace(/-/g, "")),
       })
     : undefined;
@@ -514,31 +517,34 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
       entry.start = day ?? today;
       entry.end = addDays(range ?? day ?? today, 1);
     } else if (t && day) {
-      const startZone = t.zone ?? localTimeZone();
+      const startZone = t.zone ?? home;
       const startMs = zonedInstant(day, t.startMin, startZone);
       let endMs: number;
       let endZone = t.endZone ?? t.zone;
       if (spanTimes?.last && range) {
         // From the first date's time to the last date's time.
         endZone = spanTimes.last.zone ?? t.zone;
-        endMs = zonedInstant(range, spanTimes.last.startMin, endZone ?? localTimeZone());
+        endMs = zonedInstant(range, spanTimes.last.startMin, endZone ?? home);
       } else if (t.endMin !== undefined) {
-        const zoneForEnd = endZone ?? localTimeZone();
+        const zoneForEnd = endZone ?? home;
         endMs = zonedInstant(day, t.endMin, zoneForEnd);
         // An end before the start is on the next day, at that clock time (DST-safe).
         if (endMs <= startMs) endMs = zonedInstant(addDays(day, 1), t.endMin, zoneForEnd);
       } else {
         endMs = startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000;
       }
-      entry.start = isoIn(startMs, t.zone);
-      entry.end = isoIn(endMs, endZone);
+      entry.start = isoIn(startMs, t.zone ?? context.timeZone);
+      entry.end = isoIn(endMs, endZone ?? context.timeZone);
       if (eventZone) entry.timeZone = eventZone;
     } else {
       // No date or time: the next quarter hour today.
       const quarter = Math.ceil((nowMin + 1) / 15) * 15;
-      const startMs = zonedInstant(today, quarter, localTimeZone());
-      entry.start = isoIn(startMs);
-      entry.end = isoIn(startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000);
+      const startMs = zonedInstant(today, quarter, home);
+      entry.start = isoIn(startMs, context.timeZone);
+      entry.end = isoIn(
+        startMs + (duration ?? context.defaultEventMin ?? 60) * 60_000,
+        context.timeZone,
+      );
     }
     if (listCalendar) entry.calendarId = listCalendar;
     if (location) entry.location = location;
@@ -572,7 +578,10 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     entry.when_date = day;
   }
   if (t && day) {
-    entry.start_at = isoIn(zonedInstant(day, t.startMin, t.zone ?? localTimeZone()), t.zone);
+    entry.start_at = isoIn(
+      zonedInstant(day, t.startMin, t.zone ?? home),
+      t.zone ?? context.timeZone,
+    );
     if (t.endMin !== undefined) {
       const length = (t.endMin - t.startMin + 24 * 60) % (24 * 60) || 24 * 60;
       entry.estimate_min = length;
@@ -587,7 +596,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   if (reminder) {
     reminderDay ??= day ?? (reminder.startMin <= nowMin ? addDays(today, 1) : today);
     entry.reminder_at = isoIn(
-      zonedInstant(reminderDay, reminder.startMin, reminder.zone ?? localTimeZone()),
+      zonedInstant(reminderDay, reminder.startMin, reminder.zone ?? home),
       reminder.zone,
     );
   }

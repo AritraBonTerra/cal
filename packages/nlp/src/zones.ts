@@ -87,3 +87,13 @@ export function isoIn(ms: number, zone?: string) {
   const abs = Math.abs(offset);
   return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
+
+/**
+ * A Date whose device-local fields read as the wall clock of `zone` at the instant `ms`.
+ * The parser works in device-local dates (chrono does), so parsing "in another zone"
+ * means parsing against this shifted clock and converting results with zonedInstant.
+ */
+export function wallDate(ms: number, zone: string) {
+  const p = wallParts(ms, zone);
+  return new Date(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+}

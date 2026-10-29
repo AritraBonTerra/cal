@@ -103,4 +103,7 @@ export interface ParseContext {
   weekStartsOn?: number;
   // Length of an event with a start time but no end.
   defaultEventMin?: number;
+  // IANA zone that times without a zone mean ("9am"), e.g. the grid's or form's zone;
+  // the device's when absent.
+  timeZone?: string;
 }

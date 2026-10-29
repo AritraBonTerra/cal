@@ -774,6 +774,21 @@ describe("parseQuickEntry: review cases", () => {
     expect(time?.end).toBeLessThanOrEqual(length?.start ?? 0);
   });
 
+  test("times without a zone mean the form's zone", () => {
+    // 10:40 in Los Angeles is 03:40 the next day in Tokyo.
+    const tokyo = parseQuickEntry("Lunch 1pm", { ...base, kind: "event", timeZone: "Asia/Tokyo" });
+    expect(tokyo).toMatchObject({
+      start: "2026-10-29T13:00:00+09:00",
+      end: "2026-10-29T14:00:00+09:00",
+    });
+    const tomorrow = parseQuickEntry("Lunch tomorrow 1pm", {
+      ...base,
+      kind: "event",
+      timeZone: "Asia/Tokyo",
+    });
+    expect(tomorrow).toMatchObject({ start: "2026-10-30T13:00:00+09:00" });
+  });
+
   test("odd inputs don't throw", () => {
     for (const text of [
       "",
