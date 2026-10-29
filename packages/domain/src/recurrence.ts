@@ -1,10 +1,11 @@
-import { addDays, atMinute, fromDayKey, toDayKey } from "./dates";
+import { addDays, atMinute, type DayKey, daysInMonth, fromDayKey, toDayKey } from "./dates";
 
 /*
  * Just enough RRULE (RFC 5545 bodies without the "RRULE:" prefix) to expand a series:
- * FREQ, INTERVAL, BYDAY, COUNT and UNTIL. Fixture calendars store a series as one row
- * per occurrence, and undoing a delete needs an occurrence's place in its series. Not a
- * full engine: BYDAY ordinals ("2WE", "-1FR"), BYMONTHDAY and the rest are ignored.
+ * FREQ with INTERVAL, BYDAY (with ordinals like "1FR" / "-1FR" for monthly rules),
+ * BYMONTHDAY (incl. -1), COUNT and UNTIL — every rule Cal writes. Fixture calendars
+ * store a series as one row per occurrence, and undoing a delete needs an occurrence's
+ * place in its series. BYMONTH, BYSETPOS and the like are ignored.
  */
 
 export interface Occurrence {
@@ -49,6 +50,10 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
   const result: Occurrence[] = [];
   for (let offset = 0; offset < days && result.length < count; offset++) {
     const key = addDays(first, offset);
+    const months =
+      (Number(key.slice(0, 4)) - Number(first.slice(0, 4))) * 12 +
+      Number(key.slice(5, 7)) -
+      Number(first.slice(5, 7));
     const due =
       freq === "DAILY"
         ? offset % interval === 0
@@ -56,14 +61,40 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
           ? Math.floor((offset + start.getDay()) / 7) % interval === 0 &&
             byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
           : freq === "MONTHLY"
-            ? key.slice(8) === first.slice(8)
-            : key.slice(5) === first.slice(5);
+            ? months % interval === 0 && monthlyDay(parts, key, first)
+            : months % (12 * interval) === 0 && key.slice(5) === first.slice(5);
     if (!due) continue;
     const occurrence = atMinute(key, minutes);
     if (until !== undefined && occurrence.getTime() > until) break;
     result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
   }
   return result;
+}
+
+// Whether `key` is a day a monthly rule falls on: its BYMONTHDAY, its BYDAY with an
+// ordinal ("1FR" first Friday, "-1FR" last), or the start's day of the month.
+function monthlyDay(parts: Map<string, string>, key: DayKey, first: DayKey) {
+  const date = Number(key.slice(8));
+  const length = daysInMonth(key);
+  const monthDay = parts.get("BYMONTHDAY");
+  if (monthDay !== undefined) {
+    return monthDay.split(",").some((n) => {
+      const value = Number(n);
+      return value > 0 ? date === value : date === length + value + 1;
+    });
+  }
+  const byDay = parts.get("BYDAY");
+  if (byDay !== undefined) {
+    const weekday = WEEKDAYS[fromDayKey(key).getDay()];
+    return byDay.split(",").some((entry) => {
+      const match = /^([+-]?\d)?(\w\w)$/.exec(entry);
+      if (!match || match[2] !== weekday) return false;
+      const nth = Number(match[1] ?? 0);
+      if (nth === 0) return true;
+      return nth > 0 ? Math.ceil(date / 7) === nth : Math.ceil((length - date + 1) / 7) === -nth;
+    });
+  }
+  return date === Number(first.slice(8));
 }
 
 // The last instant an UNTIL allows: a date form covers its whole local day, a time form

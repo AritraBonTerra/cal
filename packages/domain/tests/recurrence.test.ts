@@ -40,3 +40,23 @@ describe("rule counts", () => {
     expect(withCount("FREQ=DAILY", 2)).toBe("FREQ=DAILY;COUNT=2");
   });
 });
+
+test("monthly and yearly rules honor INTERVAL, ordinals and month days", () => {
+  const at = (month: number, day: number, year = 2027) => new Date(year, month - 1, day, 9);
+  const days = (rule: string, start: Date, span = 800) =>
+    expandRule(rule, start, new Date(start.getTime() + 3_600_000), span).map(
+      (each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`,
+    );
+  expect(days("FREQ=MONTHLY;INTERVAL=2;COUNT=6", at(1, 15))).toEqual([
+    "1/15",
+    "3/15",
+    "5/15",
+    "7/15",
+    "9/15",
+    "11/15",
+  ]);
+  expect(days("FREQ=MONTHLY;BYDAY=1FR;COUNT=3", at(1, 1))).toEqual(["1/1", "2/5", "3/5"]);
+  expect(days("FREQ=MONTHLY;BYDAY=-1FR;COUNT=2", at(1, 29))).toEqual(["1/29", "2/26"]);
+  expect(days("FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3", at(1, 31))).toEqual(["1/31", "2/28", "3/31"]);
+  expect(days("FREQ=YEARLY;INTERVAL=2;COUNT=2", at(5, 16), 1500)).toEqual(["5/16", "5/16"]);
+});
