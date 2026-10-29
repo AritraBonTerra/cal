@@ -135,7 +135,10 @@ const accountChecks: { [K in keyof AccountSettings]: Check } = {
 
 const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   theme: oneOf("system", "light", "dark"),
-  hourHeight: (value) => value === 0 || isInt(16, 400)(value),
+  // Pinch and ⌥-scroll zoom leave fractional heights.
+  hourHeight: (value) =>
+    value === 0 ||
+    (typeof value === "number" && Number.isFinite(value) && value >= 16 && value <= 400),
   halfHourLines: isBool,
   hiddenCalendars: arrayOf(isString, 1000),
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),

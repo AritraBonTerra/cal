@@ -311,7 +311,7 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
       // anything after it ("with Sam"), or text that isn't a date, stays in the title.
       const text = ruleMatch.until.text;
       const month = /^\s*([a-z]+)\b/i.exec(text)?.[1] ?? "";
-      const bare = WEAK.test(month) && !/day$/i.test(month) && !/^\s*[a-z]+\s+\d/i.test(text);
+      const bare = MONTH_WORD.test(month) && !/^\s*[a-z]+\s+\d/i.test(text);
       const [hit] = bare
         ? chrono.casual.parse(monthName(month), now, { forwardDate: true })
         : chrono.casual.parse(text, now, { forwardDate: true }).filter((each) => each.index === 0);
@@ -599,6 +599,10 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   }
   return entry;
 }
+
+// A month name or abbreviation alone ("Dec"), not a weekday ("Fri").
+const MONTH_WORD =
+  /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$/i;
 
 const MONTHS = [
   "january",

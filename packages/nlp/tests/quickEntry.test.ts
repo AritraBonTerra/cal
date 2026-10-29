@@ -754,6 +754,20 @@ describe("parseQuickEntry: review cases", () => {
     });
   });
 
+  test("C15 until a weekday is that weekday", () => {
+    expect(task("Water daily until Fri with Sam")).toMatchObject({
+      title: "Water with Sam",
+      rrule: "FREQ=DAILY;UNTIL=20261030",
+    });
+  });
+
+  test("C16 an on-clause after a month stays in the title", () => {
+    expect(task("Meet every month on Monday")).toMatchObject({
+      rrule: "FREQ=MONTHLY",
+      when_date: "2026-11-02",
+    });
+  });
+
   test("odd inputs don't throw", () => {
     for (const text of [
       "",

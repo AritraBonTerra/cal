@@ -1,7 +1,13 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { LocalStore, type SqlDatabase, type SqlRow } from "@cal/sync";
-import { type DeviceStore, readAccountSettings, Settings, storeSource } from "../src";
+import {
+  type DeviceStore,
+  readAccountSettings,
+  readDeviceSettings,
+  Settings,
+  storeSource,
+} from "../src";
 
 function setup() {
   const db = new Database(":memory:");
@@ -86,8 +92,12 @@ describe("settings", () => {
     let changes = 0;
     settings.subscribeDevice(() => changes++);
     settings.setDevice("theme", "dark");
-    settings.setDevice("hourHeight", 0);
-    expect(settings.device).toMatchObject({ theme: "dark", hourHeight: 0 });
+    settings.setDevice("hourHeight", 52.7);
+    expect(settings.device).toMatchObject({ theme: "dark", hourHeight: 52.7 });
+    expect(
+      readDeviceSettings({ getItem: (key) => values.get(key) ?? null, setItem: () => {} })
+        .hourHeight,
+    ).toBe(52.7);
     expect(values.get("cal.theme")).toBe('"dark"');
     expect(changes).toBe(2);
   });

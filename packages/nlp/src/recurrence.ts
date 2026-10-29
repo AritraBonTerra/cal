@@ -99,7 +99,7 @@ const PATTERNS: { regex: RegExp; read: (match: RegExpExecArray) => Rule | undefi
     // every! 2 weeks, every other week, every 3 days, each month; weeks may name days:
     // "every 2 weeks on Monday and Wednesday"
     regex: new RegExp(
-      `\\b(every|each)(!?)\\s+(?:(\\d+|other)\\s+)?(day|week|month|year)s?\\b(?:\\s+on\\s+(${DAY}(?:\\s*(?:,|and|&)\\s*${DAY})*)\\b)?`,
+      `\\b(every|each)(!?)\\s+(?:(\\d+|other)\\s+)?(day|week|month|year)s?\\b(?:(?<=weeks?)\\s+on\\s+(${DAY}(?:\\s*(?:,|and|&)\\s*${DAY})*)\\b)?`,
       "gi",
     ),
     read: (m) => {
