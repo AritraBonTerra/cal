@@ -185,6 +185,8 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   }
   let listCalendar: string | undefined;
   let listProject: string | undefined;
+  // What each "/name" matched, to keep one that fits only the other kind in the title.
+  const lists: { token: Token; calendar?: string; project?: string }[] = [];
   for (const m of s.masked.matchAll(/(?<=^|\s)\/([A-Za-z][\w-]*)/g)) {
     const name = (m[1] ?? "").toLowerCase();
     const calendar = context.calendars?.find((each) => each.title.toLowerCase().startsWith(name));
@@ -192,7 +194,9 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     if (!calendar && !project) continue;
     listCalendar = calendar?.id;
     listProject = project?.uuid;
-    s.claim("list", m.index, m.index + m[0].length, calendar?.title ?? project?.title ?? "");
+    const label = calendar?.title ?? project?.title ?? "";
+    const token = s.claim("list", m.index, m.index + m[0].length, label);
+    lists.push({ token, calendar: calendar?.title, project: project?.title });
   }
   const tags: string[] = [];
   for (const m of s.masked.matchAll(/(?<=^|\s)#([A-Za-z][\w-]*)/g)) {
@@ -494,6 +498,16 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     if (!token.applied || !otherKindOnly.includes(token.kind)) continue;
     token.applied = false;
     token.label = `${token.label} (${kind === "event" ? "to-dos" : "events"} only)`;
+  }
+  // A "/name" files an event under a calendar and a to-do under a project; one that
+  // matched only the other kind's stays in the title.
+  for (const { token, calendar, project } of lists) {
+    const fits = kind === "event" ? calendar : project;
+    if (fits) token.label = fits;
+    else {
+      token.applied = false;
+      token.label = `${token.label} (${kind === "event" ? "to-dos" : "events"} only)`;
+    }
   }
 
   const title = buildTitle(s);

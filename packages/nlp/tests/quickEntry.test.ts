@@ -845,3 +845,15 @@ test("no location is read out of a later link", () => {
   expect(entry.location).toBeUndefined();
   expect(entry.title).toBe("Read https://b.com/@Office");
 });
+
+test("a /name that fits only the other kind stays in the title", () => {
+  const task = parseQuickEntry("task Read /home", { ...base, surface: "quick" });
+  expect(task.kind).toBe("task");
+  expect(task.title).toBe("Read /home");
+  if (task.kind === "task") expect(task.project_uuid).toBeUndefined();
+  const event = parseQuickEntry("event Lunch /errands", { ...base, surface: "quick" });
+  expect(event.title).toBe("Lunch /errands");
+  if (event.kind === "event") expect(event.calendarId).toBeUndefined();
+  const both = parseQuickEntry("task Plan /work", { ...base, surface: "quick" });
+  if (both.kind === "task") expect(both.project_uuid).toBe("p-work");
+});

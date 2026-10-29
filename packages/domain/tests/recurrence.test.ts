@@ -80,3 +80,14 @@ test("weekly INTERVAL counts weeks from Monday unless WKST says otherwise", () =
     "11/16",
   ]);
 });
+
+test("monthly BYSETPOS picks from the month's matching days", () => {
+  const start = new Date(2026, 9, 30, 9); // Friday, the last weekday of October
+  const days = expandRule(
+    "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=3",
+    start,
+    new Date(start.getTime() + 3_600_000),
+    120,
+  ).map((each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`);
+  expect(days).toEqual(["10/30", "11/30", "12/31"]);
+});

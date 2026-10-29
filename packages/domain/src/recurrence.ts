@@ -3,10 +3,11 @@ import { addDays, atMinute, type DayKey, daysInMonth, fromDayKey, toDayKey } fro
 /*
  * Just enough RRULE (RFC 5545 bodies without the "RRULE:" prefix) to expand a series:
  * FREQ with INTERVAL, BYDAY (with ordinals like "1FR" / "-1FR" for monthly rules),
- * BYMONTHDAY (incl. -1), COUNT, UNTIL and WKST (weeks start Monday by default, as in
- * RFC 5545) — every rule Cal writes. Fixture calendars
- * store a series as one row per occurrence, and undoing a delete needs an occurrence's
- * place in its series. BYMONTH, BYSETPOS and the like are ignored.
+ * BYMONTHDAY (incl. -1), BYSETPOS on monthly rules ("the last weekday"), COUNT, UNTIL
+ * and WKST (weeks start Monday by default, as in RFC 5545) — every rule Cal writes or
+ * reads from a device calendar. Fixture calendars store a series as one row per
+ * occurrence, and undoing a delete needs an occurrence's place in its series. BYMONTH
+ * and the like are ignored.
  */
 
 export interface Occurrence {
@@ -65,7 +66,7 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
           ? Math.floor((offset + intoWeek) / 7) % interval === 0 &&
             byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
           : freq === "MONTHLY"
-            ? months % interval === 0 && monthlyDay(parts, key, first)
+            ? months % interval === 0 && monthlyDue(parts, key, first)
             : months % (12 * interval) === 0 && key.slice(5) === first.slice(5);
     if (!due) continue;
     const occurrence = atMinute(key, minutes);
@@ -73,6 +74,23 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
     result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
   }
   return result;
+}
+
+// Whether a monthly rule falls on `key`: one of its days, picked by BYSETPOS if set
+// ("-1" with BYDAY=MO,…,FR: the month's last weekday).
+function monthlyDue(parts: Map<string, string>, key: DayKey, first: DayKey) {
+  const positions = parts.get("BYSETPOS");
+  if (positions === undefined) return monthlyDay(parts, key, first);
+  const month = key.slice(0, 8);
+  const days: DayKey[] = [];
+  for (let date = 1; date <= daysInMonth(key); date++) {
+    const day = `${month}${String(date).padStart(2, "0")}`;
+    if (monthlyDay(parts, day, first)) days.push(day);
+  }
+  return positions
+    .split(",")
+    .map(Number)
+    .some((n) => (n > 0 ? days[n - 1] : days[days.length + n]) === key);
 }
 
 // Whether `key` is a day a monthly rule falls on: its BYMONTHDAY, its BYDAY with an
