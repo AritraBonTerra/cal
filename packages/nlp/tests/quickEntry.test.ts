@@ -872,3 +872,9 @@ test("an end in a zone far ahead still lands after the start", () => {
   if (event.kind !== "event") throw new Error("expected an event");
   expect(Date.parse(event.end) - Date.parse(event.start)).toBe(9 * 60 * 60_000);
 });
+
+test("a multi-day to-do range runs to the last date's time", () => {
+  const task = quick("task Trip Nov 20 8am to Nov 22 6pm");
+  if (task.kind !== "task") throw new Error("expected a to-do");
+  expect(task.estimate_min).toBe((2 * 24 + 10) * 60);
+});

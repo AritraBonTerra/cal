@@ -604,10 +604,16 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   if (t && day) {
     const startMs = zonedInstant(day, t.startMin, t.zone ?? home);
     entry.start_at = isoIn(startMs, t.zone ?? context.timeZone);
-    if (t.endMin !== undefined) {
-      // The length between the two instants, each in its own zone ("3pm EST to 6pm
-      // PST" is six hours).
-      const endMs = endAfter(startMs, day, t.endMin, t.endZone ?? t.zone ?? home);
+    // The length between the two instants, each in its own zone ("3pm EST to 6pm PST"
+    // is six hours); "Nov 20 8am to Nov 22 6pm" runs to the last date's time.
+    const range = date?.endDay;
+    const endMs =
+      spanTimes?.last && range
+        ? zonedInstant(range, spanTimes.last.startMin, spanTimes.last.zone ?? t.zone ?? home)
+        : t.endMin !== undefined
+          ? endAfter(startMs, day, t.endMin, t.endZone ?? t.zone ?? home)
+          : undefined;
+    if (endMs !== undefined && endMs > startMs) {
       entry.estimate_min = Math.round((endMs - startMs) / 60_000);
     }
   }
