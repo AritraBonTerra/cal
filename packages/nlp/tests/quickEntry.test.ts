@@ -857,3 +857,9 @@ test("a /name that fits only the other kind stays in the title", () => {
   const both = parseQuickEntry("task Plan /work", { ...base, surface: "quick" });
   if (both.kind === "task") expect(both.project_uuid).toBe("p-work");
 });
+
+test("a to-do's range across zones is as long as the instants are apart", () => {
+  const entry = quick("task Flight Nov 2 3pm EST to 6pm PST");
+  if (entry.kind !== "task") throw new Error("expected a to-do");
+  expect(entry.estimate_min).toBe(6 * 60);
+});

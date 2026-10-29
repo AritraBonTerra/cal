@@ -605,13 +605,15 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     entry.when_date = day;
   }
   if (t && day) {
-    entry.start_at = isoIn(
-      zonedInstant(day, t.startMin, t.zone ?? home),
-      t.zone ?? context.timeZone,
-    );
+    const startMs = zonedInstant(day, t.startMin, t.zone ?? home);
+    entry.start_at = isoIn(startMs, t.zone ?? context.timeZone);
     if (t.endMin !== undefined) {
-      const length = (t.endMin - t.startMin + 24 * 60) % (24 * 60) || 24 * 60;
-      entry.estimate_min = length;
+      // The length between the two instants, each in its own zone ("3pm EST to 6pm
+      // PST" is six hours); an end at or before the start is the next day's.
+      const endZone = t.endZone ?? t.zone ?? home;
+      let endMs = zonedInstant(day, t.endMin, endZone);
+      if (endMs <= startMs) endMs = zonedInstant(addDays(day, 1), t.endMin, endZone);
+      entry.estimate_min = Math.round((endMs - startMs) / 60_000);
     }
   }
   if (duration !== undefined) entry.estimate_min = duration;

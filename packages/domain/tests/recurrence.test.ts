@@ -91,3 +91,21 @@ test("monthly BYSETPOS picks from the month's matching days", () => {
   ).map((each) => `${each.start.getMonth() + 1}/${each.start.getDate()}`);
   expect(days).toEqual(["10/30", "11/30", "12/31"]);
 });
+
+test("BYMONTH limits a rule to its months", () => {
+  const days = (rule: string, start: Date) =>
+    expandRule(rule, start, new Date(start.getTime() + 3_600_000), 1200).map(
+      (each) => `${each.start.getFullYear()}/${each.start.getMonth() + 1}/${each.start.getDate()}`,
+    );
+  expect(days("FREQ=MONTHLY;BYMONTH=1;BYMONTHDAY=15;COUNT=3", new Date(2026, 0, 15, 9))).toEqual([
+    "2026/1/15",
+    "2027/1/15",
+    "2028/1/15",
+  ]);
+  // The fourth Thursday of November, from Thanksgiving 2026.
+  expect(days("FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=3", new Date(2026, 10, 26, 9))).toEqual([
+    "2026/11/26",
+    "2027/11/25",
+    "2028/11/23",
+  ]);
+});

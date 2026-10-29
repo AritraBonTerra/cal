@@ -3,11 +3,11 @@ import { addDays, atMinute, type DayKey, daysInMonth, fromDayKey, toDayKey } fro
 /*
  * Just enough RRULE (RFC 5545 bodies without the "RRULE:" prefix) to expand a series:
  * FREQ with INTERVAL, BYDAY (with ordinals like "1FR" / "-1FR" for monthly rules),
- * BYMONTHDAY (incl. -1), BYSETPOS on monthly rules ("the last weekday"), COUNT, UNTIL
- * and WKST (weeks start Monday by default, as in RFC 5545) — every rule Cal writes or
- * reads from a device calendar. Fixture calendars store a series as one row per
- * occurrence, and undoing a delete needs an occurrence's place in its series. BYMONTH
- * and the like are ignored.
+ * BYMONTHDAY (incl. -1), BYMONTH, BYSETPOS on monthly rules ("the last weekday"),
+ * COUNT, UNTIL and WKST (weeks start Monday by default, as in RFC 5545) — every rule
+ * Cal writes or reads from a device calendar. Fixture calendars store a series as one
+ * row per occurrence, and undoing a delete needs an occurrence's place in its series.
+ * Rarer parts (BYWEEKNO, BYYEARDAY, BYSETPOS outside monthly rules) are ignored.
  */
 
 export interface Occurrence {
@@ -46,6 +46,7 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
   const untilText = parts.get("UNTIL");
   const until = untilText ? untilInstant(untilText) : undefined;
   const byDay = parts.get("BYDAY")?.split(",") ?? [WEEKDAYS[start.getDay()] ?? "MO"];
+  const byMonth = parts.get("BYMONTH")?.split(",").map(Number);
   const weekStart = Math.max(0, WEEKDAYS.indexOf(parts.get("WKST") ?? "MO"));
   // Days from the start of the start's week, so INTERVAL counts whole RRULE weeks.
   const intoWeek = (start.getDay() - weekStart + 7) % 7;
@@ -59,6 +60,10 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
       (Number(key.slice(0, 4)) - Number(first.slice(0, 4))) * 12 +
       Number(key.slice(5, 7)) -
       Number(first.slice(5, 7));
+    const years = Number(key.slice(0, 4)) - Number(first.slice(0, 4));
+    // BYMONTH limits any rule to its months; a yearly rule with it falls in each listed
+    // month, on the days its BYMONTHDAY / BYDAY (or the start's day of the month) pick.
+    const inMonth = !byMonth || byMonth.includes(Number(key.slice(5, 7)));
     const due =
       freq === "DAILY"
         ? offset % interval === 0
@@ -67,8 +72,10 @@ export function expandRule(rule: string, start: Date, end: Date, days = 90): Occ
             byDay.includes(WEEKDAYS[fromDayKey(key).getDay()] ?? "")
           : freq === "MONTHLY"
             ? months % interval === 0 && monthlyDue(parts, key, first)
-            : months % (12 * interval) === 0 && key.slice(5) === first.slice(5);
-    if (!due) continue;
+            : byMonth
+              ? years % interval === 0 && monthlyDue(parts, key, first)
+              : months % (12 * interval) === 0 && key.slice(5) === first.slice(5);
+    if (!inMonth || !due) continue;
     const occurrence = atMinute(key, minutes);
     if (until !== undefined && occurrence.getTime() > until) break;
     result.push({ start: occurrence, end: new Date(occurrence.getTime() + length) });
