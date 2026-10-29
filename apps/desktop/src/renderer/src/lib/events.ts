@@ -513,14 +513,19 @@ function remainingRule(event: ExternalEvent) {
  * series. A series recreated with the same times is aliased as a whole: every
  * `old|start` becomes `new|start`, so each occurrence keeps its identity. A "future"
  * restore applies only from the deleted occurrence on; the earlier ones stay under
- * the old identifier.
+ * the old identifier. A series moved by an "all" edit is aliased as a whole too, every
+ * start shifted by the same amount. Starts compare as instants, since a calendar can
+ * spell one two ways.
  */
 const aliasesFor = new WeakMap<History, EventAliases>();
 
 type Alias =
   | { from: string; to: string }
-  // Occurrences of series `from` starting at `since` or later moved to identifier `to`.
-  | { series: string; to: string; since: number };
+  // Occurrences of `series` starting at `since` or later are now under identifier `to`,
+  // their starts `shift` ms later.
+  | { series: string; to: string; since: number; shift: number }
+  // Every occurrence of `collapse` is now the one event `to`: its repeat was cleared.
+  | { collapse: string; to: string };
 
 // The event an id named when the reference was taken: `at` is the log's length then.
 interface EventRef {
@@ -540,12 +545,17 @@ class EventAliases {
     let current = ref.id;
     for (const alias of this.log.slice(ref.at)) {
       if ("from" in alias) {
-        if (current === alias.from) current = alias.to;
+        if (sameId(current, alias.from)) current = alias.to;
         continue;
       }
       const [identifier, start] = splitId(current);
+      if ("collapse" in alias) {
+        if (identifier === alias.collapse && start) current = alias.to;
+        continue;
+      }
       if (identifier === alias.series && start && Date.parse(start) >= alias.since) {
-        current = `${alias.to}|${start}`;
+        const moved = alias.shift ? toOffsetIso(new Date(Date.parse(start) + alias.shift)) : start;
+        current = `${alias.to}|${moved}`;
       }
     }
     return current;
@@ -555,14 +565,27 @@ class EventAliases {
     if (from === to) return undefined;
     return this.log.push({ from, to }) - 1;
   }
+  // Records that the series of occurrence `id` became the one event `to`; returns the
+  // entry's place in the log, for `restored`.
+  collapsed(id: string, to: string) {
+    const [identifier, start] = splitId(id);
+    if (!start) return this.renamed(id, to);
+    return this.log.push({ collapse: identifier, to }) - 1;
+  }
   /*
-   * Points the rename at `index` to `to` instead, for the references taken before it:
-   * a restored repeat gives the occurrence a cleared repeat collapsed its id back,
-   * while the one event left stays a different event.
+   * Turns the collapse at `index` into a rename of its series to `identifier`, for the
+   * references taken before it: a restored repeat gives each occurrence its own id
+   * back, while the one event left stays a different event to later references.
    */
-  redirect(index: number, to: string) {
+  restored(index: number, identifier: string) {
     const alias = this.log[index];
-    if (alias && "from" in alias) this.log[index] = { from: alias.from, to };
+    if (!alias || !("collapse" in alias)) return;
+    this.log[index] = {
+      series: alias.collapse,
+      to: identifier,
+      since: Number.NEGATIVE_INFINITY,
+      shift: 0,
+    };
   }
   /*
    * Records that the event `from` came back as `created`: a series under a new
@@ -577,8 +600,31 @@ class EventAliases {
       return;
     }
     if (identifier === next) return;
-    this.log.push({ series: identifier, to: next, since: since ?? Number.NEGATIVE_INFINITY });
+    this.log.push({
+      series: identifier,
+      to: next,
+      since: since ?? Number.NEGATIVE_INFINITY,
+      shift: 0,
+    });
   }
+  // Records that every occurrence of series `identifier` moved `shift` ms.
+  moved(identifier: string, shift: number) {
+    if (shift === 0) return;
+    this.log.push({ series: identifier, to: identifier, since: Number.NEGATIVE_INFINITY, shift });
+  }
+}
+
+// Whether two ids name the same event: the same identifier, and starts at one instant.
+function sameId(a: string, b: string) {
+  if (a === b) return true;
+  const [identifier, start] = splitId(a);
+  const [other, otherStart] = splitId(b);
+  return (
+    identifier === other &&
+    start !== undefined &&
+    otherStart !== undefined &&
+    Date.parse(start) === Date.parse(otherStart)
+  );
 }
 
 // An occurrence id's identifier and original start; a one-off has no start.
@@ -637,10 +683,10 @@ export function eventWriter(
       // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
       const undoSpan: EventSpan =
         span === "this" && patch.recurrence && !event.recurring && !event.recurrence ? "all" : span;
-      // The occurrence id an "all" write collapsed onto the one event left, and the log
-      // entry that recorded it.
-      let collapsed: { id: string; entry: number | undefined } | undefined;
-      const place = async (input: Partial<EventInput>, span: EventSpan) => {
+      // The log entry of the collapse an "all" write that cleared the repeat made.
+      let collapse: number | undefined;
+      // `from` is the occurrence's start before the write, the other side's start.
+      const place = async (input: Partial<EventInput>, span: EventSpan, from?: string) => {
         const id = ids.current(ref);
         const written = await api.updateEvent(id, input, span);
         if (span !== "all") {
@@ -648,45 +694,27 @@ export function eventWriter(
           ids.renamed(id, written.id);
         } else if (!written.recurring) {
           // Clearing the repeat leaves one event, whichever occurrence was picked.
-          collapsed = { id, entry: ids.renamed(id, written.id) };
+          collapse = ids.collapsed(id, written.id);
         } else {
-          if (collapsed) {
-            // The repeat is back, and with it the occurrence's own id: under a new
-            // identifier when the one event was deleted and recreated in between.
-            const [, start] = splitId(collapsed.id);
-            if (collapsed.entry !== undefined && start) {
-              ids.redirect(collapsed.entry, `${splitId(written.id)[0]}|${start}`);
-            }
-            ids.recreated(collapsed.id, written);
-            collapsed = undefined;
-          }
+          const restored = collapse !== undefined;
+          // The repeat is back, and with it each occurrence's own id: under a new
+          // identifier when the one event was deleted and recreated in between.
+          if (collapse !== undefined) ids.restored(collapse, splitId(written.id)[0]);
+          collapse = undefined;
           // A one-off given a rule is its series' first occurrence.
           if (!splitId(id)[1]) ids.renamed(id, written.id);
-          // An "all" write answers with the series' first occurrence, not this one, and
-          // new times rename every occurrence: find this one where it went.
-          if (input.start) ids.renamed(id, await movedId(id, input.start));
+          // New times rename every occurrence by its new start, each by the same shift.
+          // A one-off given a rule or a restored repeat is written at its new start already.
+          if (input.start && from && splitId(id)[1] && !restored) {
+            ids.moved(splitId(written.id)[0], Date.parse(input.start) - Date.parse(from));
+          }
         }
         await refresh();
       };
-      // The id of the occurrence `id` once its series moved it to `start`.
-      const movedId = async (id: string, start: string) => {
-        const [identifier, original] = splitId(id);
-        if (!original) return id;
-        const target = Date.parse(start);
-        const nearby = await api.events(
-          toOffsetIso(new Date(target - DAY)),
-          toOffsetIso(new Date(target + DAY)),
-        );
-        const distance = (each: ExternalEvent) => Math.abs(Date.parse(each.start) - target);
-        const moved = nearby
-          .filter((each) => splitId(each.id)[0] === identifier)
-          .sort((a, b) => distance(a) - distance(b))[0];
-        return moved?.id ?? id;
-      };
       return history.transact(label, (tx) =>
         tx.external(
-          () => place(patch, span),
-          () => place(previous, undoSpan),
+          () => place(patch, span, previous.start),
+          () => place(previous, undoSpan, patch.start),
         ),
       );
     },

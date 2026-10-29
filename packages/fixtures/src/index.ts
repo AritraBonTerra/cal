@@ -193,6 +193,8 @@ export class FixtureCalendar implements CalendarSource {
         next.recurrence = input.recurrence || undefined;
         next.recurring = Boolean(input.recurrence);
         next.series = input.recurrence ? (next.series ?? identifierOf(next.id)) : undefined;
+        // Like a device calendar, the one event a cleared repeat leaves has a plain id.
+        if (!next.series) next.id = identifierOf(next.id);
         // A one-off given a rule becomes its series' first occurrence.
         if (next.series && !next.id.includes("|"))
           next.id = occurrenceId(next.series, new Date(next.start));

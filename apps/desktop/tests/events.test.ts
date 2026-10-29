@@ -726,6 +726,10 @@ describe("eventWriter: ids that change under a series", () => {
       "2026-10-29",
       "2026-10-30",
     ]);
+    // Redone, the move renames every occurrence again; the edit still finds Tuesday's.
+    await history.redo();
+    await history.redo();
+    expect(days(await titled("Wednesday sync"))).toEqual(["2026-10-28"]);
   });
 
   test("undoing an 'all' move made from a later occurrence reaches the moved series", async () => {
@@ -766,6 +770,37 @@ describe("eventWriter: ids that change under a series", () => {
     ]);
     await history.undo();
     expect(days(await titled("Standup"))[0]).toBe("2026-10-26");
+  });
+
+  test("a repeat cleared with new times comes back where it was, with its ids", async () => {
+    const { history, writer, titled } = setup();
+    const standups = await titled("Standup");
+    const monday = standups.find((each) => each.start.startsWith("2026-10-26"));
+    const wednesday = standups.find((each) => each.start.startsWith("2026-10-28"));
+    if (!monday || !wednesday) throw new Error("no standups");
+    await writer.update(wednesday, { title: "Wednesday sync" }, "this");
+    const later = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 60 * 60_000));
+    await writer.update(
+      monday,
+      { recurrence: "", start: later(monday.start), end: later(monday.end) },
+      "all",
+    );
+    expect((await titled("Standup")).length).toBe(1);
+    await history.undo();
+    // The whole series comes back, Wednesday's detached occurrence as a plain repeat.
+    expect((await titled("Standup")).map((each) => each.start.slice(11, 16))).toEqual(
+      Array(5).fill("09:30"),
+    );
+    // The edit made before the repeat was cleared still reaches Wednesday's occurrence
+    // (the fixture throws on an id that names nothing).
+    await history.undo();
+    expect(days(await titled("Standup"))).toEqual([
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+    ]);
   });
 
   test("undoing a repeat added to a one-off leaves one event", async () => {
