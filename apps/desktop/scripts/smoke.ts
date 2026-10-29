@@ -607,10 +607,20 @@ check(
     Math.abs(Number(state.hour) * 24 - state.clientHeight) < 1 &&
     Math.abs(state.scrollHeight - state.clientHeight) <= 1,
 );
-await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 48 } }));
+// Once fit is taller than the default, a reset stores the default itself, not "fit":
+// shrinking the window afterwards brings the default back rather than keeping the fit.
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1400),
+);
+await page.waitForTimeout(400);
+await page.keyboard.press("Meta+Shift+0");
+await page.waitForTimeout(100);
 await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
 );
+await page.waitForTimeout(400);
+check("⇧⌘0 in a tall window keeps the default after it shrinks", (await hourOf()) === 48);
+await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 48 } }));
 await page.waitForTimeout(300);
 
 // 21. settings take effect live: hidden weekends, 24-hour labels, a hidden calendar

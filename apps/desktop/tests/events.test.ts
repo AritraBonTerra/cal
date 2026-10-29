@@ -17,16 +17,19 @@ import {
   deleteWithUndo,
   type EventForm,
   editorStore,
+  endAtMinutes,
   entryInput,
   eventPatch,
   eventWriter,
   formDay,
+  movedToDay,
   nextFreeSlot,
   openCreate,
   parseDraft,
   patchForm,
   previousValues,
   restoreInput,
+  taskEntry,
 } from "../src/renderer/src/lib/events";
 import { mapsUrl } from "../src/renderer/src/lib/maps";
 import { describeRule, repeatPresets } from "../src/renderer/src/lib/recurrence";
@@ -702,6 +705,160 @@ describe("eventWriter: ids that change under a series", () => {
     await history.undo();
     expect((await titled("Planning")).length).toBe(0);
     expect((await titled("Retro")).length).toBe(1);
+  });
+
+  test("a cleared repeat redone after the one event was deleted and restored reaches the new series", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    await writer.update(wednesday, { recurrence: "" }, "all");
+    const [remaining] = await titled("Standup");
+    if (!remaining) throw new Error("no remaining standup");
+    await writer.remove(remaining, "this");
+    expect((await titled("Standup")).length).toBe(0);
+    await history.undo();
+    expect((await titled("Standup")).length).toBe(1);
+    await history.undo();
+    expect((await titled("Standup")).length).toBe(5);
+    // The series came back under a new identifier; the step still finds its occurrence.
+    await history.redo();
+    expect(days(await titled("Standup"))).toEqual(["2026-10-26"]);
+    await history.redo();
+    expect((await titled("Standup")).length).toBe(0);
+    await history.undo();
+    await history.undo();
+    expect((await titled("Standup")).length).toBe(5);
+  });
+
+  test("an undone series move leaves the occurrence that took its place untouched", async () => {
+    const { history, writer, titled } = setup();
+    const wednesday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-28"));
+    if (!wednesday) throw new Error("no Wednesday standup");
+    const shift = (iso: string) => toOffsetIso(new Date(Date.parse(iso) + 24 * 60 * 60_000));
+    await writer.update(
+      wednesday,
+      { start: shift(wednesday.start), end: shift(wednesday.end) },
+      "all",
+    );
+    await history.undo();
+    // Thursday's occurrence has the id the moved Wednesday briefly held.
+    const thursday = (await titled("Standup")).find((each) => each.start.startsWith("2026-10-29"));
+    if (!thursday) throw new Error("no Thursday standup");
+    await writer.update(thursday, { title: "Thursday sync" }, "this");
+    expect(days(await titled("Thursday sync"))).toEqual(["2026-10-29"]);
+    expect(days(await titled("Standup"))).toContain("2026-10-28");
+    await history.undo();
+    expect((await titled("Thursday sync")).length).toBe(0);
+    expect((await titled("Standup")).length).toBe(5);
+  });
+});
+
+/*
+ * The popover's field edits: an end time keeps the end's own day, a date change keeps
+ * an all-day span's number of days, and a to-do saves the form's fields as they are.
+ */
+describe("popover field edits", () => {
+  const form = (patch: Partial<EventForm>): EventForm => ({
+    text: "",
+    literals: [],
+    title: "Offsite",
+    kind: "event",
+    start: new Date("2026-11-03T10:00:00-08:00"),
+    end: new Date("2026-11-05T12:00:00-08:00"),
+    allDay: false,
+    timeZone: "America/Los_Angeles",
+    recurrence: "",
+    location: "",
+    url: "",
+    notes: "",
+    calendarId: "work",
+    busy: true,
+    alarms: [],
+    projectUuid: null,
+    deadline: null,
+    ...patch,
+  });
+  const inZone = (zone: string, run: () => void) => {
+    const was = process.env.TZ;
+    process.env.TZ = zone;
+    try {
+      run();
+    } finally {
+      process.env.TZ = was;
+    }
+  };
+
+  test("a multi-day event's end time stays on the end's day", () => {
+    const end = endAtMinutes(form({}), 12 * 60 + 30);
+    expect(end.toISOString()).toBe(new Date("2026-11-05T12:30:00-08:00").toISOString());
+  });
+
+  test("an end at or before the start wraps to the next day, and an overnight end keeps its day", () => {
+    const sameDay = form({ end: new Date("2026-11-03T11:00:00-08:00") });
+    expect(endAtMinutes(sameDay, 9 * 60).toISOString()).toBe(
+      new Date("2026-11-04T09:00:00-08:00").toISOString(),
+    );
+    const overnight = form({
+      start: new Date("2026-11-03T22:00:00-08:00"),
+      end: new Date("2026-11-04T02:00:00-08:00"),
+    });
+    expect(endAtMinutes(overnight, 23 * 60).toISOString()).toBe(
+      new Date("2026-11-03T23:00:00-08:00").toISOString(),
+    );
+    expect(endAtMinutes(overnight, 60).toISOString()).toBe(
+      new Date("2026-11-04T01:00:00-08:00").toISOString(),
+    );
+  });
+
+  test("moving an all-day event across a DST change keeps its number of days", () => {
+    inZone("America/Los_Angeles", () => {
+      const oneDay = form({
+        allDay: true,
+        start: fromDayKey("2026-03-07"),
+        end: fromDayKey("2026-03-08"),
+      });
+      const moved = movedToDay(oneDay, "2026-03-08");
+      expect(moved.start).toEqual(fromDayKey("2026-03-08"));
+      expect(moved.end).toEqual(fromDayKey("2026-03-09"));
+      const twoDays = form({
+        allDay: true,
+        start: fromDayKey("2026-03-06"),
+        end: fromDayKey("2026-03-08"),
+      });
+      expect(movedToDay(twoDays, "2026-03-08").end).toEqual(fromDayKey("2026-03-10"));
+    });
+  });
+
+  test("moving a timed event keeps its time of day and length", () => {
+    const moved = movedToDay(form({}), "2026-11-10");
+    expect(moved.start.toISOString()).toBe(new Date("2026-11-10T10:00:00-08:00").toISOString());
+    expect(moved.end.toISOString()).toBe(new Date("2026-11-12T12:00:00-08:00").toISOString());
+  });
+
+  test("a to-do saves a cleared deadline and project over what the title parsed", () => {
+    const typed = parseQuickEntry("Ship it by friday /Launch", {
+      now: new Date("2026-10-28T09:00:00-07:00"),
+      kind: "task",
+      projects: [{ uuid: "launch", title: "Launch" }],
+    });
+    expect(typed.kind).toBe("task");
+    if (typed.kind !== "task") return;
+    expect(typed.deadline).toBe("2026-10-30");
+    expect(typed.project_uuid).toBe("launch");
+    const cleared = taskEntry(
+      form({ kind: "task", start: new Date("2026-10-29T15:00:00-07:00") }),
+      typed,
+      "Ship it",
+    );
+    expect(cleared.deadline).toBeUndefined();
+    expect(cleared.project_uuid).toBeUndefined();
+    expect(cleared).toMatchObject({ title: "Ship it", when: "date", when_date: "2026-10-29" });
+    const kept = taskEntry(
+      form({ kind: "task", deadline: "2026-11-06", projectUuid: "other" }),
+      typed,
+      "Ship it",
+    );
+    expect(kept).toMatchObject({ deadline: "2026-11-06", project_uuid: "other" });
   });
 });
 

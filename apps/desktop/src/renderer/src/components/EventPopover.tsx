@@ -1,7 +1,7 @@
 import { useActions, useCal } from "@cal/app-core";
 import type { Attendee } from "@cal/calendar-source";
-import { addDays, type DayKey, fromDayKey, toDayKey, toOffsetIso } from "@cal/domain";
-import { parseQuickEntry, type QuickEntry, type TaskEntry, type Token } from "@cal/nlp";
+import { addDays, type DayKey, fromDayKey, toDayKey } from "@cal/domain";
+import { parseQuickEntry, type QuickEntry, type Token } from "@cal/nlp";
 import {
   AlignLeft,
   ArrowRight,
@@ -34,14 +34,17 @@ import {
   deleteWithUndo,
   type EditorState,
   editorStore,
+  endAtMinutes,
   eventPatch,
   eventWriter,
   formDay,
+  movedToDay,
   parseDraft,
   patchForm,
   setFormText,
   spanFor,
   spanStore,
+  taskEntry,
   toEventInput,
   useEditor,
 } from "../lib/events";
@@ -209,21 +212,8 @@ function Popover({ editor }: { editor: EditorState }) {
     const start = zonedInstant(day, minutes, zone);
     patchForm({ start, end: new Date(start.getTime() + length * MINUTE) });
   };
-  const setEnd = (minutes: number) => {
-    let end = zonedInstant(day, minutes, zone);
-    if (end.getTime() <= form.start.getTime()) end = new Date(end.getTime() + DAY);
-    patchForm({ end });
-  };
-  const setDay = (next: DayKey) => {
-    if (form.allDay) {
-      const span = form.end.getTime() - form.start.getTime();
-      const start = fromDayKey(next);
-      patchForm({ start, end: new Date(start.getTime() + span) });
-      return;
-    }
-    const start = zonedInstant(next, startMin, zone);
-    patchForm({ start, end: new Date(start.getTime() + length * MINUTE) });
-  };
+  const setEnd = (minutes: number) => patchForm({ end: endAtMinutes(form, minutes) });
+  const setDay = (next: DayKey) => patchForm(movedToDay(form, next));
   const timed = useRef({ start: form.start, end: form.end });
   const setAllDay = (allDay: boolean) => {
     if (allDay) {
@@ -266,27 +256,12 @@ function Popover({ editor }: { editor: EditorState }) {
     if (readOnly) return close();
     const form = commitFields();
     const titleText = form.title;
-    const day = formDay(form);
-    const length = Math.round((form.end.getTime() - form.start.getTime()) / MINUTE);
     if (form.kind === "task") {
       if (!titleText) return close();
       close();
       const entry = creating ? parse(form.text, form.literals) : null;
-      const typed: TaskEntry =
-        entry?.kind === "task" ? entry : { kind: "task", title: titleText, tokens: [] };
-      await actions.createFromEntry(
-        {
-          ...typed,
-          title: titleText,
-          when: "date",
-          when_date: day,
-          start_at: toOffsetIso(form.start),
-          estimate_min: length,
-          ...(form.deadline && { deadline: form.deadline }),
-          ...(form.projectUuid && { project_uuid: form.projectUuid }),
-        },
-        { position: -1 },
-      );
+      const typed = entry?.kind === "task" ? entry : null;
+      await actions.createFromEntry(taskEntry(form, typed, titleText), { position: -1 });
       return;
     }
     const input = toEventInput(form, titleText || "New event");

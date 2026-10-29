@@ -17,7 +17,13 @@ import {
   toOffsetIso,
   withCount,
 } from "@cal/domain";
-import { type EventEntry, parseQuickEntry, type QuickEntry, type TokenKind } from "@cal/nlp";
+import {
+  type EventEntry,
+  parseQuickEntry,
+  type QuickEntry,
+  type TaskEntry,
+  type TokenKind,
+} from "@cal/nlp";
 import { type Literal, prefixKind } from "./entryText";
 import { createStore, useStore } from "./store";
 import { dismissToast, showToast } from "./toast";
@@ -520,8 +526,13 @@ class EventAliases {
     if (this.current(to) === from) this.ids.delete(to);
     this.ids.set(from, to);
   }
-  forget(from: string) {
-    this.ids.delete(from);
+  /*
+   * Drops the rename recorded from `id`, because an event is at it again: a restored
+   * repeat gives the collapsed occurrence its id back, and an undone series move gives
+   * every occurrence its old id back, so an id freshly read from the calendar is live.
+   */
+  forget(id: string) {
+    this.ids.delete(id);
   }
   /*
    * Records that the event `from` came back as `created`: a series under a new
@@ -532,6 +543,7 @@ class EventAliases {
     const [identifier, start] = splitId(from);
     const [next, nextStart] = splitId(created.id);
     if (!start || !nextStart || !created.recurring) return this.renamed(from, created.id);
+    if (identifier === next) return;
     const moves = this.series.get(identifier) ?? [];
     this.series.set(identifier, [...moves, { to: next, since: since ?? Number.NEGATIVE_INFINITY }]);
   }
@@ -588,6 +600,7 @@ export function eventWriter(
       span: EventSpan,
       label = "Edit Event",
     ) {
+      ids.forget(event.id);
       const previous = previousValues(event, patch);
       // A repeat given to a one-off made a whole series; taking it back is an "all" edit.
       const undoSpan: EventSpan =
@@ -606,10 +619,14 @@ export function eventWriter(
           collapsed = id;
         } else {
           if (collapsed) {
-            // The repeat is back, and with it the occurrence's own id.
+            // The repeat is back, and with it the occurrence's own id: under a new
+            // identifier when the one event was deleted and recreated in between.
             ids.forget(collapsed);
+            ids.recreated(collapsed, written);
             collapsed = undefined;
           }
+          // A one-off given a rule is its series' first occurrence.
+          if (!splitId(id)[1]) ids.renamed(id, written.id);
           // An "all" write answers with the series' first occurrence, not this one, and
           // new times rename every occurrence: find this one where it went.
           if (input.start) ids.renamed(id, await movedId(id, input.start));
@@ -639,6 +656,7 @@ export function eventWriter(
       );
     },
     remove(event: ExternalEvent, span: EventSpan) {
+      ids.forget(event.id);
       const input = restoreInput(event, span);
       return history.transact("Delete Event", (tx) =>
         tx.external(
@@ -747,3 +765,50 @@ export function nextFreeSlot(
 // midnight), else the day of its start in the zone its times are typed in.
 export const formDay = (form: EventForm) =>
   form.allDay ? toDayKey(form.start) : zonedDayKey(form.start, form.timeZone);
+
+/**
+ * The form's end set to `minutes` on the clock. A multi-day event's end stays on its
+ * own day; a same-day or overnight one is built on the start's day and wraps past
+ * midnight when it lands at or before the start.
+ */
+export function endAtMinutes(form: EventForm, minutes: number) {
+  const day = formDay(form);
+  const endDay = zonedDayKey(form.end, form.timeZone);
+  const base = daysBetween(day, endDay) > 1 ? endDay : day;
+  const end = zonedInstant(base, minutes, form.timeZone);
+  return end.getTime() <= form.start.getTime() ? new Date(end.getTime() + DAY) : end;
+}
+
+/**
+ * The form's times with the start on `day`: an all-day span keeps its number of
+ * calendar days (not its milliseconds, which a DST change would stretch), a timed one
+ * its time of day and length.
+ */
+export function movedToDay(form: EventForm, day: DayKey) {
+  if (form.allDay) {
+    const last = toDayKey(new Date(form.end.getTime() - 1));
+    const days = daysBetween(toDayKey(form.start), last) + 1;
+    return { start: fromDayKey(day), end: fromDayKey(addDays(day, days)) };
+  }
+  const start = zonedInstant(day, zonedMinutes(form.start, form.timeZone), form.timeZone);
+  return { start, end: new Date(start.getTime() + form.end.getTime() - form.start.getTime()) };
+}
+
+/**
+ * The to-do a task form saves: what the title parsed (a new draft's tokens), under the
+ * form's fields. Those win even when cleared, so a deadline or project the parse found
+ * and the user then removed stays removed.
+ */
+export function taskEntry(form: EventForm, typed: TaskEntry | null, title: string): TaskEntry {
+  return {
+    ...(typed ?? { kind: "task", tokens: [] }),
+    kind: "task",
+    title,
+    when: "date",
+    when_date: formDay(form),
+    start_at: toOffsetIso(form.start),
+    estimate_min: Math.round((form.end.getTime() - form.start.getTime()) / MINUTE),
+    deadline: form.deadline ?? undefined,
+    project_uuid: form.projectUuid ?? undefined,
+  };
+}

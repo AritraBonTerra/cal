@@ -52,18 +52,21 @@ export function useHourHeight(bodyRef: RefObject<HTMLDivElement | null>) {
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveValue = useRef<number | null>(null);
 
-  // Persists a height: at (or under) fit it's saved as 0, "fit", so it tracks resizes.
-  // Any wheel save still pending is dropped, so it can't overwrite this one.
-  const persist = useCallback(
-    (next: number) => {
+  // Stores a height, dropping any wheel save still pending so it can't overwrite this one.
+  const store = useCallback(
+    (value: number) => {
       if (pending.current) clearTimeout(pending.current);
       pending.current = null;
       liveValue.current = null;
-      const value = next <= latest.current.fit + 0.5 ? 0 : Math.round(next * 10) / 10;
       setLive(null);
       if (value !== device.hourHeight) setDevice("hourHeight", value);
     },
     [device.hourHeight, setDevice],
+  );
+  // Persists a zoomed height: at (or under) fit it's saved as 0, "fit", so it tracks resizes.
+  const persist = useCallback(
+    (next: number) => store(next <= latest.current.fit + 0.5 ? 0 : Math.round(next * 10) / 10),
+    [store],
   );
 
   // Key zoom: one ladder step, pinned to the viewport's center.
@@ -77,10 +80,12 @@ export function useHourHeight(bodyRef: RefObject<HTMLDivElement | null>) {
     [bodyRef, persist],
   );
 
+  // The default itself, never "fit": in a window tall enough that fit is above the
+  // default, the default must come back once the window shrinks.
   const reset = useCallback(() => {
     anchor.current = bodyRef.current ? bodyRef.current.clientHeight / 2 : 0;
-    persist(DEFAULT_HOUR);
-  }, [bodyRef, persist]);
+    store(DEFAULT_HOUR);
+  }, [bodyRef, store]);
 
   // Pinch (ctrl+wheel) and ⌥-scroll zoom continuously around the pointer.
   useEffect(() => {
