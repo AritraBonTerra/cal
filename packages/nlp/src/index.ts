@@ -474,6 +474,18 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   if (date?.bareWeekday && day === today && passedToday) day = addDays(day, 7);
   if (!day && startMin !== undefined) day = passedToday ? addDays(today, 1) : today;
 
+  // Parts the other kind keeps stay in the title as text, so nothing typed is lost:
+  // a URL in a to-do, a deadline on an event.
+  const otherKindOnly: readonly TokenKind[] =
+    kind === "event"
+      ? ["deadline", "estimate", "priority", "tag", "evening", "later", "reminder"]
+      : ["location", "attendee", "alert", "url", "all_day"];
+  for (const token of s.tokens) {
+    if (!token.applied || !otherKindOnly.includes(token.kind)) continue;
+    token.applied = false;
+    token.label = `${token.label} (${kind === "event" ? "to-dos" : "events"} only)`;
+  }
+
   const title = buildTitle(s);
   const tokens = s.tokens
     .filter((token) => token.kind !== "mode" || token.applied)
@@ -551,16 +563,6 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
     if (url) entry.url = url;
     if (attendees.length) entry.attendees = attendees;
     if (alerts.length) entry.alertsMin = alerts;
-    for (const token of tokens) {
-      if (
-        ["deadline", "estimate", "priority", "tag", "evening", "later", "reminder"].includes(
-          token.kind,
-        )
-      ) {
-        token.applied = false;
-        token.label = `${token.label} (to-dos only)`;
-      }
-    }
     return entry;
   }
 
@@ -599,12 +601,6 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
       zonedInstant(reminderDay, reminder.startMin, reminder.zone ?? home),
       reminder.zone,
     );
-  }
-  for (const token of tokens) {
-    if (["location", "attendee", "alert", "url", "all_day"].includes(token.kind)) {
-      token.applied = false;
-      token.label = `${token.label} (events only)`;
-    }
   }
   return entry;
 }

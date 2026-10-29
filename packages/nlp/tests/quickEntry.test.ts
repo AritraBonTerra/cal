@@ -633,7 +633,7 @@ describe("parseQuickEntry: behavior", () => {
     const entry = parseQuickEntry("Deep work tomorrow 9-11:30 #deep", { ...base, kind: "event" });
     expect(fields(entry)).toEqual({
       kind: "event",
-      title: "Deep work",
+      title: "Deep work #deep",
       allDay: false,
       start: "2026-10-29T09:00:00-07:00",
       end: "2026-10-29T11:30:00-07:00",
@@ -787,6 +787,11 @@ describe("parseQuickEntry: review cases", () => {
       timeZone: "Asia/Tokyo",
     });
     expect(tomorrow).toMatchObject({ start: "2026-10-30T13:00:00+09:00" });
+  });
+
+  test("parts the other kind keeps stay in the title", () => {
+    expect(task("Read https://example.com")).toMatchObject({ title: "Read https://example.com" });
+    expect(event("Ship v2 #launch")).toMatchObject({ title: "Ship v2 #launch" });
   });
 
   test("odd inputs don't throw", () => {
