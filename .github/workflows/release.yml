@@ -93,12 +93,6 @@ jobs:
     needs: version
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: macos-26
-    env:
-      AUTH: >-
-        -allowProvisioningUpdates
-        -authenticationKeyPath ${{ runner.temp }}/asc.p8
-        -authenticationKeyID ${{ secrets.ASC_KEY_ID }}
-        -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -106,10 +100,15 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: sudo xcode-select -s "$XCODE"
+      # Writes the key and the xcodebuild switches that sign and upload with it.
       - name: App Store Connect key
         env:
           ASC_KEY: ${{ secrets.ASC_KEY }}
-        run: printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
+          echo "AUTH=-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/asc.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID" >> "$GITHUB_ENV"
       - name: Generate the Xcode project
         working-directory: apps/mobile
         env:
