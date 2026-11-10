@@ -1,22 +1,25 @@
-import { useActions, useCal } from "@cal/app-core";
+import { useActions, useCal, useSettings } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
 import { type Area, byPosition, inList, isOpen, type Project } from "@cal/domain";
-import { Box, CalendarDays, Plus, Settings } from "lucide-react";
+import { Box, CalendarDays, ChevronDown, Plus, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
+import { byAccount, calendarColor, soloCalendar, withId } from "../lib/calendars";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
 import { type ListId, openSettings, showList, toggleOverlay, ui, useUi } from "../lib/ui";
 import { ProjectRing, SMART_ICONS } from "./listIcons";
 import { PopMenu, useDismiss } from "./Menu";
+import { MiniMonth } from "./MiniMonth";
 import { IconButton } from "./ui";
 
 /*
- * Things-style navigation: smart lists with counts (Inbox, the dated lists and Logbook
- * as three groups), then projects outside any area, then areas and their projects, then
- * a footer with Settings, a + menu for new projects and areas, and the account. Double-
- * click a project or area to rename it. The top band is the window's drag region; the
- * traffic lights and the pane toggles sit over it.
+ * The sidebar: a mini month, then Things-style navigation (smart lists with counts, in
+ * three groups; projects outside any area; areas and their projects), the device's
+ * calendars, and a footer with Settings, a + menu for new projects and areas, and the
+ * account. Double-click a project or area to rename it. The navigation scrolls between
+ * the month and the footer. The top band is the window's drag region; the traffic
+ * lights and the pane toggles sit over it.
  */
 
 // Smart lists that open a new group, as in Things.
@@ -67,8 +70,9 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col bg-sidebar" data-dense>
       <div className="drag-region h-13 shrink-0" />
+      <MiniMonth />
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-2">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <ul>
           {SMART_LISTS.map((list) => {
             const Icon = SMART_ICONS[list];
@@ -93,6 +97,8 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
             <ul>{projects.filter((project) => project.area_uuid === area.uuid).map(projectRow)}</ul>
           </section>
         ))}
+
+        <CalendarList />
       </nav>
 
       {access !== "fullAccess" && (
@@ -154,6 +160,76 @@ function Row({
     >
       {children}
     </button>
+  );
+}
+
+/*
+ * The device's calendars, by account: click shows or hides one on the grid, ⌥-click
+ * shows only that one (again to show them all). The heading collapses the list.
+ */
+function CalendarList() {
+  const { calendars, device } = useApp();
+  const { setDevice } = useSettings();
+  if (calendars.length === 0) return null;
+  const open = device.showCalendarList;
+  const hidden = device.hiddenCalendars;
+  return (
+    <section className="mt-5" data-calendar-list>
+      <button
+        type="button"
+        onClick={() => setDevice("showCalendarList", !open)}
+        aria-expanded={open}
+        className="group flex h-7 w-full items-center gap-1 px-2 text-left text-small text-ink-3"
+      >
+        Calendars
+        <ChevronDown
+          size={12}
+          strokeWidth={1.5}
+          absoluteStrokeWidth
+          className={open ? "invisible group-hover:visible" : "-rotate-90"}
+        />
+      </button>
+      {open && (
+        <ul>
+          {byAccount(calendars).flatMap(({ calendars: group }) =>
+            group.map((calendar) => {
+              const shown = !hidden.includes(calendar.id);
+              const color = calendarColor(calendar, device.calendarColors);
+              return (
+                <li key={calendar.id}>
+                  <button
+                    type="button"
+                    aria-pressed={shown}
+                    title={`${calendar.account} · ⌥-click to show only this calendar`}
+                    onClick={(event) =>
+                      setDevice(
+                        "hiddenCalendars",
+                        event.altKey
+                          ? soloCalendar(calendars, hidden, calendar.id)
+                          : withId(hidden, calendar.id, shown),
+                      )
+                    }
+                    className={`${ROW} hover:bg-hover ${shown ? "text-ink" : "text-ink-3"}`}
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                      <span
+                        className="h-3 w-3 rounded-xs"
+                        style={
+                          shown
+                            ? { background: color }
+                            : { boxShadow: `inset 0 0 0 1.5px ${color}` }
+                        }
+                      />
+                    </span>
+                    <span className="flex-1 truncate">{calendar.title}</span>
+                  </button>
+                </li>
+              );
+            }),
+          )}
+        </ul>
+      )}
+    </section>
   );
 }
 

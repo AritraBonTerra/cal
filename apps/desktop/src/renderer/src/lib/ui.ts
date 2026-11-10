@@ -146,7 +146,8 @@ export function moveWeek(direction: 1 | -1) {
   ui.set(({ anchor }) => ({ anchor: addDays(anchor, direction * WEEK) }));
 }
 
-// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T).
+// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T). The mini
+// month jumps to any day the same way: the week holding it, or a span starting on it.
 export function goToday(today: DayKey, leftAlign = false) {
   ui.set(({ view, weekStart }) => ({
     anchor:

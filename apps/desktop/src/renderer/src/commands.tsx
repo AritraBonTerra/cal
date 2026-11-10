@@ -46,7 +46,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount } = useSettings();
+  const { setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -156,6 +156,28 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["mod+/"],
         aliases: ["tasks", "pane"],
         run: () => togglePane("tasks"),
+      },
+      {
+        id: "view.miniMonth",
+        title: "Toggle Mini Month",
+        group: "View",
+        aliases: ["calendar", "date picker", "sidebar month"],
+        run: () => {
+          const show = !latest.current.device.showMiniMonth;
+          setDevice("showMiniMonth", show);
+          if (show) ui.set({ sidebar: true });
+        },
+      },
+      {
+        id: "view.calendarList",
+        title: "Toggle Calendar List",
+        group: "View",
+        aliases: ["calendars", "show calendars", "hide calendars"],
+        run: () => {
+          const show = !latest.current.device.showCalendarList;
+          setDevice("showCalendarList", show);
+          if (show) ui.set({ sidebar: true });
+        },
       },
       {
         id: "view.weekends",
@@ -708,5 +730,5 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess, setAccount]);
+  }, [actions, history, auth.status, requestAccess, setAccount, setDevice]);
 }

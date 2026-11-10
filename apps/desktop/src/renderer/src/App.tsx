@@ -29,7 +29,7 @@ import { Toolbar } from "./components/Toolbar";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
 import { AppContext, type AppState } from "./lib/app";
-import { useCalendars, useChipPalette, useEvents } from "./lib/calendars";
+import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
 import { useKeyboard } from "./lib/keyboard";
@@ -131,13 +131,10 @@ export function App() {
     toOffsetIso(fromDayKey(addDays(first, -margin))),
     toOffsetIso(fromDayKey(addDays(last, 1 + margin))),
   );
-  const events = useMemo(() => {
-    const hidden = new Set(device.hiddenCalendars);
-    return fetched.filter(
-      (event) =>
-        !hidden.has(event.calendarId) && (account.showDeclined || event.myStatus !== "declined"),
-    );
-  }, [fetched, device.hiddenCalendars, account.showDeclined]);
+  const events = useMemo(
+    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
+    [fetched, device.hiddenCalendars, account.showDeclined],
+  );
 
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(
