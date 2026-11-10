@@ -45,7 +45,8 @@ export function NewHabit() {
         onKeyDown={(event) => {
           // Keys stay in the form: typing never runs the window's shortcuts.
           event.stopPropagation();
-          if (event.key === "Enter") create();
+          // Enter on a button presses that button (Cancel, a schedule choice).
+          if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) create();
           else if (event.key === "Escape") closeOverlay();
           else return;
           event.preventDefault();

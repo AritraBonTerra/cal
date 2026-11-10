@@ -1,15 +1,17 @@
 import { type AccountSettings, type DeviceSettings, useCal, useSettings } from "@cal/app-core";
 import {
+  type Area,
   addDays,
   type DayKey,
   dayRange,
   fromDayKey,
+  type Project,
   startOfMonth,
   startOfWeek,
   toOffsetIso,
   weekday,
 } from "@cal/domain";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppCommands } from "./commands";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
@@ -34,10 +36,11 @@ import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/ca
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
 import { useKeyboard } from "./lib/keyboard";
+import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
 import { setTimeFormat } from "./lib/time";
-import { COMPACT_WIDTH, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
+import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
 import { deviceZone, zonedDayKey } from "./lib/zones";
 
 // Weeks shown by the month view: the one holding the 1st through the one holding the last day.
@@ -61,6 +64,32 @@ function usePaneDefaults() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+}
+
+/**
+ * When the current list's project or area goes away (its creation undone, or deleted on
+ * another device), the pane falls back to Today instead of showing a list that no longer
+ * exists. A list is only dropped after it has been seen, so a project made a moment ago,
+ * whose row hasn't arrived yet, stays put.
+ */
+function useListFallback(projects: readonly Project[], areas: readonly Area[]) {
+  const list = useUi((state) => state.list);
+  const seen = useRef<ListId | null>(null);
+  useEffect(() => {
+    if (isSmartList(list)) return;
+    const uuid = list.slice(list.indexOf(":") + 1);
+    const rows = list.startsWith("project:") ? projects : areas;
+    if (rows.some((row) => row.uuid === uuid)) seen.current = list;
+    else if (seen.current === list) {
+      seen.current = null;
+      ui.set((state) => ({
+        list: "today",
+        renaming: null,
+        editing: null,
+        selection: state.selection?.kind === "task" ? null : state.selection,
+      }));
+    }
+  }, [list, projects, areas]);
 }
 
 // Settings that live outside React: the week start the view helpers read, and the
@@ -94,6 +123,7 @@ export function App() {
   useKeyboard(cal);
   usePaneDefaults();
   const data = useData();
+  useListFallback(data.projects, data.areas);
   const today = useToday();
   const now = useNow();
   const mode = useMode();
