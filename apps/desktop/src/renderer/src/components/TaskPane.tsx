@@ -15,6 +15,7 @@ import { geometry, useDrag } from "../lib/drag";
 import { isSmartList, listTitle, tasksIn } from "../lib/lists";
 import { formatRelativeDay } from "../lib/time";
 import { select, useUi } from "../lib/ui";
+import { TaskPaneBar } from "./TaskPaneBar";
 import { TaskRow } from "./TaskRow";
 import { Keycaps } from "./ui";
 
@@ -110,6 +111,7 @@ export function TaskPane() {
           </>
         )}
       </div>
+      <TaskPaneBar />
 
       {removing && (
         <div className="pointer-events-none absolute inset-x-3 bottom-3 flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-edge-strong text-small text-ink-2">

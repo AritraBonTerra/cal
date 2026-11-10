@@ -1,39 +1,29 @@
+import { useActions, useCal } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
-import { inList, isOpen } from "@cal/domain";
-import {
-  Archive,
-  CalendarDays,
-  CalendarRange,
-  CheckCircle2,
-  Inbox,
-  Layers,
-  Settings,
-  Star,
-} from "lucide-react";
+import { type Area, byPosition, inList, isOpen, type Project } from "@cal/domain";
+import { Box, CalendarDays, Plus, Settings } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
-import { type ListId, openSettings, showList, toggleOverlay, useUi } from "../lib/ui";
+import { type ListId, openSettings, showList, toggleOverlay, ui, useUi } from "../lib/ui";
+import { ProjectRing, SMART_ICONS } from "./listIcons";
+import { PopMenu, useDismiss } from "./Menu";
 import { IconButton } from "./ui";
 
 /*
  * Things-style navigation: smart lists with counts (Inbox, the dated lists and Logbook
- * as three groups), then areas and their projects, then a footer with Settings and the
- * account. The top band is the window's drag region; the traffic lights and the pane
- * toggles sit over it.
+ * as three groups), then projects outside any area, then areas and their projects, then
+ * a footer with Settings, a + menu for new projects and areas, and the account. Double-
+ * click a project or area to rename it. The top band is the window's drag region; the
+ * traffic lights and the pane toggles sit over it.
  */
 
 // Smart lists that open a new group, as in Things.
 const GROUP_STARTS: readonly ListId[] = ["today", "logbook"];
 
-const ICONS = {
-  inbox: Inbox,
-  today: Star,
-  upcoming: CalendarRange,
-  anytime: Layers,
-  someday: Archive,
-  logbook: CheckCircle2,
-};
+const ROW =
+  "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-100 hover:duration-0";
 
 interface SidebarProps {
   auth: AuthState;
@@ -49,6 +39,30 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
     data.tasks.filter((task) =>
       list === "today" || list === "inbox" ? inList(task, list, today) : false,
     ).length;
+  const areas = [...data.areas].sort(byPosition);
+  const areaIds = new Set(areas.map((area) => area.uuid));
+  const projects = data.projects
+    .filter((project) => project.completed_at === undefined)
+    .sort(byPosition);
+  // Projects whose area is gone count as outside any area, so they never vanish.
+  const loose = projects.filter(
+    (project) => project.area_uuid === undefined || !areaIds.has(project.area_uuid),
+  );
+
+  const projectRow = (project: Project) => {
+    const tasks = data.tasks.filter((task) => task.project_uuid === project.uuid);
+    const open = tasks.filter(isOpen).length;
+    return (
+      <li key={project.uuid}>
+        <NameRow
+          kind="project"
+          record={project}
+          active={current === `project:${project.uuid}`}
+          icon={<ProjectRing done={tasks.length - open} total={tasks.length} />}
+        />
+      </li>
+    );
+  };
 
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col bg-sidebar" data-dense>
@@ -57,7 +71,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto px-2 pb-2">
         <ul>
           {SMART_LISTS.map((list) => {
-            const Icon = ICONS[list];
+            const Icon = SMART_ICONS[list];
             const count = counts(list);
             return (
               <li key={list} className={GROUP_STARTS.includes(list) ? "mt-3" : undefined}>
@@ -71,42 +85,14 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
           })}
         </ul>
 
-        {data.areas.map((area) => {
-          const projects = data.projects.filter(
-            (project) => project.area_uuid === area.uuid && project.completed_at === undefined,
-          );
-          return (
-            <section key={area.uuid} className="mt-5">
-              <Row
-                active={current === `area:${area.uuid}`}
-                onClick={() => showList(`area:${area.uuid}`)}
-              >
-                <span className="flex-1 truncate font-medium">{area.title}</span>
-              </Row>
-              <ul>
-                {projects.map((project) => {
-                  const open = data.tasks.filter(
-                    (task) => task.project_uuid === project.uuid && isOpen(task),
-                  ).length;
-                  const total = data.tasks.filter(
-                    (task) => task.project_uuid === project.uuid,
-                  ).length;
-                  return (
-                    <li key={project.uuid}>
-                      <Row
-                        active={current === `project:${project.uuid}`}
-                        onClick={() => showList(`project:${project.uuid}`)}
-                      >
-                        <Progress done={total - open} total={total} />
-                        <span className="flex-1 truncate">{project.title}</span>
-                      </Row>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          );
-        })}
+        {loose.length > 0 && <ul className="mt-5">{loose.map(projectRow)}</ul>}
+
+        {areas.map((area) => (
+          <section key={area.uuid} className="mt-5">
+            <NameRow kind="area" record={area} active={current === `area:${area.uuid}`} />
+            <ul>{projects.filter((project) => project.area_uuid === area.uuid).map(projectRow)}</ul>
+          </section>
+        ))}
       </nav>
 
       {access !== "fullAccess" && (
@@ -132,10 +118,11 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
         </div>
       )}
 
-      <div className="flex h-11 shrink-0 items-center gap-1 px-2" data-sidebar-footer>
+      <div className="relative flex h-11 shrink-0 items-center gap-1 px-2" data-sidebar-footer>
         <IconButton label="Settings (⌘,)" onClick={() => openSettings()} data-settings>
           <Settings size={16} strokeWidth={1.5} absoluteStrokeWidth />
         </IconButton>
+        <NewListButton />
         <Account auth={auth} sync={sync} />
       </div>
     </aside>
@@ -145,18 +132,21 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
 function Row({
   active,
   onClick,
+  onDoubleClick,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       aria-current={active || undefined}
-      className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-100 hover:duration-0 ${
+      className={`${ROW} ${
         active
           ? "bg-active text-ink [&>svg]:text-accent"
           : "text-ink hover:bg-hover [&>svg]:text-ink-2"
@@ -167,25 +157,150 @@ function Row({
   );
 }
 
-// Things' project pie: a ring that fills as the project completes.
-function Progress({ done, total }: { done: number; total: number }) {
-  const fraction = total === 0 ? 0 : done / total;
-  const r = 5;
-  const c = 2 * Math.PI * r;
+interface NameRowProps {
+  kind: "project" | "area";
+  record: Project | Area;
+  active: boolean;
+  icon?: React.ReactNode;
+}
+
+// A project or area row: click shows it, double-click (or a new one) edits its title.
+function NameRow({ kind, record, active, icon }: NameRowProps) {
+  const renaming = useUi((state) => state.renaming?.uuid === record.uuid);
+  const placeholder = kind === "project" ? "New Project" : "New Area";
+  const weight = kind === "area" ? "font-medium" : "";
+  if (renaming) {
+    return (
+      <div className={`${ROW} bg-active text-ink`} data-renaming>
+        {icon}
+        <NameEditor kind={kind} record={record} placeholder={placeholder} className={weight} />
+      </div>
+    );
+  }
+  const list: ListId = kind === "project" ? `project:${record.uuid}` : `area:${record.uuid}`;
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 text-accent" aria-hidden>
-      <circle cx="8" cy="8" r={r + 1.25} fill="none" stroke="currentColor" strokeWidth="1.25" />
-      <circle
-        cx="8"
-        cy="8"
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={r * 2}
-        strokeDasharray={`${c * fraction} ${c}`}
-        transform="rotate(-90 8 8)"
-      />
-    </svg>
+    <Row
+      active={active}
+      onClick={() => showList(list)}
+      onDoubleClick={() => ui.set({ renaming: { uuid: record.uuid, back: list } })}
+    >
+      {icon}
+      <span className={`flex-1 truncate ${weight} ${record.title ? "" : "text-ink-3"}`}>
+        {record.title || placeholder}
+      </span>
+    </Row>
+  );
+}
+
+/*
+ * Inline title editing, as for a to-do: Enter or a click away saves, Escape reverts, and
+ * a new project or area left without a title is removed, returning to the list shown
+ * before it was made.
+ */
+function NameEditor({
+  kind,
+  record,
+  placeholder,
+  className,
+}: {
+  kind: "project" | "area";
+  record: Project | Area;
+  placeholder: string;
+  className: string;
+}) {
+  const actions = useActions();
+  const [value, setValue] = useState(record.title);
+  const ref = useRef<HTMLInputElement>(null);
+  const finished = useRef(false);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  const finish = (save: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    const title = value.trim();
+    const back = ui.get().renaming?.back;
+    ui.set({ renaming: null });
+    if (save && title && title !== record.title) {
+      void (kind === "project"
+        ? actions.updateProject(record.uuid, { title }, "Rename Project")
+        : actions.updateArea(record.uuid, { title }, "Rename Area"));
+    } else if (!record.title && (!save || !title)) {
+      if (back) showList(back);
+      void (kind === "project"
+        ? actions.deleteProject(record.uuid)
+        : actions.deleteArea(record.uuid));
+    }
+  };
+
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+        event.stopPropagation();
+      }}
+      placeholder={placeholder}
+      aria-label={kind === "project" ? "Project title" : "Area title"}
+      className={`min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-3 ${className}`}
+    />
+  );
+}
+
+// The footer's +: a menu with New Project and New Area, running the same commands as ⌘K.
+// The menu hangs from the footer (not the button), so it stays inside the sidebar.
+function NewListButton() {
+  const { commands } = useCal();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
+  return (
+    <div ref={ref}>
+      <IconButton
+        label="New List"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((state) => !state)}
+        className={open ? "bg-active" : ""}
+        data-new-list
+      >
+        <Plus size={16} strokeWidth={1.5} absoluteStrokeWidth />
+      </IconButton>
+      {open && (
+        <PopMenu
+          label="New List"
+          onClose={close}
+          className="bottom-full left-2 mb-1 origin-bottom-left"
+          items={[
+            {
+              id: "project",
+              label: "New Project",
+              icon: <ProjectRing done={0} total={0} />,
+              keys: "mod+alt+n",
+              run: () => commands.run("project.new"),
+            },
+            {
+              id: "area",
+              label: "New Area",
+              icon: <Box size={16} strokeWidth={1.5} absoluteStrokeWidth className="text-ink-2" />,
+              run: () => commands.run("area.new"),
+            },
+          ]}
+        />
+      )}
+    </div>
   );
 }
 

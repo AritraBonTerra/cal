@@ -56,6 +56,32 @@ export const scenes: Scene[] = [
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
   // Both panes hidden: the title clears the traffic lights and the pane toggles.
   { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },
+  // The sidebar's + menu, and a project just made with ⌥⌘N, its title being typed.
+  { name: "new-list-menu", click: "[data-new-list]" },
+  { name: "new-project", keys: ["Meta+Alt+n"], text: "Garden" },
+  { name: "new-project-dark", dark: true, keys: ["Meta+Alt+n"], text: "Garden" },
+  // New Habit… from the + beside the habit strip, set to a weekly quota.
+  {
+    name: "new-habit",
+    steps: [
+      { click: "button[aria-label='New Habit…']" },
+      { type: "Stretch" },
+      { click: "[role=radio]:has-text('Times per')" },
+    ],
+  },
+  {
+    name: "new-habit-dark",
+    dark: true,
+    steps: [
+      { click: "button[aria-label='New Habit…']" },
+      { type: "Read" },
+      { click: "[role=radio]:has-text('On days')" },
+      { click: "[role=radio]:has-text('An amount')" },
+    ],
+  },
+  // The to-do bar's Move menu for the selected to-do (⇧⌘M).
+  { name: "task-move", keys: ["ArrowDown", "Meta+Shift+m"] },
+  { name: "task-move-dark", dark: true, keys: ["ArrowDown", "Meta+Shift+m"] },
   { name: "settings-general", keys: ["Meta+,"] },
   { name: "settings-general-dark", dark: true, keys: ["Meta+,"] },
   { name: "settings-grid", keys: ["Meta+,"], click: "[data-section=grid]" },

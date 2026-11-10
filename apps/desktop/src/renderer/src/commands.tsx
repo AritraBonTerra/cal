@@ -15,10 +15,11 @@ import {
   openEdit,
   spanFor,
 } from "./lib/events";
-import { newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
+import { areaForNewProject, newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
 import {
   closeOverlay,
   goToday,
+  type ListId,
   moveView,
   moveWeek,
   openSettings,
@@ -86,6 +87,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           : Math.min(rows.length - 1, Math.max(0, index + direction));
       const task = rows[next];
       if (task) select({ kind: "task", uuid: task.uuid });
+    };
+
+    // Shows a just-made project or area with its sidebar row open for a title; Escape or
+    // an empty title discards it and goes back to `back`.
+    const nameNew = (list: `project:${string}` | `area:${string}`, uuid: string, back: ListId) => {
+      showList(list);
+      ui.set({ sidebar: true, renaming: { uuid, back } });
     };
 
     const nudgeBlock = (minutes: number, resize: boolean) => {
@@ -276,6 +284,39 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         },
       },
       {
+        id: "project.new",
+        title: "New Project",
+        group: "To-Do",
+        keys: ["mod+alt+n"],
+        aliases: ["create project", "add project", "list"],
+        run: () => {
+          const { list } = ui.get();
+          const area = areaForNewProject(list, latest.current.data.projects);
+          void actions
+            .createProject({ title: "", ...(area && { area_uuid: area }) })
+            .then((uuid) => nameNew(`project:${uuid}`, uuid, list));
+        },
+      },
+      {
+        id: "area.new",
+        title: "New Area",
+        group: "To-Do",
+        aliases: ["create area", "add area"],
+        run: () => {
+          const { list } = ui.get();
+          void actions
+            .createArea({ title: "" })
+            .then((uuid) => nameNew(`area:${uuid}`, uuid, list));
+        },
+      },
+      {
+        id: "habit.new",
+        title: "New Habit…",
+        group: "To-Do",
+        aliases: ["create habit", "add habit", "routine"],
+        run: () => ui.set({ overlay: "newHabit" }),
+      },
+      {
         id: "task.quickEntry",
         title: "Quick Entry",
         group: "To-Do",
@@ -319,6 +360,28 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         aliases: ["schedule", "date"],
         enabled: hasTask,
         run: () => toggleOverlay("when"),
+      },
+      {
+        id: "task.move",
+        title: "Move…",
+        group: "To-Do",
+        keys: ["mod+shift+m"],
+        aliases: ["project", "area", "list"],
+        enabled: hasTask,
+        run: () => {
+          ui.set({ tasks: true });
+          toggleOverlay("move");
+        },
+      },
+      {
+        id: "task.inbox",
+        title: "Move to Inbox",
+        group: "To-Do",
+        enabled: hasTask,
+        run: () => {
+          const task = selectedTask();
+          if (task) void actions.setWhen(task.uuid, "inbox");
+        },
       },
       {
         id: "task.today",

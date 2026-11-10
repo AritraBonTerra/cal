@@ -14,6 +14,7 @@ import { useAppCommands } from "./commands";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
+import { NewHabit } from "./components/NewHabit";
 import { Palette } from "./components/Palette";
 import { PaneToggles } from "./components/PaneToggles";
 import { QuickEntry } from "./components/QuickEntry";
@@ -195,6 +196,7 @@ export function App() {
         {overlay === "shortcuts" && <ShortcutSheet />}
         {overlay === "quickEntry" && <QuickEntry />}
         {overlay === "signIn" && <SignInSheet />}
+        {overlay === "newHabit" && <NewHabit />}
         {overlay === "settings" && <SettingsPanel auth={auth} sync={sync} />}
         {overlay === "zonePicker" && <ZonePicker />}
       </div>

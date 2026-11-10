@@ -171,6 +171,71 @@ describe("History", () => {
   });
 });
 
+describe("lists and habits", () => {
+  test("new projects, areas and habits land at the end of their lists", async () => {
+    const { store, history, actions } = setup();
+    const work = await actions.createArea({ title: "Work" });
+    const home = await actions.createArea({ title: "Home" });
+    const launch = await actions.createProject({ title: "Launch", area_uuid: work });
+    const loose = await actions.createProject({ title: "" });
+    expect(store.get("areas", home)?.position).toBe(1);
+    expect(store.get("projects", launch)).toMatchObject({ area_uuid: work, position: 0 });
+    expect(store.get("projects", loose)).toMatchObject({ title: "", position: 1 });
+    expect(store.get("projects", loose)).not.toHaveProperty("area_uuid");
+
+    await actions.updateProject(loose, { title: "Garden" }, "Rename Project");
+    expect(history.nextUndo).toBe("Rename Project");
+    await history.undo();
+    expect(store.get("projects", loose)?.title).toBe("");
+
+    const habit = await actions.createHabit({
+      title: "Stretch",
+      kind: "check",
+      schedule: "interval",
+      interval_days: 2,
+      display: "strip",
+    });
+    expect(store.get("habits", habit)?.position).toBe(0);
+  });
+
+  test("deleting a project keeps its to-dos, in its area; undo puts them back", async () => {
+    const { store, history, actions } = setup();
+    const work = await actions.createArea({ title: "Work" });
+    const project = await actions.createProject({ title: "Launch", area_uuid: work });
+    const task = await actions.createTask({
+      title: "Spec",
+      position: 0,
+      when: "anytime",
+      project_uuid: project,
+    });
+    await actions.deleteProject(project);
+    expect(store.list("projects")).toEqual([]);
+    expect(store.get("tasks", task)).toMatchObject({ area_uuid: work });
+    expect(store.get("tasks", task)).not.toHaveProperty("project_uuid");
+
+    await history.undo();
+    const [restored] = store.list("projects");
+    expect(store.get("tasks", task)?.project_uuid).toBe(restored?.uuid);
+    expect(store.get("tasks", task)).not.toHaveProperty("area_uuid");
+  });
+
+  test("deleting an area keeps its projects and to-dos", async () => {
+    const { store, actions } = setup();
+    const area = await actions.createArea({ title: "Home" });
+    const project = await actions.createProject({ title: "Move", area_uuid: area });
+    const task = await actions.createTask({
+      title: "Rent",
+      position: 0,
+      when: "anytime",
+      area_uuid: area,
+    });
+    await actions.deleteArea(area);
+    expect(store.list("areas")).toEqual([]);
+    expect(store.get("projects", project)).not.toHaveProperty("area_uuid");
+    expect(store.get("tasks", task)).not.toHaveProperty("area_uuid");
+  });
+});
+
 describe("commands", () => {
   test("bindings match the right modifiers", () => {
     expect(matches("mod+k", key("k", { metaKey: true }), true)).toBe(true);

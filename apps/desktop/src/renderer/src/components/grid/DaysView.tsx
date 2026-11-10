@@ -1,6 +1,7 @@
 import { useCommands } from "@cal/app-core";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
+import { NewHabitButton } from "../NewHabit";
 import { AllDayRow } from "./AllDayRow";
 import { DayHeaders } from "./DayHeaders";
 import { HabitStrip } from "./HabitStrip";
@@ -110,7 +111,7 @@ export function DaysView() {
           <DayHeaders days={days} columnWidth={columnWidth} />
         </div>
         <div className="flex">
-          <div className="shrink-0" style={{ width: gutter }} />
+          <NewHabitButton width={gutter} />
           <HabitStrip days={days} columnWidth={columnWidth} />
         </div>
         <div className="flex border-t border-grid">

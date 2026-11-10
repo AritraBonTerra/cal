@@ -10,7 +10,7 @@ import {
   type SmartList,
   type Task,
 } from "@cal/domain";
-import type { NewRow } from "@cal/sync";
+import type { NewRow, RowPatch } from "@cal/sync";
 import type { ListId } from "./ui";
 
 /*
@@ -66,14 +66,16 @@ export function tasksIn(list: ListId, tasks: readonly Task[], today: DayKey) {
   return rows;
 }
 
+// A list's title; a project or area still waiting for one reads "New Project" or "New Area".
 export function listTitle(list: ListId, projects: readonly Project[], areas: readonly Area[]) {
   if (isSmartList(list)) return SMART_TITLES[list];
   const uuid = list.slice(list.indexOf(":") + 1);
-  return (
-    projects.find((project) => project.uuid === uuid)?.title ??
-    areas.find((area) => area.uuid === uuid)?.title ??
-    ""
-  );
+  if (list.startsWith("project:")) {
+    const project = projects.find((each) => each.uuid === uuid);
+    return project ? project.title || "New Project" : "";
+  }
+  const area = areas.find((each) => each.uuid === uuid);
+  return area ? area.title || "New Area" : "";
 }
 
 // Fields a task created inside `list` starts with, so ⌘N lands where you're looking.
@@ -97,4 +99,25 @@ export function newTaskIn(list: ListId, today: DayKey): Omit<NewRow<"tasks">, "t
   return list.startsWith("project:")
     ? { ...base, when: "anytime", project_uuid: uuid }
     : { ...base, when: "anytime", area_uuid: uuid };
+}
+
+// The area a project made while `list` is showing goes into: that area, or the area of
+// that project; none from a smart list or a project outside any area.
+export function areaForNewProject(list: ListId, projects: readonly Project[]) {
+  if (list.startsWith("area:")) return list.slice("area:".length);
+  if (!list.startsWith("project:")) return undefined;
+  const uuid = list.slice("project:".length);
+  return projects.find((project) => project.uuid === uuid)?.area_uuid;
+}
+
+/**
+ * The fields that move a to-do into a project or an area (the Move menu). A to-do holds
+ * one or the other, and one leaving the Inbox this way goes to Anytime, as in Things.
+ */
+export function moveInto(task: Task, target: { project: string } | { area: string }) {
+  const patch: RowPatch<"tasks"> =
+    "project" in target
+      ? { project_uuid: target.project, area_uuid: null }
+      : { area_uuid: target.area, project_uuid: null };
+  return task.when === "inbox" ? { ...patch, when: "anytime" as const } : patch;
 }
