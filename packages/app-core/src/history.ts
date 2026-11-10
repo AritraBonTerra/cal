@@ -185,6 +185,12 @@ export class History {
     return entry.label;
   }
 
+  // Resolves once every write queued so far has finished, whether or not it succeeded.
+  // A window about to close waits on this so nothing under way is cut off.
+  settled() {
+    return this.queue.then(() => undefined);
+  }
+
   private serial<R>(fn: () => Promise<R>) {
     const run = this.queue.then(fn, fn);
     this.queue = run.catch(() => undefined);

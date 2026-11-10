@@ -17,6 +17,8 @@ ui.set({ anchor: startOfWeek(toDayKey(now())) });
 const cal = createCal(window.cal.data, now, window.cal.config.fixture ? undefined : localStorage);
 // Undo steps belong to the account that made them; see History.clear.
 window.cal.auth.onChange(() => void cal.history.clear());
+// A closing window waits for the writes already under way (a field saved a moment ago).
+window.cal.onClosing(() => cal.history.settled());
 
 // Typed entries of a settings patch, so each key reaches the matching setter.
 const entries = <T extends object>(patch: T) => Object.entries(patch) as [keyof T, T[keyof T]][];

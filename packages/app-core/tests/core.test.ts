@@ -55,6 +55,16 @@ describe("History", () => {
     expect(store.get("tasks", uuid)).toMatchObject({ title: "Plan the week", notes: "Monday" });
   });
 
+  test("settled waits for the writes queued so far", async () => {
+    const { store, history, actions } = setup();
+    const uuid = await actions.createTask({ title: "Plan", position: 0, when: "inbox" });
+    // Not awaited, as when a field saves on blur just before the window closes.
+    void actions.updateTask(uuid, { notes: "Monday" });
+    expect(store.get("tasks", uuid)).not.toHaveProperty("notes");
+    await history.settled();
+    expect(store.get("tasks", uuid)).toMatchObject({ notes: "Monday" });
+  });
+
   test("undoing a delete restores the task and its blocks, linked under new ids", async () => {
     const { store, history, actions } = setup();
     const uuid = await actions.createTask({ title: "Plan", position: 0, when: "inbox" });
