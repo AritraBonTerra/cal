@@ -632,7 +632,11 @@ await page.evaluate(() =>
 );
 await page.waitForTimeout(300);
 check("hiding weekends leaves five columns", (await page.locator("[data-column]").count()) === 5);
-check("24-hour time relabels the gutter", (await page.locator("text=09:00").count()) === 1);
+// Scoped to the calendar: to-do rows show their next block's time too ("Tomorrow 09:00").
+check(
+  "24-hour time relabels the gutter",
+  (await page.locator("main").locator("text=09:00").count()) === 1,
+);
 check(
   "a hidden calendar's events leave the grid",
   (await page.locator("[data-item^='event:'] > div", { hasText: "Dentist" }).count()) === 0,

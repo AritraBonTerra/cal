@@ -9,9 +9,10 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useApp } from "../lib/app";
 import { useCardSaver } from "../lib/card";
+import { useNow } from "../lib/clock";
 import { geometry, useDrag } from "../lib/drag";
 import { isSmartList, listSections, listTitle, type Section } from "../lib/lists";
 import { formatRelativeDay } from "../lib/time";
@@ -35,7 +36,8 @@ const ICONS = {
 };
 
 export function TaskPane() {
-  const { data, today } = useApp();
+  const { data, today, gridToday, zone } = useApp();
+  const now = useNow();
   useCardSaver();
   const list = useUi((state) => state.list);
   const removing = useDrag((state) => state.removing);
@@ -43,7 +45,11 @@ export function TaskPane() {
   const pointer = useDrag((state) => state.pointer);
   const selection = useUi((state) => state.selection);
   const editing = useUi((state) => state.editing);
-  const sections = useSteadyWhileOpen(listSections(list, data.tasks, today), data.tasks, editing);
+  const sections = useSteadyWhileOpen(
+    listSections(list, data, { today, gridToday, zone, now }),
+    data.tasks,
+    editing,
+  );
   const rows = sections.flatMap((section) => section.rows);
   // A selected task that left the list (completed, moved) is dropped, so Space and ⌘⌫
   // never act on a row that isn't on screen. A row still loading its new title is kept.
@@ -94,7 +100,7 @@ export function TaskPane() {
           </p>
         )}
         {sections.map((section) => (
-          <SectionRows key={section.kind} section={section} />
+          <SectionRows key={section.kind} section={section} showNext={list !== "today"} />
         ))}
       </div>
 
@@ -116,24 +122,61 @@ export function TaskPane() {
   );
 }
 
-// One section of the list: its heading, if it has one, then its rows.
-function SectionRows({ section }: { section: Section }) {
+/**
+ * One section of the list: its heading, if it has one, then its rows. Rows lead their
+ * meta line with their next block (`showNext`) everywhere but Today, where Scheduled
+ * rows show the time in a column instead.
+ */
+function SectionRows({ section, showNext }: { section: Section; showNext: boolean }) {
   const rows = (
     <ul>
       {section.rows.map((task) => (
-        <TaskRow key={task.uuid} task={task} />
+        <TaskRow
+          key={task.uuid}
+          task={task}
+          slot={section.kind === "scheduled" ? section.next.get(task.uuid) : undefined}
+          showNext={showNext}
+        />
       ))}
     </ul>
   );
-  if (section.kind === "plain") return rows;
+  switch (section.kind) {
+    case "plain":
+      return rows;
+    case "scheduled":
+      return (
+        <>
+          <Heading>Scheduled</Heading>
+          {rows}
+        </>
+      );
+    case "unscheduled":
+      return (
+        <>
+          <Heading hint="press X to place">Not scheduled</Heading>
+          {rows}
+        </>
+      );
+    case "evening":
+      return (
+        <>
+          <Heading>
+            <Moon size={12} strokeWidth={1.5} absoluteStrokeWidth />
+            This Evening
+          </Heading>
+          {rows}
+        </>
+      );
+  }
+}
+
+// A section label, with an optional quiet hint at the right; the first one sits flush.
+function Heading({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
-    <>
-      <h3 className="mt-4 mb-1 flex items-center gap-1.5 px-2 text-small font-medium text-ink-2">
-        <Moon size={12} strokeWidth={1.5} absoluteStrokeWidth />
-        This Evening
-      </h3>
-      {rows}
-    </>
+    <h3 className="mt-4 mb-1 flex items-center gap-1.5 px-2 text-small font-medium text-ink-2 first:mt-0">
+      {children}
+      {hint && <span className="ml-auto font-normal text-ink-3">{hint}</span>}
+    </h3>
   );
 }
 

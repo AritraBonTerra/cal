@@ -62,6 +62,19 @@ export const scenes: Scene[] = [
   },
   // ⌘N opens the new row as a card with the title focused; its chips show quiet labels.
   { name: "task-card-new", keys: ["Meta+n"], text: "Call the bank" },
+  // Today split into Scheduled (with each row's start time) and Not scheduled.
+  { name: "today-scheduled-dark", dark: true },
+  // From next week, the time on a Scheduled row brings today's block back into view
+  // and selects it.
+  {
+    name: "scheduled-reveal",
+    steps: [
+      { press: "j" },
+      { click: "li:has-text('Write launch spec') button[title='Show in Calendar']" },
+    ],
+  },
+  // Other lists lead the meta line with the next block's day and time.
+  { name: "anytime-next-block", keys: ["Meta+4"] },
   { name: "block-selected", click: "[data-item^='block:'] [data-edge=end] >> xpath=.." },
   {
     name: "sign-in",

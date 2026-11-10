@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { toOffsetIso } from "@cal/domain";
 import { LocalStore, type SqlDatabase, type SqlRow } from "@cal/sync";
 import { monthGridDays } from "../src/renderer/src/components/WhenPicker";
-import { listSections, newTaskIn, tasksIn } from "../src/renderer/src/lib/lists";
+import { listSections, newTaskIn, nextBlock, tasksIn } from "../src/renderer/src/lib/lists";
 
 function memoryStore() {
   const db = new Database(":memory:");
@@ -17,12 +18,35 @@ function memoryStore() {
 }
 
 const today = "2026-10-28";
+const zone = "America/Los_Angeles";
+// The fixture clock: Wed 2026-10-28 10:40 in the Mac's zone (tests run in LA time).
+const at = { today, gridToday: today, zone, now: new Date(2026, 9, 28, 10, 40) };
+
+// The store's tables as the pane reads them.
+const tables = (store: LocalStore) => ({
+  tasks: store.list("tasks"),
+  blocks: store.list("time_blocks"),
+  projects: store.list("projects"),
+  areas: store.list("areas"),
+});
+
+// A block for `task` from `start` to `end`, as "HH:MM" on `day` in the Mac's zone.
+function block(store: LocalStore, task: string, day: string, start: string, end: string) {
+  const iso = (time: string) => toOffsetIso(new Date(`${day}T${time}:00`));
+  return store.insert("time_blocks", {
+    task_uuid: task,
+    start_at: iso(start),
+    end_at: iso(end),
+    time_zone: zone,
+    source: "manual",
+  });
+}
 
 describe("newTaskIn", () => {
   test("a to-do made in Upcoming shows up in Upcoming", () => {
     const store = memoryStore();
     store.insert("tasks", { title: "", ...newTaskIn("upcoming", today) });
-    const rows = tasksIn("upcoming", store.list("tasks"), today);
+    const rows = tasksIn("upcoming", tables(store), at);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.when_date).toBe("2026-10-29");
   });
@@ -30,7 +54,7 @@ describe("newTaskIn", () => {
   test("a to-do made in Today shows up in Today", () => {
     const store = memoryStore();
     store.insert("tasks", { title: "", ...newTaskIn("today", today) });
-    expect(tasksIn("today", store.list("tasks"), today)).toHaveLength(1);
+    expect(tasksIn("today", tables(store), at)).toHaveLength(1);
   });
 });
 
@@ -53,9 +77,9 @@ describe("listSections", () => {
     const store = memoryStore();
     store.insert("tasks", { title: "Evening", position: 0, when: "evening", when_date: today });
     store.insert("tasks", { title: "Day", position: 1, when: "date", when_date: today });
-    const sections = listSections("today", store.list("tasks"), today);
+    const sections = listSections("today", tables(store), at);
     expect(sections.map((section) => section.kind)).toEqual(["plain", "evening"]);
-    expect(tasksIn("today", store.list("tasks"), today).map((task) => task.title)).toEqual([
+    expect(tasksIn("today", tables(store), at).map((task) => task.title)).toEqual([
       "Day",
       "Evening",
     ]);
@@ -64,6 +88,103 @@ describe("listSections", () => {
   test("an empty section is left out", () => {
     const store = memoryStore();
     store.insert("tasks", { title: "Day", position: 0, when: "date", when_date: today });
-    expect(listSections("today", store.list("tasks"), today)).toHaveLength(1);
+    expect(listSections("today", tables(store), at)).toHaveLength(1);
+  });
+});
+
+describe("Today's Scheduled split", () => {
+  test("rows with a block still ahead today come first, by start, then Not scheduled", () => {
+    const store = memoryStore();
+    const late = store.insert("tasks", {
+      title: "Late",
+      position: 0,
+      when: "date",
+      when_date: today,
+    });
+    const early = store.insert("tasks", {
+      title: "Early",
+      position: 1,
+      when: "date",
+      when_date: today,
+    });
+    store.insert("tasks", { title: "Loose", position: 2, when: "date", when_date: today });
+    const evening = store.insert("tasks", {
+      title: "Evening",
+      position: 3,
+      when: "evening",
+      when_date: today,
+    });
+    block(store, late, today, "15:00", "16:00");
+    block(store, early, today, "11:00", "12:00");
+    block(store, evening, today, "19:00", "19:30");
+    const sections = listSections("today", tables(store), at);
+    expect(sections.map((section) => section.kind)).toEqual(["scheduled", "unscheduled"]);
+    expect(sections.map((section) => section.rows.map((task) => task.title))).toEqual([
+      ["Early", "Late", "Evening"],
+      ["Loose"],
+    ]);
+    // ↑/↓ read the same order.
+    expect(tasksIn("today", tables(store), at).map((task) => task.title)).toEqual([
+      "Early",
+      "Late",
+      "Evening",
+      "Loose",
+    ]);
+  });
+
+  test("ended, done and later-day blocks don't count as scheduled today", () => {
+    const store = memoryStore();
+    const ended = store.insert("tasks", {
+      title: "Ended",
+      position: 0,
+      when: "date",
+      when_date: today,
+    });
+    const done = store.insert("tasks", {
+      title: "Done",
+      position: 1,
+      when: "date",
+      when_date: today,
+    });
+    const later = store.insert("tasks", {
+      title: "Later",
+      position: 2,
+      when: "date",
+      when_date: today,
+    });
+    block(store, ended, today, "09:00", "10:00");
+    const doneBlock = block(store, done, today, "13:00", "14:00");
+    store.update("time_blocks", doneBlock, { done_at: 1 });
+    block(store, later, "2026-10-29", "09:00", "10:00");
+    const sections = listSections("today", tables(store), at);
+    // Nothing scheduled: the list looks as it did, with no headings.
+    expect(sections.map((section) => section.kind)).toEqual(["plain"]);
+  });
+
+  test("a block running now counts, and its start is the time shown", () => {
+    const store = memoryStore();
+    const running = store.insert("tasks", {
+      title: "Now",
+      position: 0,
+      when: "date",
+      when_date: today,
+    });
+    const id = block(store, running, today, "10:30", "11:30");
+    const [section] = listSections("today", tables(store), at);
+    expect(section?.kind).toBe("scheduled");
+    if (section?.kind === "scheduled") expect(section.next.get(running)?.uuid).toBe(id);
+  });
+});
+
+describe("nextBlock", () => {
+  test("is the earliest block that isn't done and hasn't ended", () => {
+    const store = memoryStore();
+    const task = store.insert("tasks", { title: "T", position: 0, when: "anytime" });
+    block(store, task, today, "08:00", "09:00");
+    const thursday = block(store, task, "2026-10-29", "14:00", "15:00");
+    block(store, task, "2026-10-30", "09:00", "10:00");
+    const row = store.list("tasks")[0];
+    if (!row) throw new Error("no task");
+    expect(nextBlock(row, store.list("time_blocks"), at.now)?.uuid).toBe(thursday);
   });
 });

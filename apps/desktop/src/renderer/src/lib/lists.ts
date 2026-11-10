@@ -9,9 +9,11 @@ import {
   type Project,
   type SmartList,
   type Task,
+  type TimeBlock,
 } from "@cal/domain";
 import type { NewRow } from "@cal/sync";
 import type { ListId } from "./ui";
+import { zonedDayKey } from "./zones";
 
 /*
  * What each sidebar entry shows: smart lists are filters over dates and completion;
@@ -40,14 +42,50 @@ export const SMART_TITLES: Record<SmartList, string> = {
 export const isSmartList = (list: ListId): list is SmartList =>
   (SMART_LISTS as readonly string[]).includes(list);
 
-/*
- * A list as the pane draws it: sections in order, each with its rows. A section without
- * a heading is "plain"; Today ends with This Evening.
- */
-export type Section = { kind: "plain"; rows: Task[] } | { kind: "evening"; rows: Task[] };
+// The tables a list is drawn from (the app's `data` fits).
+export interface ListData {
+  tasks: readonly Task[];
+  blocks: readonly TimeBlock[];
+  projects: readonly Project[];
+  areas: readonly Area[];
+}
 
-// The sections of `list` in display order. Empty sections are left out.
-export function listSections(list: ListId, tasks: readonly Task[], today: DayKey): Section[] {
+/*
+ * When a list is drawn: `today` is the Mac's (what counts as Today), while `gridToday`
+ * and `zone` are the grid's, which decide what "scheduled today" means and what time a
+ * block shows.
+ */
+export interface ListTime {
+  today: DayKey;
+  gridToday: DayKey;
+  zone: string;
+  now: Date;
+}
+
+/*
+ * A list as the pane draws it: sections in order, each with its rows. A "plain" section
+ * has no heading. Today splits into Scheduled (with each row's next block today, in
+ * time order), Not scheduled and This Evening once anything is scheduled.
+ */
+export type Section =
+  | { kind: "plain"; rows: Task[] }
+  | { kind: "scheduled"; rows: Task[]; next: ReadonlyMap<string, TimeBlock> }
+  | { kind: "unscheduled"; rows: Task[] }
+  | { kind: "evening"; rows: Task[] };
+
+// A task's next block that isn't done and hasn't ended (it may be running now).
+export function nextBlock(task: Task, blocks: readonly TimeBlock[], now: Date) {
+  let next: TimeBlock | undefined;
+  for (const block of blocks) {
+    if (block.task_uuid !== task.uuid || block.done_at !== undefined) continue;
+    if (Date.parse(block.end_at) <= now.getTime()) continue;
+    if (!next || Date.parse(block.start_at) < Date.parse(next.start_at)) next = block;
+  }
+  return next;
+}
+
+// Open tasks of `list` before grouping, in its base order.
+function rowsOf(list: ListId, tasks: readonly Task[], today: DayKey) {
   let rows: Task[];
   if (isSmartList(list)) rows = tasks.filter((task) => inList(task, list, today));
   else if (list.startsWith("project:")) {
@@ -58,25 +96,60 @@ export function listSections(list: ListId, tasks: readonly Task[], today: DayKey
     rows = tasks.filter((task) => isOpen(task) && task.area_uuid === uuid);
   }
   if (list === "logbook") {
-    rows.sort(
+    return rows.sort(
       (a, b) => (b.completed_at ?? b.canceled_at ?? 0) - (a.completed_at ?? a.canceled_at ?? 0),
     );
-  } else if (list === "upcoming") {
-    rows.sort((a, b) => (a.when_date ?? "").localeCompare(b.when_date ?? "") || byPosition(a, b));
-  } else rows.sort(byPosition);
+  }
+  if (list === "upcoming") {
+    return rows.sort(
+      (a, b) => (a.when_date ?? "").localeCompare(b.when_date ?? "") || byPosition(a, b),
+    );
+  }
+  return rows.sort(byPosition);
+}
+
+// Today: Scheduled, Not scheduled, This Evening; without anything scheduled, the plain
+// list and This Evening, as before scheduling existed.
+function todaySections(rows: Task[], blocks: readonly TimeBlock[], at: ListTime): Section[] {
+  const next = new Map<string, TimeBlock>();
+  for (const task of rows) {
+    const block = nextBlock(task, blocks, at.now);
+    // A block that began before today and runs into it counts as today's too.
+    if (block && zonedDayKey(new Date(block.start_at), at.zone) <= at.gridToday) {
+      next.set(task.uuid, block);
+    }
+  }
+  const start = (task: Task) => Date.parse(next.get(task.uuid)?.start_at ?? "");
+  const scheduled = rows
+    .filter((task) => next.has(task.uuid))
+    .sort((a, b) => start(a) - start(b) || byPosition(a, b));
+  const rest = rows.filter((task) => !next.has(task.uuid));
+  const day = rest.filter((task) => !isThisEvening(task, at.today));
+  const evening = rest.filter((task) => isThisEvening(task, at.today));
+  if (scheduled.length === 0) {
+    return [
+      { kind: "plain", rows: day },
+      { kind: "evening", rows: evening },
+    ];
+  }
+  return [
+    { kind: "scheduled", rows: scheduled, next },
+    { kind: "unscheduled", rows: day },
+    { kind: "evening", rows: evening },
+  ];
+}
+
+// The sections of `list` in display order. Empty sections are left out.
+export function listSections(list: ListId, data: ListData, at: ListTime): Section[] {
+  const rows = rowsOf(list, data.tasks, at.today);
   const sections: Section[] =
-    list === "today"
-      ? [
-          { kind: "plain", rows: rows.filter((task) => !isThisEvening(task, today)) },
-          { kind: "evening", rows: rows.filter((task) => isThisEvening(task, today)) },
-        ]
-      : [{ kind: "plain", rows }];
+    list === "today" ? todaySections(rows, data.blocks, at) : [{ kind: "plain", rows }];
   return sections.filter((section) => section.rows.length > 0);
 }
 
 // Open tasks of `list` in display order: the rows of its sections, top to bottom.
-export const tasksIn = (list: ListId, tasks: readonly Task[], today: DayKey) =>
-  listSections(list, tasks, today).flatMap((section) => section.rows);
+export const tasksIn = (list: ListId, data: ListData, at: ListTime) =>
+  listSections(list, data, at).flatMap((section) => section.rows);
 
 export function listTitle(list: ListId, projects: readonly Project[], areas: readonly Area[]) {
   if (isSmartList(list)) return SMART_TITLES[list];
