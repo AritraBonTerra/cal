@@ -38,6 +38,17 @@ export function useTaskDrag(task: Task, onPress: () => void, disabled = false) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [dragging]);
 
+  // An element that unmounts mid-drag (the calendar moved to another week) never sees
+  // the release, so it drops its drag on the way out.
+  useEffect(
+    () => () => {
+      if (!press.current?.dragging) return;
+      press.current = null;
+      clearDrag();
+    },
+    [],
+  );
+
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || disabled) return;
     onPress();
