@@ -41,6 +41,15 @@ import { deviceZone, zonedDayKey, zonedInstant, zonedMinutes } from "./zones";
 
 export type EntryKind = "event" | "task";
 
+// The Event | To-do switch's keys: ⌘1 and ⌘2, read by physical key too, so layouts
+// whose digit row types symbols (AZERTY's "&") still switch.
+export function entryKindKey(event: { key: string; code: string; metaKey: boolean }) {
+  if (!event.metaKey) return undefined;
+  if (event.key === "1" || event.code === "Digit1") return "event" satisfies EntryKind;
+  if (event.key === "2" || event.code === "Digit2") return "task" satisfies EntryKind;
+  return undefined;
+}
+
 export interface EventForm {
   // The title field's raw text; new events parse it for dates, times and the rest.
   text: string;

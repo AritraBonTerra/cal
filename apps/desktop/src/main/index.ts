@@ -224,7 +224,10 @@ function createWindow() {
     minHeight: 520,
     show: false,
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    // The lights' centre must sit on y = 26, the middle of the renderer's 52px top band,
+    // with the pane toggles and the toolbar. Electron centres the 16px buttons in a
+    // container 16 + 2·y tall, so y = 18 puts them there.
+    trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1b1a" : "#fbfaf9",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),

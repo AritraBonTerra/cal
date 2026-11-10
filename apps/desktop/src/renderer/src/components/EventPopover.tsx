@@ -37,6 +37,7 @@ import {
   type EventForm,
   editorStore,
   endAtMinutes,
+  entryKindKey,
   eventPatch,
   eventWriter,
   formDay,
@@ -355,10 +356,11 @@ function Popover({ editor }: { editor: EditorState }) {
   const onKeyDown = (keyboard: ReactKeyboardEvent<HTMLDivElement>) => {
     const meta = keyboard.metaKey;
     const typing = inTextField(keyboard.target);
+    const pick = entryKindKey(keyboard);
     if (keyboard.key === "Escape") dismiss();
     else if (keyboard.key === "Enter" && meta) void save();
-    else if (meta && keyboard.key === "1" && creating && canCreateEvents) setKind("event");
-    else if (meta && keyboard.key === "2" && creating) setKind("task");
+    else if (pick === "event" && creating && canCreateEvents) setKind(pick);
+    else if (pick === "task" && creating) setKind(pick);
     else if (keyboard.key === "Backspace" && (meta || !typing) && !creating) void remove();
     else if (!meta) {
       // Plain keys belong to the fields; never to the grid's single-letter shortcuts.
@@ -393,21 +395,15 @@ function Popover({ editor }: { editor: EditorState }) {
     >
       <header className="flex h-10 shrink-0 items-center gap-2 pr-2 pl-3">
         {creating && canCreateEvents ? (
-          <>
-            <Segmented
-              value={form.kind}
-              options={[
-                { value: "event", label: "Event" },
-                { value: "task", label: "To-do" },
-              ]}
-              onChange={setKind}
-              label="Kind"
-            />
-            <span className="flex gap-1 text-caption text-ink-3">
-              <Keycaps binding="mod+1" />
-              <Keycaps binding="mod+2" />
-            </span>
-          </>
+          <Segmented
+            value={form.kind}
+            options={[
+              { value: "event", label: "Event", hint: "mod+1" },
+              { value: "task", label: "To-do", hint: "mod+2" },
+            ]}
+            onChange={setKind}
+            label="Kind"
+          />
         ) : (
           <span className="text-small font-medium text-ink-2">{kindLabel}</span>
         )}

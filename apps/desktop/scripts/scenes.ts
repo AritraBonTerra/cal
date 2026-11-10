@@ -161,6 +161,12 @@ export const scenes: Scene[] = [
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
   // Both panes hidden: the title clears the traffic lights and the pane toggles.
   { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },
+  { name: "panes-collapsed-dark", dark: true, keys: ["Meta+\\", "Meta+/"] },
+  // The pane toggles beside the traffic lights: open icons carry the collapse cue, a
+  // hidden pane's icon is plain and dim; one hovered.
+  { name: "pane-toggles-dark", dark: true },
+  { name: "pane-toggles-mixed", keys: ["Meta+/"] },
+  { name: "pane-toggles-hover", steps: [{ move: { x: 97, y: 26 } }] },
   // The sidebar's + menu, and a project just made with ⌥⌘N, its title being typed.
   { name: "new-list-menu", click: "[data-new-list]" },
   { name: "new-project", keys: ["Meta+Alt+n"], text: "Garden" },
@@ -282,6 +288,7 @@ export const scenes: Scene[] = [
       { press: "Backspace" },
     ],
   },
+  { name: "quick-entry-dark", dark: true, keys: ["Meta+Shift+n"], text: "Call the movers" },
   {
     name: "quick-entry-event",
     keys: ["Meta+Shift+n", "Meta+1"],

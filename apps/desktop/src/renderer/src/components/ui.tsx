@@ -1,6 +1,13 @@
 import { keyLabels } from "@cal/app-core";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ButtonHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { isMac } from "../lib/keyboard";
 
 // Small shared controls, each one a token recipe from research/07 §7.
@@ -82,10 +89,21 @@ interface OverlayProps {
   // Floating panels pop from 0.97; sheets drop in from the top like a Mac sheet.
   kind?: "panel" | "sheet";
   label: string;
+  // Keys for the whole panel. A panel with them takes focus from clicks on its blank
+  // parts, so its keys keep arriving wherever the pointer lands inside.
+  onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
 }
 
 // A centered floating layer over a dimming backdrop. Clicking outside closes it.
-export function Overlay({ onClose, children, width, height, kind = "panel", label }: OverlayProps) {
+export function Overlay({
+  onClose,
+  children,
+  width,
+  height,
+  kind = "panel",
+  label,
+  onKeyDown,
+}: OverlayProps) {
   return (
     <div
       className="fixed inset-0 z-40 flex justify-center bg-[oklch(0_0_0/0.18)]"
@@ -97,7 +115,9 @@ export function Overlay({ onClose, children, width, height, kind = "panel", labe
       <div
         role="dialog"
         aria-label={label}
-        className={`h-fit max-h-[76vh] overflow-hidden bg-raised text-ink shadow-float ${
+        onKeyDown={onKeyDown}
+        tabIndex={onKeyDown ? -1 : undefined}
+        className={`h-fit max-h-[76vh] overflow-hidden bg-raised text-ink shadow-float outline-none ${
           kind === "sheet" ? "sheet-in rounded-b-xl" : "pop-in rounded-xl"
         }`}
         style={{ width, height }}
@@ -205,7 +225,8 @@ export function Switch({ checked, onChange, label }: SwitchProps) {
 
 interface SegmentedProps<T extends string> {
   value: T;
-  options: readonly { value: T; label: string }[];
+  // `hint` is a binding such as "mod+1", shown small after the label: "Event ⌘1".
+  options: readonly { value: T; label: string; hint?: string }[];
   onChange: (value: T) => void;
   label: string;
 }
@@ -231,20 +252,33 @@ export function Segmented<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
+            aria-keyshortcuts={option.hint && keyShortcut(option.hint)}
             key={option.value}
             onClick={() => onChange(option.value)}
-            className={`h-5 rounded-[4px] px-2 text-small transition-colors duration-100 ${
+            className={`h-5 rounded-[4px] text-small transition-colors duration-100 ${
+              option.hint ? "pr-1.5 pl-2" : "px-2"
+            } ${
               active
                 ? "bg-raised font-medium text-ink shadow-[0_0_0_0.5px_var(--cal-edge),0_1px_2px_oklch(0_0_0/0.08)]"
                 : "text-ink-2 hover:text-ink"
             }`}
           >
             {option.label}
+            {option.hint && (
+              <span aria-hidden className="ml-1 text-[10px] font-medium text-ink-3 tnum">
+                {keyLabels(option.hint, isMac).join("")}
+              </span>
+            )}
           </button>
         );
       })}
     </div>
   );
+}
+
+// A binding in aria-keyshortcuts' form: "mod+1" → "Meta+1" on Mac.
+function keyShortcut(binding: string) {
+  return binding.replace(/^mod\+/, isMac ? "Meta+" : "Control+");
 }
 
 interface SelectProps<T extends string | number> {

@@ -211,7 +211,6 @@ export function App() {
         className="flex h-screen w-screen overflow-hidden bg-canvas text-body text-ink"
         data-ready={data.loaded && eventsLoaded ? "" : undefined}
       >
-        <PaneToggles />
         <Pane name="sidebar" open={sidebar} peek={peek}>
           <Sidebar auth={auth} sync={sync} access={access} requestAccess={requestAccess} />
         </Pane>
@@ -222,6 +221,12 @@ export function App() {
           <Toolbar first={first} last={last} />
           {view.kind === "days" ? <DaysView /> : <MonthView />}
         </main>
+        {/*
+          Order matters: Electron builds the draggable area in document order, so a drag
+          band rendered after these fixed toggles would swallow their clicks. They come
+          after every band, and before the overlays so those still cover them.
+        */}
+        <PaneToggles />
         <EventPopover />
         <SpanDialog />
         <Toast />

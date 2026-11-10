@@ -479,6 +479,30 @@ check(
 await page.keyboard.press("Meta+2");
 await page.waitForTimeout(200);
 
+// 13j2. Quick Entry's keys work wherever focus is in it, not only in the text field
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.type("Water the plants");
+const quickPanel = page.locator("[role=dialog][aria-label='Quick Entry']");
+// A blank stretch of the footer, between "Esc Cancel" and the title preview.
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+const focusOnPanel = await page.evaluate(
+  () => document.activeElement?.getAttribute("aria-label") === "Quick Entry",
+);
+await page.keyboard.press("Meta+1");
+await page.waitForTimeout(100);
+const switchedFromBlank =
+  ((await quickFooter().textContent())?.includes("Add event") ?? false) &&
+  (await page.locator("h2", { hasText: "Inbox" }).count()) === 0;
+await quickPanel.getByRole("radio", { name: "To-do" }).click();
+const backInField = await page.evaluate(() => document.activeElement?.tagName === "INPUT");
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+await page.keyboard.press("Escape");
+await page.waitForTimeout(100);
+check(
+  "a click on Quick Entry's blank parts keeps ⌘1 and Esc there; the switch hands focus back",
+  focusOnPanel && switchedFromBlank && backInField && (await quickPanel.count()) === 0,
+);
+
 // 13k. undoing a repeating event's creation removes every occurrence
 await page.keyboard.press("Meta+Shift+n");
 await page.keyboard.press("Meta+1");
@@ -964,6 +988,31 @@ check(
     (await paneWidth("sidebar")) === 0 &&
     (await firstColumn()) === columnBefore &&
     (await page.locator("[data-pane-toggle=sidebar]").getAttribute("aria-pressed")) === "false",
+);
+check(
+  "the pane toggles come after every drag band in the page, so the window can't swallow their clicks",
+  await page.evaluate(() => {
+    const toggles = document.querySelector("[data-pane-toggle]");
+    return (
+      toggles !== null &&
+      [...document.querySelectorAll(".drag-region")].every(
+        (band) => band.compareDocumentPosition(toggles) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    );
+  }),
+);
+check(
+  "the hidden sidebar's toggle drops its collapse chevron; the open to-do list keeps its check",
+  await page.evaluate(() => {
+    const part = (pane: string, selector: string) => {
+      const element = document.querySelector(`[data-pane-toggle=${pane}] ${selector}`);
+      return element ? getComputedStyle(element) : null;
+    };
+    return (
+      part("sidebar", "path:last-child")?.opacity === "0" &&
+      part("tasks", "path:last-child")?.visibility === "visible"
+    );
+  }),
 );
 const toggleBox = await boxOf(page.locator("[data-pane-toggle=tasks]"));
 check(
