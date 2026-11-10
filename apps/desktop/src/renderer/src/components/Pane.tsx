@@ -164,6 +164,8 @@ export function Pane({
     }
     setLive(null);
   };
+  // A cancelled pointer, or capture lost mid-drag: back to the saved width. Capture is
+  // also lost after a normal release, by which time the drag has already ended.
   const onCancel = () => {
     press.current = null;
     setLive(null);
@@ -199,6 +201,7 @@ export function Pane({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onCancel}
+          onLostPointerCapture={onCancel}
           onDoubleClick={() => setDevice(setting, initial)}
           data-resize={name}
           data-dragging={dragging ? "" : undefined}
