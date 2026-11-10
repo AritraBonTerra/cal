@@ -58,6 +58,9 @@ export const scenes: Scene[] = [
     after: ["Enter"],
   },
   { name: "day-agenda-hidden", settings: { device: { workloadBar: false } } },
+  // Narrow columns: compact habit rings with each habit's initial in its own hue.
+  { name: "habit-rings" },
+  { name: "habit-rings-dark", dark: true },
   { name: "month", keys: ["m"] },
   { name: "palette", keys: ["Meta+k"] },
   { name: "shortcuts", keys: ["?"] },
