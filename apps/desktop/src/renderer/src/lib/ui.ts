@@ -38,7 +38,14 @@ export type Overlay =
   | "settings"
   | "zonePicker";
 
-export type SettingsSection = "general" | "grid" | "zones" | "calendars" | "account";
+export type SettingsSection =
+  | "general"
+  | "grid"
+  | "zones"
+  | "calendars"
+  | "account"
+  | "shortcuts"
+  | "about";
 
 // Why the zone picker is open: to add a column, swap the zone of column `index` (or
 // the primary zone when `index` is absent), travel (`Z`), or set an event's zone.

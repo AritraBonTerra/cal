@@ -1162,5 +1162,124 @@ await page.locator("[data-year-month='2026-06-01'] button", { hasText: "June" })
 await page.waitForTimeout(150);
 check("a month name opens that month", (await toolbarTitle()) === "June 2026");
 
+// 27. Settings > Shortcuts: record, cancel, conflicts, reset, and the menu bar following
+const settingsOpen = () => page.locator("[role=dialog][aria-label=Settings]").count();
+const paletteOpen = () => page.locator("[role=dialog][aria-label='Command menu']").count();
+const menuAccelerator = (label: string) =>
+  app.evaluate(({ Menu }, wanted) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
+      for (const item of items) {
+        if (item.label === wanted) return item;
+        const inner = item.submenu && find(item.submenu.items);
+        if (inner) return inner;
+      }
+    };
+    return find(Menu.getApplicationMenu()?.items ?? [])?.accelerator ?? null;
+  }, label);
+check(
+  "the menu shows ⌘K for Command Menu",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+K",
+);
+await page.keyboard.press("Meta+,");
+await page.click("[data-section=shortcuts]");
+await page.waitForTimeout(200);
+check(
+  "Shortcuts lists commands but not Show 14 days",
+  (await page.locator("[data-command='task.new']").count()) === 1 &&
+    (await page.locator("[data-command='view.days.14']").count()) === 0,
+);
+await page.fill("[aria-label='Search shortcuts']", "14");
+check(
+  "searching 14 finds Show 14 days",
+  (await page.locator("[data-command='view.days.14']").count()) === 1,
+);
+await page.fill("[aria-label='Search shortcuts']", "⌘K");
+check(
+  "searching ⌘K finds Command Menu",
+  (await page.locator("[data-command='palette.open']").count()) === 1 &&
+    (await page.locator("[data-command='task.new']").count()) === 0,
+);
+await page.fill("[aria-label='Search shortcuts']", "command menu");
+const paletteKey = page.locator("[data-command='palette.open'] [data-key]");
+await paletteKey.click();
+check("clicking a binding records", (await page.locator("[data-recording]").count()) === 1);
+check(
+  "recording pauses the menu's shortcuts",
+  await (async () => {
+    await page.waitForTimeout(150);
+    return (await menuAccelerator("Command Menu")) === null;
+  })(),
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(150);
+check(
+  "Escape cancels recording and keeps Settings open",
+  (await page.locator("[data-recording]").count()) === 0 && (await settingsOpen()) === 1,
+);
+await paletteKey.click();
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check(
+  "a recorded key saves without running anything",
+  (await paletteOpen()) === 0 &&
+    (await settingsOpen()) === 1 &&
+    ((await page.locator("[data-command='palette.open']").textContent()) ?? "").includes("Changed"),
+);
+check(
+  "the menu follows the new binding",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+J",
+);
+await page.fill("[aria-label='Search shortcuts']", "new to-do");
+await page.hover("[data-command='task.new']");
+await page.click("[data-command='task.new'] [data-add]");
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check(
+  "a shared key warns but saves",
+  ((await page.locator("[data-command='task.new'] [data-conflict]").textContent()) ?? "").includes(
+    "Also used by Command Menu",
+  ) && (await page.locator("[data-command='task.new'] [data-key]").count()) === 2,
+);
+await page.hover("[data-command='task.new']");
+await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘J']");
+await page.waitForTimeout(300);
+check(
+  "removing the extra key clears the change",
+  (await page.locator("[data-command='task.new'] [data-key]").count()) === 1 &&
+    (await page.locator("[data-command='task.new'] [data-conflict]").count()) === 0,
+);
+// Escape clears the search, then closes Settings.
+await page.click("[aria-label='Search shortcuts']");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(200);
+check("the new binding opens the command menu", (await paletteOpen()) === 1);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Meta+k");
+await page.waitForTimeout(200);
+check("the old binding no longer does", (await paletteOpen()) === 0);
+await page.keyboard.press("?");
+await page.click("text=Customize…");
+await page.waitForTimeout(200);
+check(
+  "the ? sheet's Customize opens Settings on Shortcuts",
+  (await page.locator("[data-section=shortcuts][aria-current=true]").count()) === 1,
+);
+await page.click("text=Reset all");
+await page.waitForTimeout(300);
+check(
+  "Reset all restores ⌘K and disables itself",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+K" &&
+    (await page.locator("button:has-text('Reset all')").isDisabled()),
+);
+await page.click("[data-section=about]");
+check(
+  "About shows the version",
+  ((await page.locator("[data-version]").textContent()) ?? "").includes("0.1.0"),
+);
+await page.keyboard.press("Escape");
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

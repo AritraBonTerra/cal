@@ -40,6 +40,7 @@ import { useKeyboard } from "./lib/keyboard";
 import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
+import { useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
 import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
 import { yearDays } from "./lib/year";
@@ -130,6 +131,7 @@ export function App() {
   const now = useNow();
   const mode = useMode();
   const { account, device } = useSettings();
+  useKeybindings(account.keybindings);
   // Before anything below formats a time, so one render never mixes clocks.
   setTimeFormat(account.timeFormat);
   useSettingsEffects(account, device, today);

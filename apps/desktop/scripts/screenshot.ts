@@ -57,6 +57,11 @@ for (const scene of scenes.filter((each) => !wanted.length || wanted.includes(ea
     else if ("click" in step) await page.click(step.click);
     else if ("context" in step) await page.click(step.context, { button: "right" });
     else if ("move" in step) await page.mouse.move(step.move.x, step.move.y);
+    else if ("hover" in step) await page.hover(step.hover);
+    else if ("reveal" in step)
+      await page
+        .locator(step.reveal)
+        .evaluate((element) => element.scrollIntoView({ block: "start" }));
     else await page.waitForTimeout(step.wait);
     await page.waitForTimeout(150);
   }

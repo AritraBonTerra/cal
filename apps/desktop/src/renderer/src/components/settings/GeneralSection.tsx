@@ -1,4 +1,5 @@
 import { useSettings } from "@cal/app-core";
+import { shortcutText, useShortcut } from "../../lib/shortcuts";
 import { Segmented, Select, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
@@ -11,10 +12,18 @@ const WEEK_STARTS = [
 // General: what the calendar shows, navigation, time format, theme and maps.
 export function GeneralSection() {
   const { account, device, setAccount, setDevice } = useSettings();
+  const weekendsKey = useShortcut("view.weekends");
+  const todayKey = useShortcut("nav.today");
+  const todayLeftKey = useShortcut("nav.todayLeft");
+  // "Press T to", or "Today command" once T is unbound.
+  const todayLabel = todayKey ? `Press ${shortcutText(todayKey)} to` : "Today command";
   return (
     <>
       <Group title="Calendar view">
-        <Row label="Show weekends" note="⇧⌘E toggles this too">
+        <Row
+          label="Show weekends"
+          note={weekendsKey ? `${shortcutText(weekendsKey)} toggles this too` : undefined}
+        >
           <Switch
             checked={account.showWeekends}
             onChange={(value) => void setAccount("showWeekends", value)}
@@ -46,7 +55,10 @@ export function GeneralSection() {
         </Row>
       </Group>
       <Group title="Navigation">
-        <Row label="Press T to" note="⌥T always puts today first">
+        <Row
+          label={todayLabel}
+          note={todayLeftKey ? `${shortcutText(todayLeftKey)} always puts today first` : undefined}
+        >
           <Segmented
             value={account.todayKey}
             options={[
@@ -54,7 +66,7 @@ export function GeneralSection() {
               { value: "left-align", label: "Left-align today" },
             ]}
             onChange={(value) => void setAccount("todayKey", value)}
-            label="Press T to"
+            label={todayLabel}
           />
         </Row>
       </Group>

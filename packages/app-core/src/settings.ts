@@ -1,4 +1,5 @@
 import type { SyncedRow } from "@cal/backend/sync";
+import type { Keybindings } from "./commands";
 import type { DataSource } from "./data";
 
 /*
@@ -38,6 +39,8 @@ export const accountDefaults = {
   // Reminder added to new timed events, in minutes before; null for none.
   eventReminder: 10 as number | null,
   maps: "apple" as "apple" | "google",
+  // Shortcut overrides by command id (Settings > Shortcuts); only changes are stored.
+  keybindings: {} as Keybindings,
 };
 
 export const deviceDefaults = {
@@ -140,6 +143,7 @@ const accountChecks: { [K in keyof AccountSettings]: Check } = {
   eventMinutes: isInt(5, 24 * 60),
   eventReminder: nullable(isInt(0, 7 * 24 * 60)),
   maps: oneOf("apple", "google"),
+  keybindings: (value) => isRecord(value) && Object.values(value).every(arrayOf(isString, 4)),
 };
 
 const deviceChecks: { [K in keyof DeviceSettings]: Check } = {

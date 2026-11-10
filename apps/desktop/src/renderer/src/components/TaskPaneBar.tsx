@@ -1,11 +1,11 @@
-import { keyLabels, useActions, useCal } from "@cal/app-core";
+import { useActions, useCal } from "@cal/app-core";
 import { byPosition } from "@cal/domain";
 import { ArrowRight, Box, CalendarDays, Plus, Search } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { useApp } from "../lib/app";
 import { useDrag } from "../lib/drag";
-import { isMac } from "../lib/keyboard";
 import { moveInto } from "../lib/lists";
+import { useShortcut, withShortcut } from "../lib/shortcuts";
 import { closeOverlay, useUi } from "../lib/ui";
 import { ProjectRing, SMART_COLORS, SMART_ICONS } from "./listIcons";
 import { PopMenu, type PopMenuItem, useDismiss } from "./Menu";
@@ -18,9 +18,6 @@ import { IconButton } from "./ui";
  * While a block is dragged over the pane the bar steps aside for the drop hint.
  */
 
-// "When (⌘S)": a button's tooltip with its shortcut.
-const tip = (label: string, binding: string) => `${label} (${keyLabels(binding, isMac).join("")})`;
-
 const ICON = { size: 16, strokeWidth: 1.5, absoluteStrokeWidth: true } as const;
 
 export function TaskPaneBar() {
@@ -29,6 +26,13 @@ export function TaskPaneBar() {
   const moving = useUi((state) => state.overlay === "move");
   const whenOpen = useUi((state) => state.overlay === "when");
   const removing = useDrag((state) => state.removing);
+  // Each button's tooltip names its command's shortcut, "When (⌘S)".
+  const keys = {
+    new: useShortcut("task.new"),
+    when: useShortcut("task.when"),
+    move: useShortcut("task.move"),
+    search: useShortcut("palette.open"),
+  };
   const moveRef = useRef<HTMLDivElement>(null);
   const closeMove = useCallback(() => {
     if (moving) closeOverlay();
@@ -44,7 +48,7 @@ export function TaskPaneBar() {
     >
       <button
         type="button"
-        title={tip("New To-Do", "mod+n")}
+        title={withShortcut("New To-Do", keys.new)}
         onClick={() => commands.run("task.new")}
         className="no-drag flex h-7 items-center gap-1.5 rounded-md px-2 text-small font-medium text-ink-2 transition-colors duration-100 hover:bg-hover hover:duration-0 active:bg-active"
       >
@@ -54,7 +58,7 @@ export function TaskPaneBar() {
       <span className="flex-1" />
       <IconButton
         label="When"
-        title={tip("When", "mod+s")}
+        title={withShortcut("When", keys.when)}
         disabled={!hasTask}
         aria-expanded={whenOpen}
         // The picker closes on any press outside it; this one toggles it instead.
@@ -67,7 +71,7 @@ export function TaskPaneBar() {
       <div ref={moveRef} className="relative">
         <IconButton
           label="Move"
-          title={tip("Move", "mod+shift+m")}
+          title={withShortcut("Move", keys.move)}
           disabled={!hasTask}
           aria-haspopup="menu"
           aria-expanded={moving}
@@ -80,7 +84,7 @@ export function TaskPaneBar() {
       </div>
       <IconButton
         label="Search"
-        title={tip("Search", "mod+k")}
+        title={withShortcut("Search", keys.search)}
         onClick={() => commands.run("palette.open")}
       >
         <Search {...ICON} />
@@ -98,6 +102,11 @@ function MoveMenu() {
   const { commands } = useCal();
   const actions = useActions();
   const selection = useUi((state) => state.selection);
+  const keys = {
+    today: useShortcut("task.today"),
+    anytime: useShortcut("task.anytime"),
+    someday: useShortcut("task.someday"),
+  };
   const task =
     selection?.kind === "task"
       ? data.tasks.find((each) => each.uuid === selection.uuid)
@@ -106,17 +115,17 @@ function MoveMenu() {
 
   const smart = (
     [
-      ["inbox", "Inbox", "task.inbox", undefined],
-      ["today", "Today", "task.today", "mod+t"],
-      ["anytime", "Anytime", "task.anytime", "mod+r"],
-      ["someday", "Someday", "task.someday", "mod+o"],
+      ["inbox", "Inbox", "task.inbox", null],
+      ["today", "Today", "task.today", keys.today],
+      ["anytime", "Anytime", "task.anytime", keys.anytime],
+      ["someday", "Someday", "task.someday", keys.someday],
     ] as const
-  ).map(([list, label, command, keys]): PopMenuItem => {
+  ).map(([list, label, command, binding]): PopMenuItem => {
     const Icon = SMART_ICONS[list];
     return {
       id: list,
       label,
-      keys,
+      keys: binding ?? undefined,
       icon: <Icon {...ICON} className={SMART_COLORS[list]} />,
       run: () => commands.run(command),
     };

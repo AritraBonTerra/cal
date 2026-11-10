@@ -2,14 +2,20 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { LocalStore, type SqlDatabase, type SqlRow } from "@cal/sync";
 import {
+  bindingFor,
   CommandRegistry,
+  commandsUsing,
   createActions,
   History,
   type KeyInput,
   keyLabels,
   matches,
+  normalizeBinding,
+  sameKeys,
   searchCommands,
+  searchShortcuts,
   storeSource,
+  withKeys,
 } from "../src";
 
 function memoryStore() {
@@ -415,5 +421,126 @@ describe("commands", () => {
     expect(searchCommands(commands, "tod").map((command) => command.id)).toEqual(["c", "b"]);
     expect(searchCommands(commands, "home").map((command) => command.id)).toEqual(["c"]);
     expect(searchCommands(commands, "view").map((command) => command.id)).toEqual(["a", "c"]);
+  });
+});
+
+describe("keybindings", () => {
+  const run = () => {};
+
+  test("overrides replace a command's keys; an empty list unbinds it", () => {
+    const registry = new CommandRegistry();
+    const ran: string[] = [];
+    registry.register([
+      { id: "new", title: "New", keys: ["mod+n"], run: () => ran.push("new") },
+      { id: "today", title: "Today", keys: ["t"], run: () => ran.push("today") },
+    ]);
+    let emitted = 0;
+    registry.subscribe(() => emitted++);
+    registry.setBindings({ new: ["mod+shift+j"], today: [] });
+    expect(emitted).toBe(1);
+    // The same overrides again don't re-list.
+    registry.setBindings({ new: ["mod+shift+j"], today: [] });
+    expect(emitted).toBe(1);
+    expect(registry.handle(key("n", { metaKey: true }), true)).toBe(false);
+    expect(registry.handle(key("t"), true)).toBe(false);
+    expect(registry.handle(key("J", { metaKey: true, shiftKey: true }), true)).toBe(true);
+    expect(ran).toEqual(["new"]);
+    const listed = registry.list();
+    expect(listed.map(({ id, keys, defaultKeys }) => ({ id, keys, defaultKeys }))).toEqual([
+      { id: "new", keys: ["mod+shift+j"], defaultKeys: ["mod+n"] },
+      { id: "today", keys: [], defaultKeys: ["t"] },
+    ]);
+    expect(registry.keysFor("today")).toEqual([]);
+    expect(registry.keysFor("missing")).toBeUndefined();
+    registry.setBindings({});
+    expect(registry.keysFor("new")).toEqual(["mod+n"]);
+  });
+
+  test("an override applies to a command registered later, and outlives it", () => {
+    const registry = new CommandRegistry();
+    registry.setBindings({ zoom: ["mod+="] });
+    expect(registry.keysFor("zoom")).toEqual(["mod+="]);
+    const off = registry.register([{ id: "zoom", title: "Zoom", keys: ["mod+shift+."], run }]);
+    expect(registry.list()[0]?.keys).toEqual(["mod+="]);
+    off();
+    expect(registry.keysFor("zoom")).toEqual(["mod+="]);
+  });
+
+  test("bindingFor names a key press, and round-trips with matches", () => {
+    expect(bindingFor(key("K", { metaKey: true, shiftKey: true }), true)).toBe("mod+shift+k");
+    expect(bindingFor(key("k", { ctrlKey: true, altKey: true }), true)).toBe("ctrl+alt+k");
+    expect(bindingFor(key("k", { ctrlKey: true }), false)).toBe("mod+k");
+    expect(bindingFor(key("?", { shiftKey: true }), true)).toBe("?");
+    expect(bindingFor(key(" "), true)).toBe("space");
+    expect(bindingFor(key("+", { metaKey: true, shiftKey: true }), true)).toBe("mod+plus");
+    expect(bindingFor(key("ArrowUp", { shiftKey: true }), true)).toBe("shift+arrowup");
+    expect(bindingFor(key(",", { metaKey: true, shiftKey: true }), true)).toBe("mod+shift+,");
+    expect(bindingFor(key("Shift", { shiftKey: true }), true)).toBeNull();
+    expect(bindingFor(key("Meta", { metaKey: true }), true)).toBeNull();
+    const presses = [
+      key("K", { metaKey: true, shiftKey: true }),
+      key("?", { shiftKey: true }),
+      key("t", { altKey: true }),
+      key(" "),
+      key("+", { metaKey: true }),
+      key("Enter", { ctrlKey: true }),
+      key("Backspace", { metaKey: true }),
+      key(".", { metaKey: true, shiftKey: true }),
+      key("!", { shiftKey: true }),
+    ];
+    for (const press of presses) {
+      const binding = bindingFor(press, true);
+      expect(binding).not.toBeNull();
+      expect(matches(binding ?? "", press, true)).toBe(true);
+    }
+  });
+
+  test("two spellings of one binding normalize to the same string", () => {
+    expect(normalizeBinding("Shift+Mod+K")).toBe("mod+shift+k");
+    expect(normalizeBinding("shift+?")).toBe("?");
+    expect(normalizeBinding("left")).toBe("arrowleft");
+    expect(normalizeBinding(" ")).toBe("space");
+    expect(normalizeBinding("esc")).toBe("escape");
+    expect(sameKeys(["mod+K", "esc"], ["mod+k", "escape"])).toBe(true);
+    expect(sameKeys(["esc", "mod+k"], ["mod+k", "escape"])).toBe(false);
+  });
+
+  test("withKeys stores only real changes", () => {
+    expect(withKeys({}, "new", ["Mod+N"], ["mod+n"])).toEqual({});
+    expect(withKeys({ new: ["mod+j"] }, "new", ["mod+n"], ["mod+n"])).toEqual({});
+    expect(withKeys({ other: [] }, "new", ["Shift+Mod+J"], ["mod+n"])).toEqual({
+      other: [],
+      new: ["mod+shift+j"],
+    });
+    expect(withKeys({}, "new", [], ["mod+n"])).toEqual({ new: [] });
+  });
+
+  test("commandsUsing finds the other commands bound to a key", () => {
+    const commands = [
+      { id: "a", keys: ["mod+k"] },
+      { id: "b", keys: ["enter", "Mod+K"] },
+      { id: "c", keys: ["t"] },
+      { id: "d" },
+    ];
+    expect(commandsUsing(commands, "mod+k", "a").map((command) => command.id)).toEqual(["b"]);
+    expect(commandsUsing(commands, "x")).toEqual([]);
+  });
+
+  test("shortcut search matches names, and keys typed as symbols or words", () => {
+    const commands = [
+      { id: "new", title: "New To-Do", group: "To-Do", keys: ["mod+n"], run },
+      { id: "quick", title: "Quick Entry", group: "To-Do", keys: ["mod+shift+n"], run },
+      { id: "next", title: "Next", group: "Navigate", keys: ["arrowright"], run },
+      { id: "left", title: "Today, Left-Aligned", group: "Navigate", keys: ["alt+t"], run },
+    ];
+    const ids = (text: string) => searchShortcuts(commands, text, true).map(({ id }) => id);
+    expect(ids("new")).toEqual(["new"]);
+    expect(ids("navigate")).toEqual(["next", "left"]);
+    expect(ids("⌘N")).toEqual(["new", "quick"]);
+    expect(ids("cmd n")).toEqual(["new", "quick"]);
+    expect(ids("⇧⌘N")).toEqual(["quick"]);
+    expect(ids("opt t")).toEqual(["left"]);
+    expect(ids("→")).toEqual(["next"]);
+    expect(ids("")).toEqual(["new", "quick", "next", "left"]);
   });
 });

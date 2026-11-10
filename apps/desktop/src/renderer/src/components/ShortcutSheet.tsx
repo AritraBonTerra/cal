@@ -1,6 +1,7 @@
 import { searchCommands, useCommandList } from "@cal/app-core";
 import { useState } from "react";
-import { closeOverlay } from "../lib/ui";
+import { closeOverlay, openSettings } from "../lib/ui";
+import { RowButton } from "./settings/controls";
 import { Keycaps, Overlay } from "./ui";
 
 const GROUP_ORDER = ["View", "Navigate", "To-Do", "Calendar", "General"];
@@ -34,6 +35,7 @@ export function ShortcutSheet() {
           aria-label="Search shortcuts"
           className="ml-auto h-7 w-48 rounded-md bg-hover px-2 text-body text-ink outline-none placeholder:text-ink-3"
         />
+        <RowButton onClick={() => openSettings("shortcuts")}>Customize…</RowButton>
       </div>
       <div className="grid max-h-[calc(70vh-44px)] grid-cols-2 gap-x-8 gap-y-4 overflow-y-auto p-5">
         {groups.map(({ group, commands: list }) => (

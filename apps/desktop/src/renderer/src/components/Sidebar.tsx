@@ -7,6 +7,7 @@ import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
 import { byAccount, calendarColor, soloCalendar, withId } from "../lib/calendars";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
+import { useShortcut, withShortcut } from "../lib/shortcuts";
 import { type ListId, openSettings, showList, toggleOverlay, ui, useUi } from "../lib/ui";
 import { HabitList } from "./HabitList";
 import { ProjectRing, SMART_COLORS, SMART_ICONS } from "./listIcons";
@@ -39,6 +40,7 @@ interface SidebarProps {
 export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
   const { data, today } = useApp();
   const current = useUi((state) => state.list);
+  const settingsKey = useShortcut("settings.open");
   const counts = (list: ListId) =>
     data.tasks.filter((task) =>
       list === "today" || list === "inbox" ? inList(task, list, today) : false,
@@ -133,7 +135,11 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
       )}
 
       <div className="relative flex h-11 shrink-0 items-center gap-1 px-2" data-sidebar-footer>
-        <IconButton label="Settings (⌘,)" onClick={() => openSettings()} data-settings>
+        <IconButton
+          label={withShortcut("Settings", settingsKey)}
+          onClick={() => openSettings()}
+          data-settings
+        >
           <Settings size={16} strokeWidth={1.5} absoluteStrokeWidth />
         </IconButton>
         <NewListButton />

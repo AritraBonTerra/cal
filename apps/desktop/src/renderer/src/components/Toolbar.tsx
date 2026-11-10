@@ -1,7 +1,9 @@
+import { useCommandList } from "@cal/app-core";
 import type { DayKey } from "@cal/domain";
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
+import { rebound, useShortcut, withShortcut } from "../lib/shortcuts";
 import { formatMonthYear, formatSpan, weekNumber } from "../lib/time";
 import {
   goToday,
@@ -34,6 +36,12 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
   const travelZone = useUi((state) => state.travelZone);
+  const keys = {
+    prev: useShortcut("nav.prev"),
+    next: useShortcut("nav.next"),
+    palette: useShortcut("palette.open"),
+    stopTravel: useShortcut("zone.exit"),
+  };
   const title =
     view.kind === "month"
       ? formatMonthYear(anchor)
@@ -68,7 +76,7 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
         <button
           type="button"
           onClick={() => ui.set({ travelZone: null })}
-          title="Stop travelling (Esc)"
+          title={withShortcut("Stop travelling", keys.stopTravel)}
           className="no-drag ml-2 flex h-6 shrink-0 items-center gap-1 rounded-full bg-now pr-1.5 pl-2.5 text-caption font-medium text-white"
           data-travel
         >
@@ -84,15 +92,15 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
       >
         Today
       </button>
-      <IconButton label="Previous (←)" onClick={() => moveView(-1)}>
+      <IconButton label={withShortcut("Previous", keys.prev)} onClick={() => moveView(-1)}>
         <ChevronLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />
       </IconButton>
-      <IconButton label="Next (→)" onClick={() => moveView(1)}>
+      <IconButton label={withShortcut("Next", keys.next)} onClick={() => moveView(1)}>
         <ChevronRight size={16} strokeWidth={1.5} absoluteStrokeWidth />
       </IconButton>
       <ViewMenu label={label} />
       <IconButton
-        label="Command menu (⌘K)"
+        label={withShortcut("Command menu", keys.palette)}
         onClick={() => toggleOverlay("palette")}
         className="ml-1"
       >
@@ -114,6 +122,7 @@ const CHOICES = [
 // A small popover with the common spans; any other count comes from ⌘K ("Show 14 days").
 function ViewMenu({ label }: { label: string }) {
   const { today } = useApp();
+  const commands = useCommandList(true);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -156,7 +165,7 @@ function ViewMenu({ label }: { label: string }) {
               className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body text-ink hover:bg-hover"
             >
               {choice.label}
-              <Keycaps binding={choice.keys} />
+              <ChoiceKeys binding={rebound(commands, choice.keys, "View")} />
             </button>
           ))}
         </div>
@@ -164,3 +173,7 @@ function ViewMenu({ label }: { label: string }) {
     </div>
   );
 }
+
+// A view choice's keycaps, as the user has bound them; nothing when unbound.
+const ChoiceKeys = ({ binding }: { binding: string | null }) =>
+  binding ? <Keycaps binding={binding} /> : null;

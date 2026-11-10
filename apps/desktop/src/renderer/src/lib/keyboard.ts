@@ -1,4 +1,4 @@
-import type { Cal } from "@cal/app-core";
+import type { Cal, KeyInput } from "@cal/app-core";
 import { useEffect } from "react";
 
 export const isMac = window.cal.platform === "darwin";
@@ -32,6 +32,26 @@ const UNSHIFTED: Record<string, string> = {
 };
 
 /**
+ * A key event as the command registry sees it. Bindings name keys, not the characters
+ * modifiers produce: ⌥ with a letter or digit types a symbol ("†" for ⌥T), and ⇧⌘. arrives
+ * as ">", so both are turned back into the key. The dispatcher and the shortcut recorder
+ * both go through this, so a recorded binding always matches its own key press.
+ */
+export function keyInput(event: KeyboardEvent): KeyInput {
+  const mod = isMac ? event.metaKey : event.ctrlKey;
+  const typed =
+    event.altKey && /^(Key[A-Z]|Digit\d)$/.test(event.code) ? event.code.slice(-1) : undefined;
+  const unshifted = mod && event.shiftKey ? UNSHIFTED[event.code] : undefined;
+  return {
+    key: typed ?? unshifted ?? event.key,
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+  };
+}
+
+/**
  * Routes window key presses to the command registry. Inside a text field only ⌘
  * shortcuts run, so typing "t" never jumps to today. Overlays and inputs that handle a
  * key themselves call preventDefault first and are left alone.
@@ -45,20 +65,7 @@ export function useKeyboard(cal: Cal) {
       if (typing && !mod) return;
       // The field's own undo and redo, and clipboard, stay native.
       if (typing && /^[zxcva]$/i.test(event.key)) return;
-      // ⌥ with a letter types a symbol ("†" for ⌥T); bindings name the letter.
-      const letter =
-        event.altKey && /^Key[A-Z]$/.test(event.code) ? event.code.slice(3) : undefined;
-      const unshifted = mod && event.shiftKey ? UNSHIFTED[event.code] : undefined;
-      const handled = cal.commands.handle(
-        {
-          key: letter ?? unshifted ?? event.key,
-          metaKey: event.metaKey,
-          ctrlKey: event.ctrlKey,
-          altKey: event.altKey,
-          shiftKey: event.shiftKey,
-        },
-        isMac,
-      );
+      const handled = cal.commands.handle(keyInput(event), isMac);
       if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", onKey);

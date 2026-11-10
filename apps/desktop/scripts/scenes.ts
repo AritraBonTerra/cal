@@ -6,7 +6,8 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
  * capture. `steps` runs any sequence of those in order instead, plus pointer moves to a
- * window point (`move`) and right-clicks (`context`, a CSS selector).
+ * window point (`move`) or onto an element (`hover`, a CSS selector), right-clicks
+ * (`context`, a CSS selector), and scrolling an element to the top of its list (`reveal`).
  */
 export type Step =
   | { press: string }
@@ -14,6 +15,8 @@ export type Step =
   | { click: string }
   | { context: string }
   | { move: { x: number; y: number } }
+  | { hover: string }
+  | { reveal: string }
   | { wait: number };
 
 export interface Scene {
@@ -38,6 +41,14 @@ const NO_HABITS: Step[] = ["Gym", "Read", "Meditate"].flatMap((title) => [
 
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
 const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
+// Shortcut overrides: Quick Entry on ⌘N too (shared with New To-Do), Today unbound, and
+// a second key for the command menu.
+const SHORTCUT_CHANGES = {
+  "task.quickEntry": ["mod+n"],
+  "nav.today": [],
+  "palette.open": ["mod+k", "mod+p"],
+};
+
 // A to-do in Today with notes, tags, a deadline and an estimate.
 const PRICING = "li:has-text('Update pricing page copy')";
 
@@ -347,4 +358,60 @@ export const scenes: Scene[] = [
       },
     },
   },
+  // Settings > Shortcuts: every command, a row hovered to show + and ×.
+  {
+    name: "settings-shortcuts",
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { hover: "[data-command='view.days.1']" }],
+  },
+  {
+    name: "settings-shortcuts-dark",
+    dark: true,
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { hover: "[data-command='view.days.1']" }],
+  },
+  // Changed rows: Quick Entry moved onto ⌘N (a conflict), a second key, an unbound one.
+  {
+    name: "settings-shortcuts-changed",
+    settings: { account: { keybindings: SHORTCUT_CHANGES } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { reveal: "[data-command='nav.today']" }],
+  },
+  {
+    name: "settings-shortcuts-changed-dark",
+    dark: true,
+    settings: { account: { keybindings: SHORTCUT_CHANGES } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { reveal: "[data-command='nav.today']" }],
+  },
+  // Searching by keys, and a binding being recorded.
+  {
+    name: "settings-shortcuts-search",
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[aria-label='Search shortcuts']" },
+      { type: "cmd n" },
+    ],
+  },
+  {
+    name: "settings-shortcuts-recording",
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[data-command='palette.open'] [data-key]" },
+    ],
+  },
+  {
+    name: "settings-shortcuts-recording-dark",
+    dark: true,
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[data-command='palette.open'] [data-key]" },
+    ],
+  },
+  { name: "settings-about", keys: ["Meta+,"], click: "[data-section=about]" },
+  { name: "settings-about-dark", dark: true, keys: ["Meta+,"], click: "[data-section=about]" },
+  { name: "settings-account", keys: ["Meta+,"], click: "[data-section=account]" },
 ];
