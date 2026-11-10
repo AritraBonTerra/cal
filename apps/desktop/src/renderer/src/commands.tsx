@@ -38,6 +38,7 @@ import {
   showDays,
   showList,
   showMonth,
+  showYear,
   toggleOverlay,
   togglePane,
   ui,
@@ -147,7 +148,20 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         aliases: ["7 days"],
         run: () => showDays(7, latest.current.today),
       },
-      { id: "view.month", title: "Month", group: "View", keys: ["m"], run: showMonth },
+      {
+        id: "view.month",
+        title: "Month",
+        group: "View",
+        keys: ["m"],
+        run: () => showMonth(latest.current.today),
+      },
+      {
+        id: "view.year",
+        title: "Year",
+        group: "View",
+        keys: ["y"],
+        run: () => showYear(latest.current.gridToday),
+      },
       ...Array.from({ length: 22 }, (_, index) => index + 10).map(
         (count): Command => ({
           id: `view.days.${count}`,
@@ -230,6 +244,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "zone.add",
         title: "Add Time Zone…",
         group: "View",
+        when: "Fewer than 3 time zones are shown",
         aliases: ["timezone", "time zone column", "world clock"],
         enabled: () => latest.current.account.timeZones.length < 3,
         run: () => openZonePicker({ kind: "add" }),
@@ -249,6 +264,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "zone.exit",
         title: "Stop Travelling",
         group: "View",
+        when: "Travelling to another time zone",
         keys: ["escape"],
         aliases: ["return to my time zone"],
         enabled: () => ui.get().travelZone !== null && ui.get().overlay === null,
@@ -261,6 +277,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "nav.next",
         title: "Next",
         group: "Navigate",
+        when: "No to-do is open",
         keys: ["arrowright"],
         aliases: ["forward"],
         enabled: () => !ui.get().editing,
@@ -270,6 +287,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "nav.prev",
         title: "Previous",
         group: "Navigate",
+        when: "No to-do is open",
         keys: ["arrowleft"],
         aliases: ["back"],
         enabled: () => !ui.get().editing,
@@ -329,10 +347,11 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const { list } = ui.get();
           const { today } = latest.current;
-          // Opens as a card with the title focused; left untitled, it's removed on close.
+          // Opens as a card with the title focused, read as Quick Entry text ("Call the
+          // movers tomorrow 3pm"); left untitled, it's removed on close.
           void actions
             .createTask({ title: "", ...newTaskIn(list, today) })
-            .then((uuid) => openCard({ uuid, title: "", notes: undefined }));
+            .then((uuid) => openCard({ uuid, title: "", notes: undefined }, true));
         },
       },
       {
@@ -380,6 +399,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.complete",
         title: "Complete",
         group: "To-Do",
+        when: "A to-do or block is selected",
         keys: [" ", "mod+."],
         aliases: ["mark done", "check"],
         enabled: () => hasTask() || hasBlock(),
@@ -397,6 +417,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.edit",
         title: "Open To-Do",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["enter"],
         aliases: ["edit", "rename", "notes", "details", "tags", "deadline", "estimate"],
         enabled: hasTask,
@@ -409,6 +430,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.close",
         title: "Close To-Do",
         group: "To-Do",
+        when: "A to-do is open",
         keys: ["mod+enter"],
         aliases: ["done editing", "save"],
         enabled: () => ui.get().editing !== null,
@@ -418,6 +440,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.when",
         title: "When…",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+s"],
         aliases: ["schedule", "date"],
         // Also from an open card, where it opens the card's When chip.
@@ -428,6 +451,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.move",
         title: "Move…",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+shift+m"],
         aliases: ["project", "area", "list"],
         enabled: hasTask,
@@ -440,6 +464,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.inbox",
         title: "Move to Inbox",
         group: "To-Do",
+        when: "A to-do is selected",
         enabled: hasTask,
         run: () => {
           const task = selectedTask();
@@ -450,6 +475,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.today",
         title: "Move to Today",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+t"],
         enabled: hasTask,
         run: () => {
@@ -461,6 +487,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.evening",
         title: "Move to This Evening",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+e"],
         enabled: hasTask,
         run: () => {
@@ -472,6 +499,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.tomorrow",
         title: "Move to Tomorrow",
         group: "To-Do",
+        when: "A to-do is selected",
         enabled: hasTask,
         run: () => {
           const task = selectedTask();
@@ -482,6 +510,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.anytime",
         title: "Move to Anytime",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+r"],
         enabled: hasTask,
         run: () => {
@@ -493,6 +522,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.someday",
         title: "Move to Someday",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+o"],
         enabled: hasTask,
         run: () => {
@@ -504,6 +534,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.schedule",
         title: "Schedule in Next Free Slot",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["x"],
         aliases: ["time block", "find time"],
         enabled: hasTask,
@@ -535,6 +566,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.reveal",
         title: "Show in Calendar",
         group: "To-Do",
+        when: "A scheduled to-do is selected",
         aliases: ["find block", "go to block", "when is it scheduled"],
         enabled: () => {
           const task = selectedTask();
@@ -552,6 +584,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.delete",
         title: "Delete To-Do",
         group: "To-Do",
+        when: "A to-do is selected",
         keys: ["mod+backspace"],
         enabled: hasTask,
         run: () => {
@@ -565,6 +598,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.up",
         title: "Previous To-Do",
         group: "To-Do",
+        when: "The to-do list is showing",
         keys: ["arrowup"],
         enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
         run: () => step(-1),
@@ -573,6 +607,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "task.down",
         title: "Next To-Do",
         group: "To-Do",
+        when: "The to-do list is showing",
         keys: ["arrowdown"],
         enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
         run: () => step(1),
@@ -626,6 +661,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "event.edit",
         title: "Edit Event",
         group: "Calendar",
+        when: "An event is selected",
         keys: ["enter", "e"],
         aliases: ["open event"],
         enabled: hasEvent,
@@ -638,6 +674,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "event.delete",
         title: "Delete Event",
         group: "Calendar",
+        when: "An event is selected",
         keys: ["backspace", "delete", "mod+backspace"],
         aliases: ["remove event"],
         enabled: hasEvent,
@@ -658,6 +695,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.delete",
         title: "Remove from Calendar",
         group: "Calendar",
+        when: "A block is selected",
         keys: ["backspace", "delete"],
         aliases: ["delete block"],
         enabled: hasBlock,
@@ -672,6 +710,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.session",
         title: "Done for This Session",
         group: "Calendar",
+        when: "A block is selected",
         aliases: ["block done"],
         enabled: hasBlock,
         run: () => {
@@ -683,6 +722,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.earlier",
         title: "Move Block Earlier",
         group: "Calendar",
+        when: "A block is selected",
         keys: ["arrowup"],
         enabled: hasBlock,
         run: () => nudgeBlock(-NUDGE, false),
@@ -691,6 +731,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.later",
         title: "Move Block Later",
         group: "Calendar",
+        when: "A block is selected",
         keys: ["arrowdown"],
         enabled: hasBlock,
         run: () => nudgeBlock(NUDGE, false),
@@ -699,6 +740,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.shorter",
         title: "Shorten Block",
         group: "Calendar",
+        when: "A block is selected",
         keys: ["shift+arrowup"],
         enabled: hasBlock,
         run: () => nudgeBlock(-NUDGE, true),
@@ -707,6 +749,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "block.longer",
         title: "Lengthen Block",
         group: "Calendar",
+        when: "A block is selected",
         keys: ["shift+arrowdown"],
         enabled: hasBlock,
         run: () => nudgeBlock(NUDGE, true),
@@ -721,6 +764,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "select.clear",
         title: "Deselect",
         group: "Calendar",
+        when: "Something is selected",
         keys: ["escape"],
         enabled: () => ui.get().selection !== null || ui.get().editing !== null,
         run: () => select(null),
@@ -770,6 +814,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "account.signIn",
         title: "Sign In…",
         group: "General",
+        when: "Signed out",
         aliases: ["account", "sync", "log in"],
         enabled: () => auth.status === "signedOut",
         run: () => toggleOverlay("signIn"),
@@ -778,6 +823,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         id: "account.signOut",
         title: "Sign Out",
         group: "General",
+        when: "Signed in",
         aliases: ["account", "log out"],
         enabled: () => auth.status === "signedIn",
         run: () => {

@@ -3,6 +3,7 @@ import { Globe } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "../lib/clock";
 import { setFormZone } from "../lib/events";
+import { shortcutText, useShortcut } from "../lib/shortcuts";
 import { formatMinutes } from "../lib/time";
 import { closeOverlay, useUi } from "../lib/ui";
 import { useZoneSettings } from "../lib/zoneSettings";
@@ -19,6 +20,7 @@ export function ZonePicker() {
   const { device } = useSettings();
   const zones = useZoneSettings();
   const now = useNow();
+  const stopKey = useShortcut("zone.exit");
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -135,8 +137,10 @@ export function ZonePicker() {
         <span className="flex items-center gap-1">
           <Keycaps binding="escape" /> Close
         </span>
-        {purpose.kind === "travel" && (
-          <span className="ml-auto">The grid shows that zone until you press Esc</span>
+        {purpose.kind === "travel" && stopKey && (
+          <span className="ml-auto">
+            The grid shows that zone until you press {shortcutText(stopKey)}
+          </span>
         )}
       </footer>
     </Overlay>

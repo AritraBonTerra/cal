@@ -15,7 +15,12 @@ export interface AppConfig {
   fixture: boolean;
   // A fixed "now" in epoch ms; the window's clock starts here and runs normally.
   now?: number;
+  // The app's version, e.g. "0.1.0", for Settings > About.
+  version: string;
 }
+
+// The keys in effect for each command, by id, so the menu bar can show them.
+export type MenuKeys = Record<string, readonly string[]>;
 
 export interface CalBridge {
   platform: NodeJS.Platform;
@@ -39,6 +44,11 @@ export interface CalBridge {
   calendar: CalendarSource;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
+  // Gives the menu bar the commands' keys, replacing what it had; null makes the window
+  // ignore every menu shortcut until the next report (while a shortcut is being recorded).
+  setMenuKeys(keys: MenuKeys | null): Promise<void>;
+  // Checks for an update now and says what it found, like the app menu's item.
+  checkForUpdates(): Promise<void>;
   // Switches the window (and its `prefers-color-scheme`) between following the Mac,
   // light and dark.
   setTheme(theme: Theme): Promise<void>;
@@ -66,6 +76,8 @@ export const channels = {
   // Main asks the window to finish up before closing; the window answers when it has.
   closing: "cal:closing",
   closeReady: "cal:close-ready",
+  menuKeys: "cal:menu-keys",
+  checkForUpdates: "cal:check-for-updates",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.

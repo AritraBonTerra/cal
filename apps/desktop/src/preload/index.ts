@@ -9,6 +9,7 @@ import {
   channels,
   type DataCall,
   type DataChanged,
+  type MenuKeys,
   type SyncStatus,
   type Theme,
 } from "../shared/api";
@@ -76,6 +77,8 @@ const bridge: CalBridge = {
   },
   calendar,
   onCommand: (listener) => listen<string>("cal:command", listener),
+  setMenuKeys: (keys: MenuKeys | null) => ipcRenderer.invoke(channels.menuKeys, keys),
+  checkForUpdates: () => ipcRenderer.invoke(channels.checkForUpdates),
   setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
   onClosing: (listener) => {
     closing.add(listener);

@@ -32,6 +32,7 @@ import {
   sectionKey,
   UPCOMING_DAYS,
 } from "../lib/lists";
+import { shortcutText, useShortcut } from "../lib/shortcuts";
 import {
   dayNumber,
   formatMinutes,
@@ -71,6 +72,7 @@ export function TaskPane() {
   const pointer = useDrag((state) => state.pointer);
   const selection = useUi((state) => state.selection);
   const editing = useUi((state) => state.editing);
+  const newKey = useShortcut("task.new");
   const sections = useSteadyWhileOpen(
     listSections(list, data, { today, gridToday, zone, now }),
     data.tasks,
@@ -126,10 +128,14 @@ export function TaskPane() {
             {Icon && (
               <Icon size={24} strokeWidth={1.5} absoluteStrokeWidth className="text-ink-3" />
             )}
-            <span>
-              Nothing here. Press <Keycaps binding="mod+n" className="mx-0.5 align-text-bottom" />{" "}
-              to add a to-do.
-            </span>
+            {newKey ? (
+              <span>
+                Nothing here. Press{" "}
+                <Keycaps binding={newKey} className="mx-0.5 align-text-bottom" /> to add a to-do.
+              </span>
+            ) : (
+              <span>Nothing here.</span>
+            )}
           </p>
         )}
         {list === "upcoming" ? (
@@ -194,6 +200,7 @@ function SectionRows({
   events?: readonly ExternalEvent[];
 }) {
   const { today } = useApp();
+  const scheduleKey = useShortcut("task.schedule");
   const rows = (
     <ul>
       {section.rows.map((task) => (
@@ -220,7 +227,9 @@ function SectionRows({
     case "unscheduled":
       return (
         <>
-          <Heading hint="press X to place">Not scheduled</Heading>
+          <Heading hint={scheduleKey ? `press ${shortcutText(scheduleKey)} to place` : undefined}>
+            Not scheduled
+          </Heading>
           {rows}
         </>
       );

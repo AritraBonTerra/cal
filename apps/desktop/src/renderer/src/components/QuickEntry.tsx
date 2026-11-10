@@ -16,11 +16,17 @@ import {
   Repeat,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
 import { type Literal, shiftLiterals } from "../lib/entryText";
-import { defaultCalendar, type EntryKind, entryInput, eventWriter } from "../lib/events";
+import {
+  defaultCalendar,
+  type EntryKind,
+  entryInput,
+  entryKindKey,
+  eventWriter,
+} from "../lib/events";
 import { showToast } from "../lib/toast";
 import { closeOverlay, select } from "../lib/ui";
 import { TokenText } from "./TokenText";
@@ -29,10 +35,10 @@ import { Keycaps, Overlay, Segmented } from "./ui";
 /*
  * ⇧⌘N: one line of natural language. Recognized parts light up as you type and are
  * listed as chips underneath; Enter creates the to-do (and a block when a time was
- * given) or, in Event mode, the calendar event. The Event | To-do switch (⌘1/⌘2)
- * decides; before it's touched, a leading "event " / "task " or the shape of the text
- * does. A click on a highlight or Backspace right after a token keeps that text in the
- * title instead.
+ * given) or, in Event mode, the calendar event. The Event | To-do switch (⌘1/⌘2,
+ * handled on the whole panel so they work wherever focus is in it) decides; before it's
+ * touched, a leading "event " / "task " or the shape of the text does. A click on a
+ * highlight or Backspace right after a token keeps that text in the title instead.
  */
 
 const TOKEN_ICONS: Partial<Record<TokenKind, typeof Flag>> = {
@@ -67,6 +73,7 @@ export function QuickEntry() {
   // The switch, once the user has flipped it (⌘1/⌘2 or a click). Until then the parser
   // decides: a leading "event " or "task ", else what the text looks like, else To-do.
   const [chosen, setChosen] = useState<EntryKind | null>(null);
+  const input = useRef<HTMLInputElement>(null);
   const writable = calendars.filter((calendar) => calendar.writable);
   const entry = parseQuickEntry(text, {
     now: now(),
@@ -120,10 +127,34 @@ export function QuickEntry() {
       : "New to-do, e.g. Call the movers tomorrow 3pm ~30m !fri /launch";
 
   return (
-    <Overlay onClose={closeOverlay} width={640} label="Quick Entry">
+    <Overlay
+      onClose={closeOverlay}
+      width={640}
+      label="Quick Entry"
+      onKeyDown={(event) => {
+        const pick = entryKindKey(event);
+        // Focus on the panel itself, after a click on its blank parts.
+        const loose = event.target === event.currentTarget;
+        if (event.key === "Escape") closeOverlay();
+        else if (pick === "task" || (pick === "event" && writable.length)) {
+          setChosen(pick);
+          input.current?.focus();
+        } else if (loose && event.key === "Enter") void submit();
+        else if (loose && !event.metaKey && !event.ctrlKey) {
+          // Typing goes to the text, never to the window's single-key shortcuts: the
+          // field takes focus before the key's character is entered.
+          input.current?.focus();
+          event.stopPropagation();
+          return;
+        } else return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
       <div className="flex h-11 items-center border-b border-grid pr-3">
         <div className="min-w-0 flex-1">
           <TokenText
+            inputRef={input}
             autoFocus
             value={text}
             tokens={entry.tokens}
@@ -131,9 +162,6 @@ export function QuickEntry() {
             onUnparse={unparse}
             onKeyDown={(event) => {
               if (event.key === "Enter") void submit();
-              else if (event.key === "Escape") closeOverlay();
-              else if (event.metaKey && event.key === "1" && writable.length) setChosen("event");
-              else if (event.metaKey && event.key === "2") setChosen("task");
               else return;
               event.preventDefault();
               event.stopPropagation();
@@ -147,10 +175,14 @@ export function QuickEntry() {
           <Segmented
             value={kind}
             options={[
-              { value: "event", label: "Event" },
-              { value: "task", label: "To-do" },
+              { value: "event", label: "Event", hint: "mod+1" },
+              { value: "task", label: "To-do", hint: "mod+2" },
             ]}
-            onChange={setChosen}
+            onChange={(next) => {
+              setChosen(next);
+              // Back to the text, so the next keys type rather than run shortcuts.
+              input.current?.focus();
+            }}
             label="Kind"
           />
         )}
@@ -199,12 +231,6 @@ export function QuickEntry() {
         <span className="flex items-center gap-1">
           <Keycaps binding="enter" /> {kind === "event" ? "Add event" : "Add to-do"}
         </span>
-        {writable.length > 0 && (
-          <span className="flex items-center gap-1">
-            <Keycaps binding="mod+1" />
-            <Keycaps binding="mod+2" /> Event / To-do
-          </span>
-        )}
         <span className="flex items-center gap-1">
           <Keycaps binding="escape" /> Cancel
         </span>

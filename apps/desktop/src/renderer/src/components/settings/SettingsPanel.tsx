@@ -1,11 +1,22 @@
-import { CalendarDays, Globe, LayoutGrid, type LucideIcon, Settings2, User } from "lucide-react";
+import {
+  CalendarDays,
+  Globe,
+  Info,
+  Keyboard,
+  LayoutGrid,
+  type LucideIcon,
+  Settings2,
+  User,
+} from "lucide-react";
 import type { AuthState, SyncStatus } from "../../../../shared/api";
 import { closeOverlay, type SettingsSection, ui, useUi } from "../../lib/ui";
 import { Overlay } from "../ui";
+import { AboutSection } from "./AboutSection";
 import { AccountSection } from "./AccountSection";
 import { CalendarsSection } from "./CalendarsSection";
 import { GeneralSection } from "./GeneralSection";
 import { GridSection } from "./GridSection";
+import { ShortcutsSection } from "./ShortcutsSection";
 import { ZonesSection } from "./ZonesSection";
 
 /*
@@ -19,13 +30,15 @@ const SECTIONS: { id: SettingsSection; title: string; icon: LucideIcon }[] = [
   { id: "zones", title: "Time zones", icon: Globe },
   { id: "calendars", title: "Calendars", icon: CalendarDays },
   { id: "account", title: "Account", icon: User },
+  { id: "shortcuts", title: "Shortcuts", icon: Keyboard },
+  { id: "about", title: "About", icon: Info },
 ];
 
 export function SettingsPanel({ auth, sync }: { auth: AuthState; sync: SyncStatus }) {
   const section = useUi((state) => state.settingsSection);
   const current = SECTIONS.find((each) => each.id === section) ?? SECTIONS[0];
   return (
-    <Overlay onClose={closeOverlay} width={760} height={540} label="Settings">
+    <Overlay onClose={closeOverlay} width={860} height={620} label="Settings">
       {/* biome-ignore lint/a11y/noStaticElementInteractions: Escape closes the panel from anywhere inside. */}
       <div
         className="flex h-full"
@@ -63,6 +76,8 @@ export function SettingsPanel({ auth, sync }: { auth: AuthState; sync: SyncStatu
           {section === "zones" && <ZonesSection />}
           {section === "calendars" && <CalendarsSection />}
           {section === "account" && <AccountSection auth={auth} sync={sync} />}
+          {section === "shortcuts" && <ShortcutsSection />}
+          {section === "about" && <AboutSection />}
         </div>
       </div>
     </Overlay>

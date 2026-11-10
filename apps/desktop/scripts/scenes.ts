@@ -6,13 +6,17 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
  * capture. `steps` runs any sequence of those in order instead, plus pointer moves to a
- * window point (`move`).
+ * window point (`move`) or onto an element (`hover`, a CSS selector), right-clicks
+ * (`context`, a CSS selector), and scrolling an element to the top of its list (`reveal`).
  */
 export type Step =
   | { press: string }
   | { type: string }
   | { click: string }
+  | { context: string }
   | { move: { x: number; y: number } }
+  | { hover: string }
+  | { reveal: string }
   | { wait: number };
 
 export interface Scene {
@@ -29,8 +33,22 @@ export interface Scene {
   steps?: Step[];
 }
 
+// Archives every fixture habit from the sidebar's Habits, for the no-habits state.
+const NO_HABITS: Step[] = ["Gym", "Read", "Meditate"].flatMap((title) => [
+  { context: `[data-habit-list] li:has-text('${title}') button` },
+  { click: "[role=menuitem]:has-text('Archive')" },
+]);
+
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
 const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
+// Shortcut overrides: Quick Entry on ⌘N too (shared with New To-Do), Today unbound, and
+// a second key for the command menu.
+const SHORTCUT_CHANGES = {
+  "task.quickEntry": ["mod+n"],
+  "nav.today": [],
+  "palette.open": ["mod+k", "mod+p"],
+};
+
 // A to-do in Today with notes, tags, a deadline and an estimate.
 const PRICING = "li:has-text('Update pricing page copy')";
 
@@ -70,6 +88,15 @@ export const scenes: Scene[] = [
   { name: "habit-rings" },
   { name: "habit-rings-dark", dark: true },
   { name: "month", keys: ["m"] },
+  // The year: twelve mini months, today's badge, a dot on each busy day.
+  { name: "year", keys: ["y"] },
+  { name: "year-dark", dark: true, keys: ["y"] },
+  { name: "year-panes-hidden", keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-panes-hidden-dark", dark: true, keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-narrow", width: 860, height: 700, keys: ["y"] },
+  { name: "year-narrow-panes", width: 860, height: 700, keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-tight", width: 760, height: 520, keys: ["y"] },
+  { name: "year-tight-sidebar-dark", dark: true, width: 760, height: 520, keys: ["y", "Meta+\\"] },
   { name: "palette", keys: ["Meta+k"] },
   { name: "shortcuts", keys: ["?"] },
   {
@@ -98,6 +125,33 @@ export const scenes: Scene[] = [
   },
   // ⌘N opens the new row as a card with the title focused; its chips show quiet labels.
   { name: "task-card-new", keys: ["Meta+n"], text: "Call the bank" },
+  // A new card reads its title as Quick Entry text: tokens light up and the chips
+  // preview the day and time, deadline, estimate, project and tags.
+  {
+    name: "task-card-parse",
+    keys: ["Meta+n"],
+    text: "Movers tomorrow 3pm ~45m !fri",
+  },
+  {
+    name: "task-card-parse-dark",
+    dark: true,
+    keys: ["Meta+n"],
+    text: "Draft launch post 2pm /launch #writing",
+  },
+  // Backspace right after "tomorrow" was recognised keeps it as title text.
+  {
+    name: "task-card-parse-unparse",
+    keys: ["Meta+n"],
+    text: "Read tomorrow",
+    after: ["Backspace"],
+  },
+  // Closed with Return: the row has the clean title and the time, with a block on the grid.
+  {
+    name: "task-card-parse-closed",
+    keys: ["Meta+n"],
+    text: "Water the ferns 4pm ~30m #home",
+    after: ["Enter"],
+  },
   // Today split into Scheduled (with each row's start time) and Not scheduled.
   { name: "today-scheduled-dark", dark: true },
   // From next week, the time on a Scheduled row brings today's block back into view
@@ -154,15 +208,21 @@ export const scenes: Scene[] = [
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
   // Both panes hidden: the title clears the traffic lights and the pane toggles.
   { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },
+  { name: "panes-collapsed-dark", dark: true, keys: ["Meta+\\", "Meta+/"] },
+  // The pane toggles beside the traffic lights: open icons carry the collapse cue, a
+  // hidden pane's icon is plain and dim; one hovered.
+  { name: "pane-toggles-dark", dark: true },
+  { name: "pane-toggles-mixed", keys: ["Meta+/"] },
+  { name: "pane-toggles-hover", steps: [{ move: { x: 97, y: 26 } }] },
   // The sidebar's + menu, and a project just made with ⌥⌘N, its title being typed.
   { name: "new-list-menu", click: "[data-new-list]" },
   { name: "new-project", keys: ["Meta+Alt+n"], text: "Garden" },
   { name: "new-project-dark", dark: true, keys: ["Meta+Alt+n"], text: "Garden" },
-  // New Habit… from the + beside the habit strip, set to a weekly quota.
+  // New Habit… from the dashed + in the habit strip, set to a weekly quota.
   {
     name: "new-habit",
     steps: [
-      { click: "button[aria-label='New Habit…']" },
+      { click: "[data-add-habit]" },
       { type: "Stretch" },
       { click: "[role=radio]:has-text('Times per')" },
     ],
@@ -171,11 +231,31 @@ export const scenes: Scene[] = [
     name: "new-habit-dark",
     dark: true,
     steps: [
-      { click: "button[aria-label='New Habit…']" },
+      { click: "[data-add-habit]" },
       { type: "Read" },
       { click: "[role=radio]:has-text('On days')" },
       { click: "[role=radio]:has-text('An amount')" },
     ],
+  },
+  // Habits in the sidebar (today's ring, progress) and the strip's "habits" caption and +.
+  { name: "habits", keys: ["3"] },
+  { name: "habits-dark", dark: true },
+  { name: "habits-narrow", width: 860, height: 700 },
+  // No habits: the strip's "Add a habit" pill in today's column, "No habits yet" in the
+  // sidebar; in a window too narrow for the pill, the dashed + instead.
+  { name: "habits-empty", steps: NO_HABITS },
+  { name: "habits-empty-dark", dark: true, steps: NO_HABITS },
+  // The sidebar is hidden at this width: show it to archive, then hide it again.
+  {
+    name: "habits-empty-narrow",
+    width: 760,
+    height: 700,
+    steps: [{ press: "Meta+\\" }, ...NO_HABITS, { press: "Meta+\\" }],
+  },
+  // A habit row's right-click menu (the footer + menu is new-list-menu).
+  {
+    name: "habit-archive-menu",
+    steps: [{ context: "[data-habit-list] li:has-text('Read') button" }],
   },
   // The to-do bar's Move menu for the selected to-do (⇧⌘M).
   { name: "task-move", keys: ["ArrowDown", "Meta+Shift+m"] },
@@ -255,6 +335,7 @@ export const scenes: Scene[] = [
       { press: "Backspace" },
     ],
   },
+  { name: "quick-entry-dark", dark: true, keys: ["Meta+Shift+n"], text: "Call the movers" },
   {
     name: "quick-entry-event",
     keys: ["Meta+Shift+n", "Meta+1"],
@@ -277,4 +358,60 @@ export const scenes: Scene[] = [
       },
     },
   },
+  // Settings > Shortcuts: every command, a row hovered to show + and ×.
+  {
+    name: "settings-shortcuts",
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { hover: "[data-command='view.days.1']" }],
+  },
+  {
+    name: "settings-shortcuts-dark",
+    dark: true,
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { hover: "[data-command='view.days.1']" }],
+  },
+  // Changed rows: Quick Entry moved onto ⌘N (a conflict), a second key, an unbound one.
+  {
+    name: "settings-shortcuts-changed",
+    settings: { account: { keybindings: SHORTCUT_CHANGES } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { reveal: "[data-command='nav.today']" }],
+  },
+  {
+    name: "settings-shortcuts-changed-dark",
+    dark: true,
+    settings: { account: { keybindings: SHORTCUT_CHANGES } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section=shortcuts]" }, { reveal: "[data-command='nav.today']" }],
+  },
+  // Searching by keys, and a binding being recorded.
+  {
+    name: "settings-shortcuts-search",
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[aria-label='Search shortcuts']" },
+      { type: "cmd n" },
+    ],
+  },
+  {
+    name: "settings-shortcuts-recording",
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[data-command='palette.open'] [data-key]" },
+    ],
+  },
+  {
+    name: "settings-shortcuts-recording-dark",
+    dark: true,
+    keys: ["Meta+,"],
+    steps: [
+      { click: "[data-section=shortcuts]" },
+      { click: "[data-command='palette.open'] [data-key]" },
+    ],
+  },
+  { name: "settings-about", keys: ["Meta+,"], click: "[data-section=about]" },
+  { name: "settings-about-dark", dark: true, keys: ["Meta+,"], click: "[data-section=about]" },
+  { name: "settings-account", keys: ["Meta+,"], click: "[data-section=account]" },
 ];

@@ -171,6 +171,33 @@ await habit.click();
 await page.waitForTimeout(200);
 check("habit chip toggles", (await habit.getAttribute("aria-pressed")) === "true");
 
+// 10b. the sidebar's Habits: a row toggles today, as today's chip does; right-click archives
+const readRow = page.locator("[data-habit-list] li", { hasText: "Read" }).locator("button");
+await readRow.click();
+await page.waitForTimeout(200);
+check(
+  "sidebar habit row logs today's target",
+  (await readRow.getAttribute("aria-pressed")) === "true" &&
+    ((await readRow.textContent()) ?? "").includes("20/20 min"),
+);
+await readRow.click();
+await page.waitForTimeout(200);
+await readRow.click({ button: "right" });
+await page.locator("[role=menuitem]", { hasText: "Archive" }).click();
+await page.waitForTimeout(200);
+const archived =
+  (await readRow.count()) === 0 && (await page.locator("button[title^='Read ·']").count()) === 0;
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(200);
+check(
+  "archiving a habit hides it from sidebar and strip; undo brings it back",
+  archived && (await readRow.count()) === 1,
+);
+check(
+  "the strip's dashed + is in today's column",
+  (await page.locator("[data-add-habit]").count()) === 1,
+);
+
 // 11. Quick entry creates a task with a block
 before = await blocks();
 await page.keyboard.press("Meta+Shift+n");
@@ -186,6 +213,83 @@ await page.keyboard.type("Typed task");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(200);
 check("⌘N new to-do", (await page.locator("li", { hasText: "Typed task" }).count()) === 1);
+
+// 12b. a new card reads its title as Quick Entry text and applies it on close
+before = await blocks();
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Smoke card 4pm ~45m #home");
+await page.waitForTimeout(100);
+check(
+  "a new card lights up its tokens and previews the time",
+  (await page.locator("[data-card] [data-token]").count()) === 3 &&
+    (await page.locator("[data-card] button", { hasText: "Today 4 PM" }).count()) === 1,
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+const smokeRow = page.locator("li", { hasText: "Smoke card" });
+const smokeText = (await smokeRow.textContent()) ?? "";
+check(
+  "closing it saves the clean title, tag and estimate",
+  (await smokeRow.count()) === 1 &&
+    !smokeText.includes("4pm") &&
+    smokeText.includes("#home") &&
+    smokeText.includes("45m"),
+);
+check(
+  "closing it places a 4–4:45 PM block",
+  (await blocks()) === before + 1 &&
+    ((await page.locator("[data-item^='block:']", { hasText: "Smoke card" }).textContent()) ?? "")
+      .replace(/\s/g, "")
+      .includes("4–4:45PM"),
+);
+
+// 12c. an existing to-do's card never re-reads its title
+await page.keyboard.press("Enter");
+await page.waitForTimeout(200);
+// The title opens selected; → puts the caret at its end.
+await page.keyboard.press("ArrowRight");
+await page.keyboard.type(" tomorrow");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "editing an existing to-do keeps date words as text",
+  (await page.locator("li", { hasText: "Smoke card tomorrow" }).count()) === 1 &&
+    (await page.locator("[data-item^='block:']", { hasText: "Smoke card" }).count()) === 1,
+);
+
+// 12d. Backspace after a fresh token keeps it as text; a title of only tokens stays as typed
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Read tomorrow");
+await page.keyboard.press("Backspace");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("someday");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "un-parsed and token-only titles are kept as typed",
+  (await page.locator("li", { hasText: "Read tomorrow" }).count()) === 1 &&
+    (await page.locator("li", { hasText: /^someday$/ }).count()) === 1,
+);
+
+// 12e. a chip field left open when the card closes saves first, so the typed text wins
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Chip race ~45m");
+await page.locator("[data-card] button", { hasText: "45m" }).click();
+await page.keyboard.press("Meta+a");
+await page.keyboard.type("15m");
+await page.locator("header h1").click();
+await page.waitForTimeout(400);
+const raceText = (await page.locator("li", { hasText: "Chip race" }).textContent()) ?? "";
+check(
+  "the title's estimate beats a chip field left open",
+  raceText.includes("45m") && !raceText.includes("15m"),
+);
 
 // 13. event move (writable calendar)
 const retro = page.locator("[data-item^='event:'] > div", { hasText: "Retro" });
@@ -451,6 +555,43 @@ check(
 );
 await page.keyboard.press("Meta+2");
 await page.waitForTimeout(200);
+
+// 13j2. Quick Entry's keys work wherever focus is in it, not only in the text field
+await page.keyboard.press("Meta+Shift+n");
+await page.keyboard.type("Water the plants");
+const quickPanel = page.locator("[role=dialog][aria-label='Quick Entry']");
+// A blank stretch of the footer, between "Esc Cancel" and the title preview.
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+const focusOnPanel = await page.evaluate(
+  () => document.activeElement?.getAttribute("aria-label") === "Quick Entry",
+);
+await page.keyboard.press("Meta+1");
+await page.waitForTimeout(100);
+const switchedFromBlank =
+  ((await quickFooter().textContent())?.includes("Add event") ?? false) &&
+  (await page.locator("h2", { hasText: "Inbox" }).count()) === 0;
+// The keyboard switch hands focus back to the text, and typing from the panel lands there.
+const keyBackInField = await page.evaluate(() => document.activeElement?.tagName === "INPUT");
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+await page.keyboard.type("c");
+await page.waitForTimeout(100);
+const typedFromBlank =
+  (await quickPanel.count()) === 1 &&
+  (await quickPanel.locator("input").inputValue()) === "Water the plantsc";
+await quickPanel.getByRole("radio", { name: "To-do" }).click();
+const backInField = await page.evaluate(() => document.activeElement?.tagName === "INPUT");
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+await page.keyboard.press("Escape");
+await page.waitForTimeout(100);
+check(
+  "a click on Quick Entry's blank parts keeps ⌘1 and Esc there; the switch hands focus back",
+  focusOnPanel &&
+    switchedFromBlank &&
+    keyBackInField &&
+    typedFromBlank &&
+    backInField &&
+    (await quickPanel.count()) === 0,
+);
 
 // 13k. undoing a repeating event's creation removes every occurrence
 await page.keyboard.press("Meta+Shift+n");
@@ -938,6 +1079,31 @@ check(
     (await firstColumn()) === columnBefore &&
     (await page.locator("[data-pane-toggle=sidebar]").getAttribute("aria-pressed")) === "false",
 );
+check(
+  "the pane toggles come after every drag band in the page, so the window can't swallow their clicks",
+  await page.evaluate(() => {
+    const toggles = document.querySelector("[data-pane-toggle]");
+    return (
+      toggles !== null &&
+      [...document.querySelectorAll(".drag-region")].every(
+        (band) => band.compareDocumentPosition(toggles) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    );
+  }),
+);
+check(
+  "the hidden sidebar's toggle drops its collapse chevron; the open to-do list keeps its check",
+  await page.evaluate(() => {
+    const part = (pane: string, selector: string) => {
+      const element = document.querySelector(`[data-pane-toggle=${pane}] ${selector}`);
+      return element ? getComputedStyle(element) : null;
+    };
+    return (
+      part("sidebar", "path:last-child")?.opacity === "0" &&
+      part("tasks", "path:last-child")?.visibility === "visible"
+    );
+  }),
+);
 const toggleBox = await boxOf(page.locator("[data-pane-toggle=tasks]"));
 check(
   "the pane toggles stay on top of the peeked sidebar",
@@ -990,6 +1156,159 @@ check(
   "showing the real sidebar ends the peek",
   peekedOnce === 1 && (await peekPanel.count()) === 0 && (await paneWidth("sidebar")) === 224,
 );
+
+// The year view: Y shows it, arrows move a year, T comes back, a day or month name leaves.
+const toolbarTitle = () => page.locator("header h1").textContent();
+await page.keyboard.press("y");
+await page.waitForTimeout(200);
+check(
+  "Y shows the year's twelve months",
+  (await toolbarTitle()) === "2026" && (await page.locator("[data-year-month]").count()) === 12,
+);
+check(
+  "the year marks today and dots busy days",
+  (await page.locator("[data-year-day='2026-10-28'][aria-current=date]").count()) === 1 &&
+    (await page.locator("[data-year-day='2026-10-29'] .rounded-full").count()) === 1 &&
+    (await page.locator("[data-year-day='2026-03-12'] .rounded-full").count()) === 0,
+);
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(150);
+const nextYear = await toolbarTitle();
+await page.keyboard.press("t");
+await page.waitForTimeout(150);
+check("→ moves a year and T comes back", nextYear === "2027" && (await toolbarTitle()) === "2026");
+await page.locator("[data-year-day='2026-03-12']").click();
+await page.waitForTimeout(200);
+check(
+  "a day click leaves the year for that day's week",
+  (await page.locator("[data-year-view]").count()) === 0 &&
+    (await page.locator("[data-column='2026-03-12']").count()) === 1,
+);
+await page.keyboard.press("y");
+await page.waitForTimeout(150);
+await page.locator("[data-year-month='2026-06-01'] button", { hasText: "June" }).click();
+await page.waitForTimeout(150);
+check("a month name opens that month", (await toolbarTitle()) === "June 2026");
+
+// 27. Settings > Shortcuts: record, cancel, conflicts, reset, and the menu bar following
+const settingsOpen = () => page.locator("[role=dialog][aria-label=Settings]").count();
+const paletteOpen = () => page.locator("[role=dialog][aria-label='Command menu']").count();
+const menuAccelerator = (label: string) =>
+  app.evaluate(({ Menu }, wanted) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
+      for (const item of items) {
+        if (item.label === wanted) return item;
+        const inner = item.submenu && find(item.submenu.items);
+        if (inner) return inner;
+      }
+    };
+    return find(Menu.getApplicationMenu()?.items ?? [])?.accelerator ?? null;
+  }, label);
+check(
+  "the menu shows ⌘K for Command Menu",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+K",
+);
+// The month view (left showing above) registers no zoom commands, so they lose their keys.
+const zoomInMonth = await menuAccelerator("Zoom Hours In");
+await page.keyboard.press("w");
+await page.waitForTimeout(200);
+check(
+  "a command its view isn't showing has no menu shortcut",
+  zoomInMonth === null && (await menuAccelerator("Zoom Hours In")) === "CmdOrCtrl+Shift+.",
+);
+await page.keyboard.press("Meta+,");
+await page.click("[data-section=shortcuts]");
+await page.waitForTimeout(200);
+check(
+  "Shortcuts lists commands but not Show 14 days",
+  (await page.locator("[data-command='task.new']").count()) === 1 &&
+    (await page.locator("[data-command='view.days.14']").count()) === 0,
+);
+await page.fill("[aria-label='Search shortcuts']", "14");
+check(
+  "searching 14 finds Show 14 days",
+  (await page.locator("[data-command='view.days.14']").count()) === 1,
+);
+await page.fill("[aria-label='Search shortcuts']", "⌘K");
+check(
+  "searching ⌘K finds Command Menu",
+  (await page.locator("[data-command='palette.open']").count()) === 1 &&
+    (await page.locator("[data-command='task.new']").count()) === 0,
+);
+await page.fill("[aria-label='Search shortcuts']", "command menu");
+const paletteKey = page.locator("[data-command='palette.open'] [data-key]");
+await paletteKey.click();
+check("clicking a binding records", (await page.locator("[data-recording]").count()) === 1);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(150);
+check(
+  "Escape cancels recording and keeps Settings open",
+  (await page.locator("[data-recording]").count()) === 0 && (await settingsOpen()) === 1,
+);
+await paletteKey.click();
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check(
+  "a recorded key saves without running anything",
+  (await paletteOpen()) === 0 &&
+    (await settingsOpen()) === 1 &&
+    ((await page.locator("[data-command='palette.open']").textContent()) ?? "").includes("Changed"),
+);
+check(
+  "the menu follows the new binding",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+J",
+);
+await page.fill("[aria-label='Search shortcuts']", "new to-do");
+await page.hover("[data-command='task.new']");
+await page.click("[data-command='task.new'] [data-add]");
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check(
+  "a shared key warns but saves",
+  ((await page.locator("[data-command='task.new'] [data-conflict]").textContent()) ?? "").includes(
+    "Also used by Command Menu",
+  ) && (await page.locator("[data-command='task.new'] [data-key]").count()) === 2,
+);
+await page.hover("[data-command='task.new']");
+await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘J']");
+await page.waitForTimeout(300);
+check(
+  "removing the extra key clears the change",
+  (await page.locator("[data-command='task.new'] [data-key]").count()) === 1 &&
+    (await page.locator("[data-command='task.new'] [data-conflict]").count()) === 0,
+);
+// Escape clears the search, then closes Settings.
+await page.click("[aria-label='Search shortcuts']");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(200);
+check("the new binding opens the command menu", (await paletteOpen()) === 1);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Meta+k");
+await page.waitForTimeout(200);
+check("the old binding no longer does", (await paletteOpen()) === 0);
+await page.keyboard.press("?");
+await page.click("text=Customize…");
+await page.waitForTimeout(200);
+check(
+  "the ? sheet's Customize opens Settings on Shortcuts",
+  (await page.locator("[data-section=shortcuts][aria-current=true]").count()) === 1,
+);
+await page.click("text=Reset all");
+await page.waitForTimeout(300);
+check(
+  "Reset all restores ⌘K and disables itself",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+K" &&
+    (await page.locator("button:has-text('Reset all')").isDisabled()),
+);
+await page.click("[data-section=about]");
+check(
+  "About shows the version",
+  ((await page.locator("[data-version]").textContent()) ?? "").includes("0.1.0"),
+);
+await page.keyboard.press("Escape");
 
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

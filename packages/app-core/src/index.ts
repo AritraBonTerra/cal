@@ -1,11 +1,19 @@
-export { type Actions, createActions } from "./actions";
+export { type Actions, createActions, entryFields } from "./actions";
 export {
+  type BoundCommand,
+  bindingFor,
   type Command,
   CommandRegistry,
+  commandsUsing,
+  type Keybindings,
   type KeyInput,
   keyLabels,
   matches,
+  normalizeBinding,
+  sameKeys,
   searchCommands,
+  searchShortcuts,
+  withKeys,
 } from "./commands";
 export { type DataSource, storeSource } from "./data";
 export { History, Writer } from "./history";

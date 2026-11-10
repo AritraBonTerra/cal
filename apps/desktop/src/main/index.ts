@@ -20,8 +20,10 @@ import {
   type CalendarCall,
   channels,
   type DataCall,
+  type MenuKeys,
   type Theme,
 } from "../shared/api";
+import { menuAccelerator } from "./accelerator";
 import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { openDatabase } from "./db";
@@ -124,7 +126,7 @@ function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R) 
 // Read synchronously by the preload script before the window's code runs.
 ipcMain.on(channels.config, (event) => {
   event.returnValue = isAppUrl(event.senderFrame?.url ?? "")
-    ? { fixture, now: fixture ? FIXTURE_NOW.getTime() : undefined }
+    ? { fixture, now: fixture ? FIXTURE_NOW.getTime() : undefined, version: app.getVersion() }
     : null;
 });
 
@@ -224,7 +226,10 @@ function createWindow() {
     minHeight: 520,
     show: false,
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    // The lights' centre must sit on y = 26, the middle of the renderer's 52px top band,
+    // with the pane toggles and the toolbar. Electron centres the 16px buttons in a
+    // container 16 + 2·y tall, so y = 18 puts them there.
+    trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1b1a" : "#fbfaf9",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
@@ -254,10 +259,32 @@ function createWindow() {
   return window;
 }
 
-// Menu items that run a window command (see the renderer's command registry).
-const command = (label: string, id: string, accelerator?: string): MenuItemConstructorOptions => ({
+// The keys in effect for each command, as the window last reported them. A command the
+// report leaves out (one its view isn't showing) has no menu shortcut until it's back.
+let menuKeys = new Map<string, readonly string[]>();
+
+// A null report means the window is recording a shortcut: until its next report every
+// menu shortcut is ignored, Close and Quit included, so the keys pressed run nothing.
+handle(channels.menuKeys, (keys: MenuKeys | null) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.setIgnoreMenuShortcuts(keys === null);
+  }
+  if (keys === null) return;
+  menuKeys = new Map(
+    Object.entries(keys).filter(
+      ([, list]) => Array.isArray(list) && list.every((each) => typeof each === "string"),
+    ),
+  );
+  buildMenu();
+});
+
+handle(channels.checkForUpdates, () => checkNow());
+
+// Menu items that run a window command (see the renderer's command registry), with the
+// command's first ⌘ or ⌃ binding as the accelerator.
+const command = (label: string, id: string): MenuItemConstructorOptions => ({
   label,
-  accelerator,
+  accelerator: menuAccelerator(menuKeys.get(id) ?? []),
   click: (_item, window) => {
     if (window instanceof BrowserWindow) window.webContents.send("cal:command", id);
   },
@@ -271,7 +298,7 @@ function buildMenu() {
         { role: "about" },
         { label: "Check for Updates…", click: () => void checkNow() },
         { type: "separator" },
-        command("Settings…", "settings.open", "CmdOrCtrl+,"),
+        command("Settings…", "settings.open"),
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -285,9 +312,9 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
-        command("New To-Do", "task.new", "CmdOrCtrl+N"),
-        command("Quick Entry", "task.quickEntry", "CmdOrCtrl+Shift+N"),
-        command("New Project", "project.new", "CmdOrCtrl+Alt+N"),
+        command("New To-Do", "task.new"),
+        command("Quick Entry", "task.quickEntry"),
+        command("New Project", "project.new"),
         command("New Area", "area.new"),
         command("New Habit…", "habit.new"),
         { type: "separator" },
@@ -297,8 +324,8 @@ function buildMenu() {
     {
       label: "Edit",
       submenu: [
-        command("Undo", "edit.undo", "CmdOrCtrl+Z"),
-        command("Redo", "edit.redo", "CmdOrCtrl+Shift+Z"),
+        command("Undo", "edit.undo"),
+        command("Redo", "edit.redo"),
         { type: "separator" },
         { role: "cut" },
         { role: "copy" },
@@ -309,13 +336,13 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        command("Command Menu", "palette.open", "CmdOrCtrl+K"),
-        command("Toggle Sidebar", "view.sidebar", "CmdOrCtrl+\\"),
-        command("Toggle To-Do List", "view.tasks", "CmdOrCtrl+/"),
+        command("Command Menu", "palette.open"),
+        command("Toggle Sidebar", "view.sidebar"),
+        command("Toggle To-Do List", "view.tasks"),
         { type: "separator" },
-        command("Zoom Hours In", "grid.zoomIn", "CmdOrCtrl+Shift+."),
-        command("Zoom Hours Out", "grid.zoomOut", "CmdOrCtrl+Shift+,"),
-        command("Default Hour Height", "grid.zoomReset", "CmdOrCtrl+Shift+0"),
+        command("Zoom Hours In", "grid.zoomIn"),
+        command("Zoom Hours Out", "grid.zoomOut"),
+        command("Default Hour Height", "grid.zoomReset"),
         { type: "separator" },
         command("Travel to Time Zone…", "zone.travel"),
         command("Add Time Zone…", "zone.add"),

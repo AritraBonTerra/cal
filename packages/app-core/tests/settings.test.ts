@@ -99,6 +99,32 @@ describe("settings", () => {
     });
   });
 
+  test("keybindings keep up to four non-empty bindings per command", async () => {
+    const { store, settings } = setup();
+    expect(readAccountSettings([]).keybindings).toEqual({});
+    await settings.setAccount("keybindings", { "task.new": ["mod+j"], "nav.today": [] });
+    expect(readAccountSettings(store.list("settings")).keybindings).toEqual({
+      "task.new": ["mod+j"],
+      "nav.today": [],
+    });
+    const row = (value: string) => ({
+      uuid: "k",
+      key: "keybindings",
+      value,
+      created_at: 0,
+      updated_at: 1,
+    });
+    for (const bad of [
+      '{"a":["1","2","3","4","5"]}',
+      '{"a":[""]}',
+      '{"a":"t"}',
+      "[]",
+      '{"a":[1]}',
+    ]) {
+      expect(readAccountSettings([row(bad)]).keybindings).toEqual({});
+    }
+  });
+
   test("device settings persist in the device store and notify", () => {
     const { values, settings } = setup();
     let changes = 0;

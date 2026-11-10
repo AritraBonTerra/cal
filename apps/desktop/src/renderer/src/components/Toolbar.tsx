@@ -1,9 +1,20 @@
+import { useCommandList } from "@cal/app-core";
 import type { DayKey } from "@cal/domain";
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
+import { rebound, useShortcut, withShortcut } from "../lib/shortcuts";
 import { formatMonthYear, formatSpan, weekNumber } from "../lib/time";
-import { goToday, moveView, showDays, showMonth, toggleOverlay, ui, useUi } from "../lib/ui";
+import {
+  goToday,
+  moveView,
+  showDays,
+  showMonth,
+  showYear,
+  toggleOverlay,
+  ui,
+  useUi,
+} from "../lib/ui";
 import { zoneCity } from "../lib/zones";
 import { PANE_TOGGLES_END } from "./PaneToggles";
 import { IconButton, Keycaps } from "./ui";
@@ -25,7 +36,18 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
   const travelZone = useUi((state) => state.travelZone);
-  const title = view.kind === "month" ? formatMonthYear(anchor) : formatSpan(first, last);
+  const keys = {
+    prev: useShortcut("nav.prev"),
+    next: useShortcut("nav.next"),
+    palette: useShortcut("palette.open"),
+    stopTravel: useShortcut("zone.exit"),
+  };
+  const title =
+    view.kind === "month"
+      ? formatMonthYear(anchor)
+      : view.kind === "year"
+        ? anchor.slice(0, 4)
+        : formatSpan(first, last);
   const weeks =
     view.kind === "days" && account.weekNumbers
       ? [weekNumber(first, account.weekStart), weekNumber(last, account.weekStart)]
@@ -33,11 +55,13 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   const label =
     view.kind === "month"
       ? "Month"
-      : view.count === 1
-        ? "Day"
-        : view.count === 7
-          ? "Week"
-          : `${view.count} days`;
+      : view.kind === "year"
+        ? "Year"
+        : view.count === 1
+          ? "Day"
+          : view.count === 7
+            ? "Week"
+            : `${view.count} days`;
 
   return (
     <header className="drag-region flex h-13 shrink-0 items-center gap-1 pr-3 pl-4">
@@ -52,7 +76,7 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
         <button
           type="button"
           onClick={() => ui.set({ travelZone: null })}
-          title="Stop travelling (Esc)"
+          title={withShortcut("Stop travelling", keys.stopTravel)}
           className="no-drag ml-2 flex h-6 shrink-0 items-center gap-1 rounded-full bg-now pr-1.5 pl-2.5 text-caption font-medium text-white"
           data-travel
         >
@@ -68,15 +92,15 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
       >
         Today
       </button>
-      <IconButton label="Previous (←)" onClick={() => moveView(-1)}>
+      <IconButton label={withShortcut("Previous", keys.prev)} onClick={() => moveView(-1)}>
         <ChevronLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />
       </IconButton>
-      <IconButton label="Next (→)" onClick={() => moveView(1)}>
+      <IconButton label={withShortcut("Next", keys.next)} onClick={() => moveView(1)}>
         <ChevronRight size={16} strokeWidth={1.5} absoluteStrokeWidth />
       </IconButton>
       <ViewMenu label={label} />
       <IconButton
-        label="Command menu (⌘K)"
+        label={withShortcut("Command menu", keys.palette)}
         onClick={() => toggleOverlay("palette")}
         className="ml-1"
       >
@@ -86,16 +110,19 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   );
 }
 
+// `count` 0 is the month view and -1 the year view.
 const CHOICES = [
   { label: "Day", keys: "1", count: 1 },
   { label: "3 days", keys: "3", count: 3 },
   { label: "Week", keys: "w", count: 7 },
   { label: "Month", keys: "m", count: 0 },
+  { label: "Year", keys: "y", count: -1 },
 ];
 
 // A small popover with the common spans; any other count comes from ⌘K ("Show 14 days").
 function ViewMenu({ label }: { label: string }) {
-  const { today } = useApp();
+  const { today, gridToday } = useApp();
+  const commands = useCommandList(true);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -131,13 +158,14 @@ function ViewMenu({ label }: { label: string }) {
               key={choice.label}
               onClick={() => {
                 setOpen(false);
-                if (choice.count === 0) showMonth();
+                if (choice.count === 0) showMonth(today);
+                else if (choice.count < 0) showYear(gridToday);
                 else showDays(choice.count, today);
               }}
               className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body text-ink hover:bg-hover"
             >
               {choice.label}
-              <Keycaps binding={choice.keys} />
+              <ChoiceKeys binding={rebound(commands, choice.keys, "View")} />
             </button>
           ))}
         </div>
@@ -145,3 +173,7 @@ function ViewMenu({ label }: { label: string }) {
     </div>
   );
 }
+
+// A view choice's keycaps, as the user has bound them; nothing when unbound.
+const ChoiceKeys = ({ binding }: { binding: string | null }) =>
+  binding ? <Keycaps binding={binding} /> : null;
