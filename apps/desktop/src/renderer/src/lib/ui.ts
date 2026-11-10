@@ -56,7 +56,7 @@ export interface UiState {
   list: ListId;
   selection: Selection | null;
   overlay: Overlay | null;
-  // The task whose title is being edited inline.
+  // The to-do open as a card (lib/card.ts); clearing it closes and saves the card.
   editing: string | null;
   // The project or area whose sidebar row is being renamed, and the list to go back to
   // if it was new and gets discarded (Escape or an empty title).

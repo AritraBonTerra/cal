@@ -3,6 +3,7 @@ import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain"
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
 import type { AppState } from "./lib/app";
+import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
 import {
   closeEditor,
@@ -15,8 +16,16 @@ import {
   openEdit,
   spanFor,
 } from "./lib/events";
-import { areaForNewProject, newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
+import {
+  areaForNewProject,
+  newTaskIn,
+  nextBlock,
+  SMART_LISTS,
+  SMART_TITLES,
+  tasksIn,
+} from "./lib/lists";
 import { PANES } from "./lib/panes";
+import { revealBlock } from "./lib/reveal";
 import {
   closeOverlay,
   goToday,
@@ -72,11 +81,16 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
     const writer = () => eventWriter(history, latest.current.refreshEvents);
 
+    const listTime = () => {
+      const { today, gridToday, zone } = latest.current;
+      return { today, gridToday, zone, now: now() };
+    };
+
     // Moves the task selection within the visible list; with nothing selected, picks an end.
     const step = (direction: 1 | -1) => {
       const { list, selection, tasks } = ui.get();
       if (!tasks) return;
-      const rows = tasksIn(list, latest.current.data.tasks, latest.current.today);
+      const rows = tasksIn(list, latest.current.data, listTime());
       if (rows.length === 0) return;
       const selectedUuid = selection?.kind === "task" ? selection.uuid : null;
       const index = rows.findIndex((task) => task.uuid === selectedUuid);
@@ -315,11 +329,10 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const { list } = ui.get();
           const { today } = latest.current;
+          // Opens as a card with the title focused; left untitled, it's removed on close.
           void actions
             .createTask({ title: "", ...newTaskIn(list, today) })
-            .then((uuid) =>
-              ui.set({ selection: { kind: "task", uuid }, editing: uuid, tasks: true }),
-            );
+            .then((uuid) => openCard({ uuid, title: "", notes: undefined }));
         },
       },
       {
@@ -382,14 +395,24 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
       {
         id: "task.edit",
-        title: "Edit Title",
+        title: "Open To-Do",
         group: "To-Do",
         keys: ["enter"],
+        aliases: ["edit", "rename", "notes", "details", "tags", "deadline", "estimate"],
         enabled: hasTask,
-        run: () =>
-          ui.set((state) => ({
-            editing: state.selection?.kind === "task" ? state.selection.uuid : null,
-          })),
+        run: () => {
+          const task = selectedTask();
+          if (task) openCard(task);
+        },
+      },
+      {
+        id: "task.close",
+        title: "Close To-Do",
+        group: "To-Do",
+        keys: ["mod+enter"],
+        aliases: ["done editing", "save"],
+        enabled: () => ui.get().editing !== null,
+        run: closeCard,
       },
       {
         id: "task.when",
@@ -397,7 +420,8 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         keys: ["mod+s"],
         aliases: ["schedule", "date"],
-        enabled: hasTask,
+        // Also from an open card, where it opens the card's When chip.
+        enabled: () => ui.get().selection?.kind === "task",
         run: () => toggleOverlay("when"),
       },
       {
@@ -505,6 +529,23 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
                   .map((event) => ({ start: new Date(event.start), end: new Date(event.end) })),
               ),
             );
+        },
+      },
+      {
+        id: "task.reveal",
+        title: "Show in Calendar",
+        group: "To-Do",
+        aliases: ["find block", "go to block", "when is it scheduled"],
+        enabled: () => {
+          const task = selectedTask();
+          return (
+            task !== undefined && nextBlock(task, latest.current.data.blocks, now()) !== undefined
+          );
+        },
+        run: () => {
+          const task = selectedTask();
+          const block = task && nextBlock(task, latest.current.data.blocks, now());
+          if (block) revealBlock(block, latest.current.zone, latest.current.days);
         },
       },
       {

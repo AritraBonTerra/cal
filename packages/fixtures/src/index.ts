@@ -317,6 +317,7 @@ export function seedFixture(store: LocalStore) {
     estimate_min: 45,
     priority: 2,
     position: 1,
+    tags: "review",
   });
   task("Update pricing page copy", {
     project_uuid: launch,
@@ -325,6 +326,8 @@ export function seedFixture(store: LocalStore) {
     estimate_min: 60,
     deadline: day(4),
     position: 2,
+    notes: "Match the numbers in the launch spec. Ask Priya about the annual plan wording.",
+    tags: "writing",
   });
   task("Pay rent", {
     area_uuid: home,
@@ -354,6 +357,19 @@ export function seedFixture(store: LocalStore) {
     position: 5,
   });
   task("Send invoices", { area_uuid: work, when: "date", when_date: day(4), estimate_min: 30 });
+  // Upcoming: tomorrow (with a block), Friday, next week, December and next January.
+  const retro = task("Prepare retro notes", {
+    project_uuid: launch,
+    when: "date",
+    when_date: day(3),
+    estimate_min: 30,
+    position: 5,
+  });
+  task("Book the truck", { project_uuid: move, when: "date", when_date: day(4), position: 6 });
+  task("Plan Q1 offsite", { area_uuid: work, when: "date", when_date: day(8), position: 7 });
+  task("Renew car registration", { area_uuid: home, when: "date", when_date: "2026-12-01" });
+  task("Gather tax documents", { when: "date", when_date: "2027-01-15" });
+  task("Pick paint colors", { project_uuid: move, when: "anytime", position: 8 });
   task("Learn to make sourdough", { when: "someday" });
   task("Read 'The Making of Prince of Persia'", { when: "anytime", estimate_min: 60 });
   task("Renew passport", { when: "anytime", area_uuid: home, deadline: day(16) });
@@ -376,6 +392,7 @@ export function seedFixture(store: LocalStore) {
   block(spec, at(day(1), 9, 45), at(day(1), 11, 15), at(day(1), 11, 15).getTime());
   block(spec, at(day(2), 14), at(day(2), 15, 30));
   block(done, at(day(0), 14), at(day(0), 15, 30), at(day(0), 15, 30).getTime());
+  block(retro, at(day(3), 8), at(day(3), 8, 30));
 
   const gym = store.insert("habits", {
     title: "Gym",

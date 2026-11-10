@@ -5,6 +5,7 @@ import {
   type DayKey,
   inList,
   isOpen,
+  isThisEvening,
   type Project,
   remainingMinutes,
   type SmartList,
@@ -14,7 +15,7 @@ import {
   type WorkingHours,
   weekday,
 } from "@cal/domain";
-import { tasksIn } from "../../lib/lists";
+import { rowsOf } from "../../lib/lists";
 import { formatDuration } from "../../lib/time";
 import type { ListId } from "../../lib/ui";
 import { zonedInstant } from "../../lib/zones";
@@ -27,6 +28,13 @@ import { zonedInstant } from "../../lib/zones";
  */
 
 const MINUTE = 60_000;
+
+// The Today list's to-dos in its order, This Evening last.
+function todayRows(tasks: readonly Task[], gridToday: DayKey) {
+  const rows = rowsOf("today", tasks, gridToday);
+  const evening = rows.filter((task) => isThisEvening(task, gridToday));
+  return [...rows.filter((task) => !evening.includes(task)), ...evening];
+}
 
 /**
  * Open to-dos that belong on each of `days` and have no block that day, in list order.
@@ -59,7 +67,7 @@ export function unscheduledByDay(
     );
     const belong =
       day === gridToday
-        ? tasksIn("today", tasks, gridToday)
+        ? todayRows(tasks, gridToday)
         : later.filter((task) => startDay(task) === day);
     byDay.set(
       day,
@@ -105,7 +113,7 @@ export function listShowing(
   tasks: readonly Task[],
   today: DayKey,
 ): ListId {
-  if (tasksIn(current, tasks, today).some((each) => each.uuid === task.uuid)) return current;
+  if (rowsOf(current, tasks, today).some((each) => each.uuid === task.uuid)) return current;
   const smart: SmartList[] = ["today", "upcoming", "inbox", "anytime", "someday"];
   const list = smart.find((each) => inList(task, each, today));
   if (list) return list;

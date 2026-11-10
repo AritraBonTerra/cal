@@ -1,4 +1,5 @@
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
+import { addDays, type DayKey, fromDayKey } from "@cal/domain";
 import { type ChipColors, chipColorsFromHex, type Mode } from "@cal/theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -63,6 +64,36 @@ export function useEvents(start: string, end: string) {
   return { ...state, refresh };
 }
 
+/**
+ * The events the user wants to see: none from calendars hidden in Settings, and no
+ * declined invitations unless they're turned on. The grid, Upcoming and the mini month
+ * all use it.
+ */
+export function visibleEvents(
+  events: readonly ExternalEvent[],
+  hiddenCalendars: readonly string[],
+  showDeclined: boolean,
+) {
+  const hidden = new Set(hiddenCalendars);
+  return events.filter(
+    (event) => !hidden.has(event.calendarId) && (showDeclined || event.myStatus !== "declined"),
+  );
+}
+
+// Events overlapping `day` on this Mac, all-day ones first, then by start.
+export function eventsOnDay(events: readonly ExternalEvent[], day: DayKey) {
+  const start = fromDayKey(day).getTime();
+  const end = fromDayKey(addDays(day, 1)).getTime();
+  return events
+    .filter((event) => Date.parse(event.start) < end && Date.parse(event.end) > start)
+    .sort(
+      (a, b) =>
+        Number(b.allDay) - Number(a.allDay) ||
+        Date.parse(a.start) - Date.parse(b.start) ||
+        a.title.localeCompare(b.title),
+    );
+}
+
 // Chip colors per calendar for the current mode, computed once per calendar. A color
 // override from Settings replaces the calendar's own color here, never in the calendar.
 export function useChipPalette(
@@ -77,18 +108,6 @@ export function useChipPalette(
     }
     return palette;
   }, [calendars, mode, overrides]);
-}
-
-// Events the grid shows: none from hidden calendars, and declined ones only when asked.
-export function visibleEvents(
-  events: readonly ExternalEvent[],
-  hiddenCalendars: readonly string[],
-  showDeclined: boolean,
-) {
-  const hidden = new Set(hiddenCalendars);
-  return events.filter(
-    (event) => !hidden.has(event.calendarId) && (showDeclined || event.myStatus !== "declined"),
-  );
 }
 
 // A calendar's color in Cal: the override from Settings, else the calendar's own.

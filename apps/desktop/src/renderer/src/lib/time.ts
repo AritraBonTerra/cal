@@ -74,6 +74,7 @@ const weekdayShort = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const weekdayLong = new Intl.DateTimeFormat(undefined, { weekday: "long" });
 const monthYear = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const monthShort = new Intl.DateTimeFormat(undefined, { month: "short" });
+const monthLong = new Intl.DateTimeFormat(undefined, { month: "long" });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const weekdayMonthDay = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
@@ -85,6 +86,9 @@ export const formatWeekday = (day: DayKey, long = false) =>
   (long ? weekdayLong : weekdayShort).format(fromDayKey(day));
 
 export const formatMonthYear = (day: DayKey) => monthYear.format(fromDayKey(day));
+
+// "November": a month name alone (Upcoming's month headings).
+export const formatMonth = (day: DayKey) => monthLong.format(fromDayKey(day));
 
 // The toolbar title for a span: "October 2026" or "Oct – Nov 2026".
 export function formatSpan(first: DayKey, last: DayKey) {
