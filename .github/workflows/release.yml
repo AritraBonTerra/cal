@@ -2,14 +2,17 @@ name: Release
 
 # Every merge to main ships: the Mac app to this repo's GitHub Releases, which the
 # installed app updates from (apps/desktop/src/main/updater.ts), and the iOS app to
-# TestFlight, which keeps installed iPhones current. Pull requests (and manual runs
-# on other branches) build the same things without publishing, so a broken pipeline
-# shows before merge, and leave the DMG and IPA as run artifacts. Only main publishes.
+# TestFlight, which keeps installed iPhones current. Any other build (pull requests,
+# manual runs on other branches) is a nightly: built and signed the same way so a
+# broken pipeline shows before merge, never published, and left as run artifacts
+# (the .dmg and .ipa themselves, not zipped). Only main publishes.
 #
 # Secrets: MAC_CERT_P12 (base64 Developer ID Application certificate + key) and
-# MAC_CERT_PASSWORD; ASC_KEY (an App Store Connect API key's .p8 text, Admin role),
-# ASC_KEY_ID and ASC_ISSUER_ID; APPLE_TEAM_ID. The one key notarizes the Mac app,
-# signs the iOS app with Xcode's cloud-managed certificates, and uploads to TestFlight.
+# MAC_CERT_PASSWORD; IOS_DEV_CERT_P12 (base64 Apple Development certificate + key)
+# and IOS_DEV_CERT_PASSWORD; ASC_KEY (an App Store Connect API key's .p8 text, Admin
+# role), ASC_KEY_ID and ASC_ISSUER_ID; APPLE_TEAM_ID. The key notarizes the Mac app,
+# fetches the iOS profiles, signs the iOS export with Xcode's cloud-managed
+# distribution certificate, and uploads to TestFlight.
 
 on:
   push:
@@ -33,21 +36,40 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
+      # What the Mac app ships as: 0.1.13 on main, 0.1.13-nightly.<run> elsewhere.
       version: ${{ steps.version.outputs.version }}
+      # Always plain x.y.z, as iOS requires; the run number is iOS's build number.
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v5
-      # The major.minor in apps/desktop/package.json, then the run number, so every
-      # release is newer than the last (the updater and TestFlight both need that).
+      # The major.minor in apps/desktop/package.json, then one past the newest
+      # v<major>.<minor>.* tag, so main's releases count up without gaps. A nightly
+      # is named for the release it precedes, which semver orders after it, so an
+      # installed nightly updates to that release once it ships.
       - id: version
         run: |
           base=$(jq -r '.version | split(".")[0:2] | join(".")' apps/desktop/package.json)
-          echo "version=$base.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          tags=$(git ls-remote --tags --refs origin "refs/tags/v$base.*")
+          # A rerun of a release keeps the tag it already pushed for this commit.
+          tagged=$(awk -v sha="$GITHUB_SHA" '$1 == sha { sub("refs/tags/v", "", $2); print $2 }' <<< "$tags" | head -1)
+          if [ "$PUBLISH" = true ] && [ -n "$tagged" ]; then
+            release=$tagged
+          else
+            last=$(sed -n "s|.*refs/tags/v$base\.\([0-9][0-9]*\)$|\1|p" <<< "$tags" | sort -n | tail -1)
+            release="$base.$(( ${last:--1} + 1 ))"
+          fi
+          version=$([ "$PUBLISH" = true ] && echo "$release" || echo "$release-nightly.$GITHUB_RUN_NUMBER")
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::Building Cal $version"
 
   mac:
     needs: version
     # Signing needs the repo's secrets, which PRs from forks and Dependabot don't get.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: macos-26
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -59,22 +81,6 @@ jobs:
         env:
           ASC_KEY: ${{ secrets.ASC_KEY }}
         run: printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
-      # The release's tag names the commit that was built; electron-builder would
-      # otherwise tag main's head when it creates the release, which may have moved on.
-      - name: Tag the release
-        if: env.PUBLISH == 'true'
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        # A rerun of a failed release reuses its tag if it names this commit.
-        run: |
-          remote=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1)
-          if [ -z "$remote" ]; then
-            git tag "v$VERSION" "$GITHUB_SHA"
-            git push origin "v$VERSION"
-          elif [ "$remote" != "$GITHUB_SHA" ]; then
-            echo "::error::v$VERSION already tags $remote, not $GITHUB_SHA"
-            exit 1
-          fi
       - name: Build, sign and notarize
         working-directory: apps/desktop
         env:
@@ -86,20 +92,52 @@ jobs:
           APPLE_API_KEY: ${{ runner.temp }}/asc.p8
           APPLE_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.ASC_ISSUER_ID }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.version.outputs.version }}
         # Only the calkit helper is built here: scripts/prepare.ts also patches the dev
         # Electron.app, which packaging doesn't use (electron-builder fetches its own).
+        # Never publishes: electron-builder uploads the DMG and the zip in parallel,
+        # and each upload created its own release under the same tag, leaving the
+        # updater a "latest" release without latest-mac.yml. The next steps publish.
         run: |
           swift build -c release --package-path native/calkit
           env -u ELECTRON_RUN_AS_NODE bunx electron-vite build
-          bunx electron-builder --mac \
-            --publish "$([ "$PUBLISH" = true ] && echo always || echo never)" \
-            -c.extraMetadata.version="$VERSION"
-      - uses: actions/upload-artifact@v4
+          bunx electron-builder --mac --publish never -c.extraMetadata.version="$VERSION"
+      # The tag names the commit that was built, even if main has moved on since.
+      - name: Tag the release
+        if: env.PUBLISH == 'true'
+        run: |
+          remote=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1)
+          if [ -z "$remote" ]; then
+            git tag "v$VERSION" "$GITHUB_SHA"
+            git push origin "v$VERSION"
+          elif [ "$remote" != "$GITHUB_SHA" ]; then
+            echo "::error::v$VERSION already tags $remote, not $GITHUB_SHA"
+            exit 1
+          fi
+      # One release holding every file the updater and a first install need. A rerun
+      # finds the release already there (maybe still a draft, if an upload was cut
+      # short), replaces its files and publishes it. Latest only moves forward, so a
+      # rerun of an older release can't take it from a newer one.
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
+        working-directory: apps/desktop/release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          files=(Cal-*.dmg Cal-*.zip Cal-*.blockmap latest-mac.yml)
+          current=$(gh release view --json tagName --jq .tagName 2> /dev/null || true)
+          newest=$(printf '%s\n' "$current" "v$VERSION" | sort -V | tail -1)
+          latest=$([ "$newest" = "v$VERSION" ] && echo true || echo false)
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release upload "v$VERSION" "${files[@]}" --clobber
+            gh release edit "v$VERSION" --draft=false --latest="$latest"
+          else
+            gh release create "v$VERSION" "${files[@]}" --verify-tag --latest="$latest" \
+              --title "$VERSION" --notes "$(git log -1 --format=%B "$GITHUB_SHA")"
+          fi
+      - uses: actions/upload-artifact@v7
         with:
-          name: Cal-${{ needs.version.outputs.version }}-mac
-          path: apps/desktop/release/*.dmg
+          path: apps/desktop/release/Cal-*.dmg
+          archive: false
 
   ios:
     needs: version
@@ -121,10 +159,30 @@ jobs:
         run: |
           printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
           echo "AUTH=-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/asc.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID" >> "$GITHUB_ENV"
+      # The archive is signed for development. Without a certificate in the keychain,
+      # Xcode makes a new one on every run (each runner starts empty) until the
+      # account hits Apple's limit, so CI brings the same one each time.
+      - name: Development certificate
+        env:
+          P12: ${{ secrets.IOS_DEV_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then
+            echo "::error::Add the IOS_DEV_CERT_P12 and IOS_DEV_CERT_PASSWORD secrets (an Apple Development certificate and its key)."
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/dev.p12"
+          security import "$RUNNER_TEMP/dev.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
       - name: Generate the Xcode project
         working-directory: apps/mobile
         env:
-          CAL_VERSION: ${{ needs.version.outputs.version }}
+          CAL_VERSION: ${{ needs.version.outputs.release }}
           CAL_BUILD: ${{ github.run_number }}
         run: bunx expo prebuild --platform ios --clean
       - name: Archive
@@ -133,8 +191,11 @@ jobs:
           xcodebuild archive -workspace Cal.xcworkspace -scheme Cal -configuration Release \
             -destination generic/platform=iOS -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} CODE_SIGN_STYLE=Automatic $AUTH
-      # Exported for App Store Connect; on main the export uploads it to TestFlight.
+      # Exported for App Store Connect; on main the export uploads it to TestFlight,
+      # elsewhere the .ipa is kept as a run artifact (it installs only via TestFlight).
       - name: Export${{ env.PUBLISH == 'true' && ' and upload to TestFlight' || '' }}
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           plist="$RUNNER_TEMP/export.plist"
           plutil -create xml1 "$plist"
@@ -144,8 +205,9 @@ jobs:
           plutil -insert destination -string "$([ "$PUBLISH" = true ] && echo upload || echo export)" "$plist"
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
             -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/export" $AUTH
-      - uses: actions/upload-artifact@v4
+          if [ "$PUBLISH" != true ]; then mv "$RUNNER_TEMP"/export/*.ipa "$RUNNER_TEMP/Cal-$VERSION.ipa"; fi
+      - uses: actions/upload-artifact@v7
         if: env.PUBLISH != 'true'
         with:
-          name: Cal-${{ needs.version.outputs.version }}-ios
-          path: ${{ runner.temp }}/export/*.ipa
+          path: ${{ runner.temp }}/Cal-${{ needs.version.outputs.version }}.ipa
+          archive: false

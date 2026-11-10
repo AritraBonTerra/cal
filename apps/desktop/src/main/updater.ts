@@ -6,6 +6,10 @@ import electronUpdater from "electron-updater";
  * (see .github/workflows/release.yml and the `publish` block in electron-builder.yml).
  * A packaged app checks at launch and every few hours, downloads in the background,
  * and installs on quit; a notification offers to restart sooner. Dev builds skip it.
+ *
+ * Nightlies (branch builds, versioned like 0.1.13-nightly.15) are never published,
+ * so every install follows stable releases only. electron-updater would otherwise
+ * read a prerelease version as a "nightly" channel and find nothing to follow.
  */
 
 const { autoUpdater } = electronUpdater;
@@ -14,6 +18,7 @@ const EVERY = 4 * 60 * 60 * 1000;
 // Starts background update checks for a packaged build.
 export function startUpdates() {
   if (!app.isPackaged) return;
+  autoUpdater.allowPrerelease = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on("update-downloaded", ({ version }) => {
