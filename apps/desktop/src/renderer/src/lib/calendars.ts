@@ -1,4 +1,5 @@
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
+import { addDays, type DayKey, fromDayKey } from "@cal/domain";
 import { type ChipColors, chipColorsFromHex, type Mode } from "@cal/theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -63,6 +64,36 @@ export function useEvents(start: string, end: string) {
   return { ...state, refresh };
 }
 
+/**
+ * The events the user wants to see: none from calendars hidden in Settings, and no
+ * declined invitations unless they're turned on. The grid, Upcoming and the mini month
+ * all use it.
+ */
+export function visibleEvents(
+  events: readonly ExternalEvent[],
+  hiddenCalendars: readonly string[],
+  showDeclined: boolean,
+) {
+  const hidden = new Set(hiddenCalendars);
+  return events.filter(
+    (event) => !hidden.has(event.calendarId) && (showDeclined || event.myStatus !== "declined"),
+  );
+}
+
+// Events overlapping `day` on this Mac, all-day ones first, then by start.
+export function eventsOnDay(events: readonly ExternalEvent[], day: DayKey) {
+  const start = fromDayKey(day).getTime();
+  const end = fromDayKey(addDays(day, 1)).getTime();
+  return events
+    .filter((event) => Date.parse(event.start) < end && Date.parse(event.end) > start)
+    .sort(
+      (a, b) =>
+        Number(b.allDay) - Number(a.allDay) ||
+        Date.parse(a.start) - Date.parse(b.start) ||
+        a.title.localeCompare(b.title),
+    );
+}
+
 // Chip colors per calendar for the current mode, computed once per calendar. A color
 // override from Settings replaces the calendar's own color here, never in the calendar.
 export function useChipPalette(
@@ -73,10 +104,43 @@ export function useChipPalette(
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
     for (const calendar of calendars) {
-      palette.set(calendar.id, chipColorsFromHex(overrides[calendar.id] ?? calendar.color, mode));
+      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode));
     }
     return palette;
   }, [calendars, mode, overrides]);
+}
+
+// A calendar's color in Cal: the override from Settings, else the calendar's own.
+export const calendarColor = (
+  calendar: DeviceCalendar,
+  overrides: Readonly<Record<string, string>>,
+) => overrides[calendar.id] ?? calendar.color;
+
+// Calendars grouped by account, accounts in the order their first calendar appears.
+export function byAccount(calendars: readonly DeviceCalendar[]) {
+  const accounts = [...new Set(calendars.map((calendar) => calendar.account))];
+  return accounts.map((account) => ({
+    account,
+    calendars: calendars.filter((calendar) => calendar.account === account),
+  }));
+}
+
+// `list` with `id` added (on) or removed (off): hidden or free calendar ids.
+export const withId = (list: readonly string[], id: string, on: boolean) =>
+  on ? [...new Set([...list, id])] : list.filter((each) => each !== id);
+
+/**
+ * The hidden list after ⌥-clicking calendar `id`: everything but it is hidden, or, when
+ * it's already the only one showing, every calendar shows again.
+ */
+export function soloCalendar(
+  calendars: readonly DeviceCalendar[],
+  hidden: readonly string[],
+  id: string,
+) {
+  const shown = calendars.filter((calendar) => !hidden.includes(calendar.id));
+  if (shown.length === 1 && shown[0]?.id === id) return [];
+  return calendars.filter((calendar) => calendar.id !== id).map((calendar) => calendar.id);
 }
 
 // A fallback for events whose calendar isn't listed (shouldn't happen, but never crash).

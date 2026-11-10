@@ -113,4 +113,16 @@ describe("settings", () => {
     expect(values.get("cal.theme")).toBe('"dark"');
     expect(changes).toBe(2);
   });
+
+  test("the sidebar's month and calendar list start open and remember being collapsed", () => {
+    const { values, settings } = setup();
+    expect(settings.device).toMatchObject({ showMiniMonth: true, showCalendarList: true });
+    settings.setDevice("showMiniMonth", false);
+    values.set("cal.showCalendarList", '"no"');
+    const read = readDeviceSettings({
+      getItem: (key) => values.get(key) ?? null,
+      setItem: () => {},
+    });
+    expect(read).toMatchObject({ showMiniMonth: false, showCalendarList: true });
+  });
 });

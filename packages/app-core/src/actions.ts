@@ -22,6 +22,9 @@ export function createActions(history: History, now: () => Date = () => new Date
   const stamp = () => now().getTime();
   const blocksOf = async (taskUuid: string) =>
     (await source.list("time_blocks")).filter((block) => block.task_uuid === taskUuid);
+  // One past the highest position in `table`, so a new row lands at the end of its list.
+  const endOf = async (table: "projects" | "areas" | "habits") =>
+    (await source.list(table)).reduce((last, row) => Math.max(last, row.position + 1), 0);
 
   return {
     createTask: (task: NewRow<"tasks">) =>
@@ -162,8 +165,59 @@ export function createActions(history: History, now: () => Date = () => new Date
         }
       }),
 
-    createHabit: (habit: NewRow<"habits">) =>
-      history.transact("New Habit", (tx) => tx.insert("habits", habit)),
+    // Adds a project at the end of the list, inside `area_uuid` when given.
+    createProject: (project: Omit<NewRow<"projects">, "position">) =>
+      history.transact("New Project", async (tx) =>
+        tx.insert("projects", { ...project, position: await endOf("projects") }),
+      ),
+
+    updateProject: (uuid: string, patch: RowPatch<"projects">, label = "Edit Project") =>
+      history.transact(label, (tx) => tx.update("projects", uuid, patch)),
+
+    // Deletes a project. Its to-dos stay: they move out of it, into its area if it had one.
+    deleteProject: (uuid: string) =>
+      history.transact("Delete Project", async (tx) => {
+        const id = tx.resolve(uuid);
+        const project = await source.get("projects", id);
+        if (!project) return false;
+        for (const task of await source.list("tasks")) {
+          if (task.project_uuid !== id) continue;
+          await tx.update("tasks", task.uuid, {
+            project_uuid: null,
+            area_uuid: task.area_uuid ?? project.area_uuid ?? null,
+          });
+        }
+        return tx.remove("projects", id);
+      }),
+
+    // Adds an area at the end of the list.
+    createArea: (area: Omit<NewRow<"areas">, "position">) =>
+      history.transact("New Area", async (tx) =>
+        tx.insert("areas", { ...area, position: await endOf("areas") }),
+      ),
+
+    updateArea: (uuid: string, patch: RowPatch<"areas">, label = "Edit Area") =>
+      history.transact(label, (tx) => tx.update("areas", uuid, patch)),
+
+    // Deletes an area. Its projects and to-dos stay, outside any area.
+    deleteArea: (uuid: string) =>
+      history.transact("Delete Area", async (tx) => {
+        const id = tx.resolve(uuid);
+        for (const project of await source.list("projects")) {
+          if (project.area_uuid === id)
+            await tx.update("projects", project.uuid, { area_uuid: null });
+        }
+        for (const task of await source.list("tasks")) {
+          if (task.area_uuid === id) await tx.update("tasks", task.uuid, { area_uuid: null });
+        }
+        return tx.remove("areas", id);
+      }),
+
+    // Adds a habit at the end of the list.
+    createHabit: (habit: Omit<NewRow<"habits">, "position">) =>
+      history.transact("New Habit", async (tx) =>
+        tx.insert("habits", { ...habit, position: await endOf("habits") }),
+      ),
 
     updateHabit: (uuid: string, patch: RowPatch<"habits">) =>
       history.transact("Edit Habit", (tx) => tx.update("habits", uuid, patch)),

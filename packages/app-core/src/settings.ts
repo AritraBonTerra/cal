@@ -45,6 +45,8 @@ export const deviceDefaults = {
   // Pixels per hour; 0 fits the whole day in the window. The grid never goes below fit.
   hourHeight: 48,
   halfHourLines: false,
+  // The workload row under each day's date: meetings and planned work against working hours.
+  workloadBar: true,
   // Device calendars hidden from the grid, by calendar id.
   hiddenCalendars: [] as string[],
   // Color overrides by calendar id (hex), kept in Cal rather than written to the calendar.
@@ -56,6 +58,13 @@ export const deviceDefaults = {
   launchAtLogin: false,
   // Zones picked lately, newest first, so the picker can offer them before the search.
   recentZones: [] as string[],
+  // Widths of the Mac's sidebar and to-do list in px, set by dragging their edges. The
+  // window clamps them to each pane's limits.
+  sidebarWidth: 224,
+  tasksWidth: 320,
+  // Whether the sidebar's mini month and calendar list are expanded.
+  showMiniMonth: true,
+  showCalendarList: true,
 };
 
 export type AccountSettings = typeof accountDefaults;
@@ -140,12 +149,17 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
     value === 0 ||
     (typeof value === "number" && Number.isFinite(value) && value >= 16 && value <= 400),
   halfHourLines: isBool,
+  workloadBar: isBool,
   hiddenCalendars: arrayOf(isString, 1000),
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
   freeCalendars: arrayOf(isString, 1000),
   defaultCalendar: nullable(isString),
   launchAtLogin: isBool,
   recentZones: arrayOf(isZone, 20),
+  sidebarWidth: isInt(0, 2000),
+  tasksWidth: isInt(0, 2000),
+  showMiniMonth: isBool,
+  showCalendarList: isBool,
 };
 
 // `json` parsed, if it passes `check`.

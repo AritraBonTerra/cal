@@ -4,7 +4,8 @@ import { createStore, useStore } from "./store";
 /*
  * Cross-pane drags. A task row dragged onto the grid and a block dragged back onto the
  * to-do pane both need the other pane's geometry, so the grid publishes a `locate`
- * function and the to-do pane its element, and a small store carries the live state.
+ * function, the day headers a `dayAt` function, and the to-do pane its element, and a
+ * small store carries the live state.
  */
 
 export interface GridPoint {
@@ -18,14 +19,24 @@ export interface GridGeometry {
   locate(clientX: number, clientY: number): GridPoint | null;
 }
 
-export const geometry: { grid: GridGeometry | null; taskPane: HTMLElement | null } = {
+export interface HeaderGeometry {
+  // The day whose header column (date, strips and all-day lane) holds a window point.
+  dayAt(clientX: number, clientY: number): DayKey | null;
+}
+
+export const geometry: {
+  grid: GridGeometry | null;
+  header: HeaderGeometry | null;
+  taskPane: HTMLElement | null;
+} = {
   grid: null,
+  header: null,
   taskPane: null,
 };
 
 /**
  * Whether a window point is over the to-do pane's visible part. The pane slides closed
- * by width while its content stays mounted at full width (see `Pane` in App.tsx), so
+ * by width while its content stays mounted at full width (see components/Pane.tsx), so
  * the content's rect is clipped to its `[data-pane]` wrapper, and a closed pane is no
  * drop target at all, even mid-slide.
  */
@@ -56,6 +67,8 @@ export interface DragState {
   ghost: { day: DayKey; start: number; end: number } | null;
   // Where the pointer is while a task is dragged, for the floating label.
   pointer: { x: number; y: number } | null;
+  // The day header a dragged task is over; dropping there moves its When date.
+  dropDay: DayKey | null;
   // A block being dragged over the to-do pane, which then offers to remove it.
   removing: boolean;
 }
@@ -64,6 +77,7 @@ export const drag = createStore<DragState>({
   task: null,
   ghost: null,
   pointer: null,
+  dropDay: null,
   removing: false,
 });
 

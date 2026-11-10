@@ -3,6 +3,7 @@ import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain"
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
 import type { AppState } from "./lib/app";
+import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
 import {
   closeEditor,
@@ -15,10 +16,20 @@ import {
   openEdit,
   spanFor,
 } from "./lib/events";
-import { newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
+import {
+  areaForNewProject,
+  newTaskIn,
+  nextBlock,
+  SMART_LISTS,
+  SMART_TITLES,
+  tasksIn,
+} from "./lib/lists";
+import { PANES } from "./lib/panes";
+import { revealBlock } from "./lib/reveal";
 import {
   closeOverlay,
   goToday,
+  type ListId,
   moveView,
   moveWeek,
   openSettings,
@@ -28,6 +39,7 @@ import {
   showList,
   showMonth,
   toggleOverlay,
+  togglePane,
   ui,
 } from "./lib/ui";
 import { zonedDayKey } from "./lib/zones";
@@ -44,7 +56,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount } = useSettings();
+  const { setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -69,11 +81,16 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
     const writer = () => eventWriter(history, latest.current.refreshEvents);
 
+    const listTime = () => {
+      const { today, gridToday, zone } = latest.current;
+      return { today, gridToday, zone, now: now() };
+    };
+
     // Moves the task selection within the visible list; with nothing selected, picks an end.
     const step = (direction: 1 | -1) => {
       const { list, selection, tasks } = ui.get();
       if (!tasks) return;
-      const rows = tasksIn(list, latest.current.data.tasks, latest.current.today);
+      const rows = tasksIn(list, latest.current.data, listTime());
       if (rows.length === 0) return;
       const selectedUuid = selection?.kind === "task" ? selection.uuid : null;
       const index = rows.findIndex((task) => task.uuid === selectedUuid);
@@ -85,6 +102,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           : Math.min(rows.length - 1, Math.max(0, index + direction));
       const task = rows[next];
       if (task) select({ kind: "task", uuid: task.uuid });
+    };
+
+    // Shows a just-made project or area with its sidebar row open for a title; Escape or
+    // an empty title discards it and goes back to `back`.
+    const nameNew = (list: `project:${string}` | `area:${string}`, uuid: string, back: ListId) => {
+      showList(list);
+      ui.set({ sidebar: true, renaming: { uuid, back } });
     };
 
     const nudgeBlock = (minutes: number, resize: boolean) => {
@@ -138,7 +162,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         title: "Toggle Sidebar",
         group: "View",
         keys: ["mod+\\"],
-        run: () => ui.set((state) => ({ sidebar: !state.sidebar })),
+        run: () => togglePane("sidebar"),
       },
       {
         id: "view.tasks",
@@ -146,7 +170,38 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "View",
         keys: ["mod+/"],
         aliases: ["tasks", "pane"],
-        run: () => ui.set((state) => ({ tasks: !state.tasks })),
+        run: () => togglePane("tasks"),
+      },
+      {
+        id: "view.paneWidths",
+        title: "Reset Pane Widths",
+        group: "View",
+        aliases: ["sidebar width", "to-do list width", "resize panes"],
+        run: () => {
+          for (const pane of Object.values(PANES)) setDevice(pane.setting, pane.initial);
+        },
+      },
+      {
+        id: "view.miniMonth",
+        title: "Toggle Mini Month",
+        group: "View",
+        aliases: ["calendar", "date picker", "sidebar month"],
+        run: () => {
+          const show = !latest.current.device.showMiniMonth;
+          setDevice("showMiniMonth", show);
+          if (show) ui.set({ sidebar: true });
+        },
+      },
+      {
+        id: "view.calendarList",
+        title: "Toggle Calendar List",
+        group: "View",
+        aliases: ["calendars", "show calendars", "hide calendars"],
+        run: () => {
+          const show = !latest.current.device.showCalendarList;
+          setDevice("showCalendarList", show);
+          if (show) ui.set({ sidebar: true });
+        },
       },
       {
         id: "view.weekends",
@@ -163,6 +218,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["mod+shift+d"],
         aliases: ["hide declined", "show declined"],
         run: () => void setAccount("showDeclined", !latest.current.account.showDeclined),
+      },
+      {
+        id: "view.workload",
+        title: "Toggle Workload Bar",
+        group: "View",
+        aliases: ["capacity", "meetings", "planned", "busy"],
+        run: () => setDevice("workloadBar", !latest.current.device.workloadBar),
       },
       {
         id: "zone.add",
@@ -267,12 +329,44 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const { list } = ui.get();
           const { today } = latest.current;
+          // Opens as a card with the title focused; left untitled, it's removed on close.
           void actions
             .createTask({ title: "", ...newTaskIn(list, today) })
-            .then((uuid) =>
-              ui.set({ selection: { kind: "task", uuid }, editing: uuid, tasks: true }),
-            );
+            .then((uuid) => openCard({ uuid, title: "", notes: undefined }));
         },
+      },
+      {
+        id: "project.new",
+        title: "New Project",
+        group: "To-Do",
+        keys: ["mod+alt+n"],
+        aliases: ["create project", "add project", "list"],
+        run: () => {
+          const { list } = ui.get();
+          const area = areaForNewProject(list, latest.current.data.projects);
+          void actions
+            .createProject({ title: "", ...(area && { area_uuid: area }) })
+            .then((uuid) => nameNew(`project:${uuid}`, uuid, list));
+        },
+      },
+      {
+        id: "area.new",
+        title: "New Area",
+        group: "To-Do",
+        aliases: ["create area", "add area"],
+        run: () => {
+          const { list } = ui.get();
+          void actions
+            .createArea({ title: "" })
+            .then((uuid) => nameNew(`area:${uuid}`, uuid, list));
+        },
+      },
+      {
+        id: "habit.new",
+        title: "New Habit…",
+        group: "To-Do",
+        aliases: ["create habit", "add habit", "routine"],
+        run: () => ui.set({ overlay: "newHabit" }),
       },
       {
         id: "task.quickEntry",
@@ -301,14 +395,24 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
       {
         id: "task.edit",
-        title: "Edit Title",
+        title: "Open To-Do",
         group: "To-Do",
         keys: ["enter"],
+        aliases: ["edit", "rename", "notes", "details", "tags", "deadline", "estimate"],
         enabled: hasTask,
-        run: () =>
-          ui.set((state) => ({
-            editing: state.selection?.kind === "task" ? state.selection.uuid : null,
-          })),
+        run: () => {
+          const task = selectedTask();
+          if (task) openCard(task);
+        },
+      },
+      {
+        id: "task.close",
+        title: "Close To-Do",
+        group: "To-Do",
+        keys: ["mod+enter"],
+        aliases: ["done editing", "save"],
+        enabled: () => ui.get().editing !== null,
+        run: closeCard,
       },
       {
         id: "task.when",
@@ -316,8 +420,31 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         keys: ["mod+s"],
         aliases: ["schedule", "date"],
-        enabled: hasTask,
+        // Also from an open card, where it opens the card's When chip.
+        enabled: () => ui.get().selection?.kind === "task",
         run: () => toggleOverlay("when"),
+      },
+      {
+        id: "task.move",
+        title: "Move…",
+        group: "To-Do",
+        keys: ["mod+shift+m"],
+        aliases: ["project", "area", "list"],
+        enabled: hasTask,
+        run: () => {
+          ui.set({ tasks: true });
+          toggleOverlay("move");
+        },
+      },
+      {
+        id: "task.inbox",
+        title: "Move to Inbox",
+        group: "To-Do",
+        enabled: hasTask,
+        run: () => {
+          const task = selectedTask();
+          if (task) void actions.setWhen(task.uuid, "inbox");
+        },
       },
       {
         id: "task.today",
@@ -402,6 +529,23 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
                   .map((event) => ({ start: new Date(event.start), end: new Date(event.end) })),
               ),
             );
+        },
+      },
+      {
+        id: "task.reveal",
+        title: "Show in Calendar",
+        group: "To-Do",
+        aliases: ["find block", "go to block", "when is it scheduled"],
+        enabled: () => {
+          const task = selectedTask();
+          return (
+            task !== undefined && nextBlock(task, latest.current.data.blocks, now()) !== undefined
+          );
+        },
+        run: () => {
+          const task = selectedTask();
+          const block = task && nextBlock(task, latest.current.data.blocks, now());
+          if (block) revealBlock(block, latest.current.zone, latest.current.days);
         },
       },
       {
@@ -644,5 +788,5 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess, setAccount]);
+  }, [actions, history, auth.status, requestAccess, setAccount, setDevice]);
 }

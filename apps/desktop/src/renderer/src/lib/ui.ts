@@ -32,6 +32,8 @@ export type Overlay =
   | "quickEntry"
   | "signIn"
   | "when"
+  | "move"
+  | "newHabit"
   | "settings"
   | "zonePicker";
 
@@ -54,8 +56,11 @@ export interface UiState {
   list: ListId;
   selection: Selection | null;
   overlay: Overlay | null;
-  // The task whose title is being edited inline.
+  // The to-do open as a card (lib/card.ts); clearing it closes and saves the card.
   editing: string | null;
+  // The project or area whose sidebar row is being renamed, and the list to go back to
+  // if it was new and gets discarded (Escape or an empty title).
+  renaming: { uuid: string; back: ListId } | null;
   // Set after a jump (T, `.`) so the grid can flash the target day once.
   flashDay: DayKey | null;
   // First day of the week (0 = Sunday), mirrored from the account setting so view
@@ -78,6 +83,7 @@ export const ui = createStore<UiState>({
   selection: null,
   overlay: null,
   editing: null,
+  renaming: null,
   flashDay: null,
   weekStart: 1,
   settingsSection: "general",
@@ -106,12 +112,16 @@ export function showDays(count: number, today: DayKey, from?: DayKey) {
   });
 }
 
-// Applies a new first day of the week, re-aligning the week view to it.
-export function setWeekStart(weekStart: number) {
-  ui.set(({ view, anchor }) => ({
-    weekStart,
-    anchor: view.kind === "days" && view.count === WEEK ? startOfWeek(anchor, weekStart) : anchor,
-  }));
+/**
+ * Applies a new first day of the week, re-aligning the week view to it: to today's week
+ * when today is showing, otherwise to the week that shares the most days with the old one.
+ */
+export function setWeekStart(weekStart: number, today: DayKey) {
+  ui.set(({ view, anchor }) => {
+    if (view.kind !== "days" || view.count !== WEEK) return { weekStart };
+    const base = dayRange(anchor, WEEK).includes(today) ? today : addDays(anchor, 3);
+    return { weekStart, anchor: startOfWeek(base, weekStart) };
+  });
 }
 
 // Window-size defaults: panes hide on narrow windows and come back when there's room.
@@ -136,7 +146,8 @@ export function moveWeek(direction: 1 | -1) {
   ui.set(({ anchor }) => ({ anchor: addDays(anchor, direction * WEEK) }));
 }
 
-// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T).
+// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T). The mini
+// month jumps to any day the same way: the week holding it, or a span starting on it.
 export function goToday(today: DayKey, leftAlign = false) {
   ui.set(({ view, weekStart }) => ({
     anchor:
@@ -146,6 +157,11 @@ export function goToday(today: DayKey, leftAlign = false) {
     flashDay: today,
   }));
 }
+
+// Shows or hides the sidebar or the to-do list (⌘\ and ⌘/, and the buttons by the
+// traffic lights).
+export const togglePane = (pane: "sidebar" | "tasks") =>
+  ui.set((state) => ({ [pane]: !state[pane] }));
 
 export const select = (selection: Selection | null) => ui.set({ selection, editing: null });
 

@@ -4,6 +4,7 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
 declare global {
   interface Window {
     calTest?: {
+      device(): DeviceSettings;
       seed(settings: {
         account?: Partial<AccountSettings>;
         device?: Partial<DeviceSettings>;

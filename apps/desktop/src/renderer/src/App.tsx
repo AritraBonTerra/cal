@@ -1,19 +1,25 @@
 import { type AccountSettings, type DeviceSettings, useCal, useSettings } from "@cal/app-core";
 import {
+  type Area,
   addDays,
+  type DayKey,
   dayRange,
   fromDayKey,
+  type Project,
   startOfMonth,
   startOfWeek,
   toOffsetIso,
   weekday,
 } from "@cal/domain";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppCommands } from "./commands";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
+import { NewHabit } from "./components/NewHabit";
 import { Palette } from "./components/Palette";
+import { Pane, useSidebarPeek } from "./components/Pane";
+import { PaneToggles } from "./components/PaneToggles";
 import { QuickEntry } from "./components/QuickEntry";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
@@ -26,13 +32,15 @@ import { Toolbar } from "./components/Toolbar";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
 import { AppContext, type AppState } from "./lib/app";
-import { useCalendars, useChipPalette, useEvents } from "./lib/calendars";
+import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
 import { useKeyboard } from "./lib/keyboard";
+import { isSmartList } from "./lib/lists";
+import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
 import { setTimeFormat } from "./lib/time";
-import { COMPACT_WIDTH, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
+import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
 import { deviceZone, zonedDayKey } from "./lib/zones";
 
 // Weeks shown by the month view: the one holding the 1st through the one holding the last day.
@@ -58,10 +66,36 @@ function usePaneDefaults() {
   }, []);
 }
 
+/**
+ * When the current list's project or area goes away (its creation undone, or deleted on
+ * another device), the pane falls back to Today instead of showing a list that no longer
+ * exists. A list is only dropped after it has been seen, so a project made a moment ago,
+ * whose row hasn't arrived yet, stays put.
+ */
+function useListFallback(projects: readonly Project[], areas: readonly Area[]) {
+  const list = useUi((state) => state.list);
+  const seen = useRef<ListId | null>(null);
+  useEffect(() => {
+    if (isSmartList(list)) return;
+    const uuid = list.slice(list.indexOf(":") + 1);
+    const rows = list.startsWith("project:") ? projects : areas;
+    if (rows.some((row) => row.uuid === uuid)) seen.current = list;
+    else if (seen.current === list) {
+      seen.current = null;
+      ui.set((state) => ({
+        list: "today",
+        renaming: null,
+        editing: null,
+        selection: state.selection?.kind === "task" ? null : state.selection,
+      }));
+    }
+  }, [list, projects, areas]);
+}
+
 // Settings that live outside React: the week start the view helpers read, and the
 // window theme, which Electron applies to `prefers-color-scheme`.
-function useSettingsEffects(account: AccountSettings, device: DeviceSettings) {
-  useEffect(() => setWeekStart(account.weekStart), [account.weekStart]);
+function useSettingsEffects(account: AccountSettings, device: DeviceSettings, today: DayKey) {
+  useEffect(() => setWeekStart(account.weekStart, today), [account.weekStart, today]);
   useEffect(() => {
     void window.cal.setTheme(device.theme);
   }, [device.theme]);
@@ -89,13 +123,14 @@ export function App() {
   useKeyboard(cal);
   usePaneDefaults();
   const data = useData();
+  useListFallback(data.projects, data.areas);
   const today = useToday();
   const now = useNow();
   const mode = useMode();
   const { account, device } = useSettings();
   // Before anything below formats a time, so one render never mixes clocks.
   setTimeFormat(account.timeFormat);
-  useSettingsEffects(account, device);
+  useSettingsEffects(account, device, today);
   const calendars = useCalendars();
   const palette = useChipPalette(calendars, mode, device.calendarColors);
   const { auth, sync } = useAccount();
@@ -107,6 +142,10 @@ export function App() {
   const overlay = useUi((state) => state.overlay);
   const travelZone = useUi((state) => state.travelZone);
   const zone = travelZone ?? account.primaryZone ?? deviceZone;
+  const peek = useSidebarPeek(
+    !sidebar && overlay === null,
+    clampWidth("sidebar", device.sidebarWidth),
+  );
   const gridToday = zonedDayKey(now, zone);
 
   const days = useMemo(
@@ -128,13 +167,10 @@ export function App() {
     toOffsetIso(fromDayKey(addDays(first, -margin))),
     toOffsetIso(fromDayKey(addDays(last, 1 + margin))),
   );
-  const events = useMemo(() => {
-    const hidden = new Set(device.hiddenCalendars);
-    return fetched.filter(
-      (event) =>
-        !hidden.has(event.calendarId) && (account.showDeclined || event.myStatus !== "declined"),
-    );
-  }, [fetched, device.hiddenCalendars, account.showDeclined]);
+  const events = useMemo(
+    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
+    [fetched, device.hiddenCalendars, account.showDeclined],
+  );
 
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(
@@ -175,10 +211,11 @@ export function App() {
         className="flex h-screen w-screen overflow-hidden bg-canvas text-body text-ink"
         data-ready={data.loaded && eventsLoaded ? "" : undefined}
       >
-        <Pane open={sidebar} width={224} name="sidebar">
+        <PaneToggles />
+        <Pane name="sidebar" open={sidebar} peek={peek}>
           <Sidebar auth={auth} sync={sync} access={access} requestAccess={requestAccess} />
         </Pane>
-        <Pane open={tasks} width={320} name="tasks">
+        <Pane name="tasks" open={tasks}>
           <TaskPane />
         </Pane>
         <main className="flex min-w-0 flex-1 flex-col">
@@ -192,41 +229,10 @@ export function App() {
         {overlay === "shortcuts" && <ShortcutSheet />}
         {overlay === "quickEntry" && <QuickEntry />}
         {overlay === "signIn" && <SignInSheet />}
+        {overlay === "newHabit" && <NewHabit />}
         {overlay === "settings" && <SettingsPanel auth={auth} sync={sync} />}
         {overlay === "zonePicker" && <ZonePicker />}
       </div>
     </AppContext.Provider>
-  );
-}
-
-/**
- * A side pane that slides open and closed by width (200ms ease-out; instant under
- * reduced motion). Its content keeps a fixed width and stays mounted, so scroll
- * positions survive a toggle and the calendar beside it only ever changes width.
- */
-function Pane({
-  open,
-  width,
-  name,
-  children,
-}: {
-  open: boolean;
-  width: number;
-  name: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="pane-slide shrink-0 overflow-hidden"
-      style={{ width: open ? width : 0 }}
-      aria-hidden={!open}
-      inert={!open}
-      data-pane={name}
-      data-open={open ? "" : undefined}
-    >
-      <div className="h-full" style={{ width }}>
-        {children}
-      </div>
-    </div>
   );
 }

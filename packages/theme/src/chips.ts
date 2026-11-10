@@ -64,8 +64,20 @@ export function blockColors(hue: number, mode: Mode) {
   };
 }
 
-// Habit-chip fill and label when done: the same pale fill and dark text as a chip.
+/**
+ * Habit colors. A done chip takes the event chip's pale fill and dark text; the ring is
+ * the chip's bar. Compact rings (narrow columns) also need `badge`, the done ring's fill
+ * behind a white initial (at least 4.5:1 for every hue), `track`, a quiet ring for days
+ * not yet due or missed, and `initial`, the letter on those quiet rings.
+ */
 export function habitColors(hue: number, mode: Mode) {
-  const { fill, title, bar } = chipColors(hue, mode);
-  return { fill, label: title, ring: bar };
+  const { fill, title, bar, time } = chipColors(hue, mode);
+  return {
+    fill,
+    label: title,
+    ring: bar,
+    badge: toHex(oklch(0.54, 0.13, hue)),
+    track: toHex(mode === "light" ? oklch(0.82, 0.04, hue) : oklch(0.4, 0.04, hue)),
+    initial: time,
+  };
 }

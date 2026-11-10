@@ -1,4 +1,5 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { storeSource } from "@cal/app-core";
@@ -7,6 +8,7 @@ import { LocalStore, Session } from "@cal/sync";
 import {
   app,
   BrowserWindow,
+  type IpcMainEvent,
   ipcMain,
   Menu,
   type MenuItemConstructorOptions,
@@ -31,20 +33,17 @@ const CONVEX_URL =
   import.meta.env.MAIN_VITE_CONVEX_URL ?? "https://charming-dachshund-581.convex.cloud";
 
 // Fixture mode (CAL_FIXTURE=1) starts from the same seeded data and clock every launch,
-// offline, for screenshots and design review.
+// offline, for screenshots and design review. Each launch gets its own throwaway data
+// directory in the system temp folder, emptied on quit, so several can run side by side.
 const fixture = process.env.CAL_FIXTURE === "1";
 
 // A second data directory (CAL_PROFILE=b) runs another "device" side by side for testing sync.
-const profile = fixture ? "fixture" : process.env.CAL_PROFILE;
-if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
+const profile = process.env.CAL_PROFILE;
+if (fixture) app.setPath("userData", mkdtempSync(join(tmpdir(), "cal-fixture-")));
+else if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
 
 const dataDir = app.getPath("userData");
 mkdirSync(dataDir, { recursive: true });
-if (fixture) {
-  for (const file of ["cal.sqlite", "cal.sqlite-wal", "cal.sqlite-shm"]) {
-    rmSync(join(dataDir, file), { force: true });
-  }
-}
 const store = new LocalStore(openDatabase(join(dataDir, "cal.sqlite")));
 if (fixture) seedFixture(store);
 const data = storeSource(store);
@@ -183,6 +182,40 @@ handle(channels.theme, (theme: Theme) => {
   nativeTheme.themeSource = theme;
 });
 
+// How long a closing window may take to save before it's closed anyway.
+const CLOSE_WAIT_MS = 1500;
+// Set once the app has been asked to quit, so a window that held its close resumes the quit.
+let quitting = false;
+
+/**
+ * Makes `window` wait before closing: it's told it is closing, and closes once it
+ * answers that what was open in it (a to-do card's text) has been saved. A page that
+ * doesn't answer in time, or has crashed, is closed anyway.
+ */
+function holdClose(window: BrowserWindow) {
+  let state: "open" | "waiting" | "ready" = "open";
+  window.on("close", (event) => {
+    if (state === "ready" || window.webContents.isCrashed()) return;
+    event.preventDefault();
+    if (state === "waiting") return;
+    state = "waiting";
+    const proceed = () => {
+      if (state === "ready") return;
+      state = "ready";
+      clearTimeout(timer);
+      ipcMain.off(channels.closeReady, onReady);
+      if (quitting) app.quit();
+      else window.close();
+    };
+    const onReady = (reply: IpcMainEvent) => {
+      if (reply.sender === window.webContents) proceed();
+    };
+    const timer = setTimeout(proceed, CLOSE_WAIT_MS);
+    ipcMain.on(channels.closeReady, onReady);
+    window.webContents.send(channels.closing);
+  });
+}
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1320,
@@ -200,6 +233,7 @@ function createWindow() {
     },
   });
   window.once("ready-to-show", () => window.show());
+  holdClose(window);
   // The window only ever shows Cal; web links open in the browser instead.
   const openOutside = (url: string) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
@@ -253,6 +287,9 @@ function buildMenu() {
       submenu: [
         command("New To-Do", "task.new", "CmdOrCtrl+N"),
         command("Quick Entry", "task.quickEntry", "CmdOrCtrl+Shift+N"),
+        command("New Project", "project.new", "CmdOrCtrl+Alt+N"),
+        command("New Area", "area.new"),
+        command("New Habit…", "habit.new"),
         { type: "separator" },
         { role: "close" },
       ],
@@ -307,7 +344,15 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+// A window that is still saving cancels the quit and asks again when it's done, so this
+// runs twice then; the helpers stop once.
 app.on("before-quit", () => {
+  if (quitting) return;
+  quitting = true;
   calkit.stop();
   void session.close();
+});
+
+app.on("quit", () => {
+  if (fixture) rmSync(dataDir, { recursive: true, force: true });
 });

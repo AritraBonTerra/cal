@@ -281,7 +281,9 @@ Built and reviewed:
 
 v1.1 (after testing the first DMG): the grid fills the window with zoom, panes slide, a Settings window (synced account settings and per-device ones), up to three extra time-zone columns and `Z` travel, creating and editing calendar events with repeats, reminders and series edits, Quick Entry for events and to-dos with a rewritten parser (research/10), and Google sign-in through Better Auth.
 
-Still to do: repeating tasks, headings and checklists; showing tags and firing reminders on to-dos (both are stored); Replan (`P`) and the workload bar; the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
+v1.2 (Mac, after a usability pass against Notion Calendar, Things 3 and TickTick): pane toggles pinned by the traffic lights, resizable panes and a sidebar peek; a sidebar footer with Settings, new project and area, and the account; a mini month and calendar list in the sidebar; creating projects, areas and habits; a to-do pane bottom bar; to-dos that open into a card (notes, tags, deadline, estimate, project); Today split into Scheduled and Not scheduled; Upcoming grouped by day and Anytime by project; each day's unscheduled to-dos, deadline flags and a workload bar in the day header; habit initials in compact rings.
+
+Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
 
 ## 8. Not in v1
 

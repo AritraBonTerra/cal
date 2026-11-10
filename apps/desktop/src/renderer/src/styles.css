@@ -108,6 +108,34 @@
   }
 }
 
+/*
+ * The hidden sidebar peeking over the content slides in from the window's left edge and
+ * back out in 200ms ease-out. Under reduced motion it appears and goes at once.
+ */
+@keyframes peek-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes peek-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@utility peek-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: peek-in 200ms var(--ease-out);
+  }
+}
+@utility peek-out {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: peek-out 200ms var(--ease-out) forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    visibility: hidden;
+  }
+}
+
 /* Thin, auto-hiding scrollbars like the rest of the Mac. */
 ::-webkit-scrollbar {
   width: 10px;

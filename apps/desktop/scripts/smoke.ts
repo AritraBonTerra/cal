@@ -632,7 +632,11 @@ await page.evaluate(() =>
 );
 await page.waitForTimeout(300);
 check("hiding weekends leaves five columns", (await page.locator("[data-column]").count()) === 5);
-check("24-hour time relabels the gutter", (await page.locator("text=09:00").count()) === 1);
+// Scoped to the calendar: to-do rows show their next block's time too ("Tomorrow 09:00").
+check(
+  "24-hour time relabels the gutter",
+  (await page.locator("main").locator("text=09:00").count()) === 1,
+);
 check(
   "a hidden calendar's events leave the grid",
   (await page.locator("[data-item^='event:'] > div", { hasText: "Dentist" }).count()) === 0,
@@ -782,6 +786,209 @@ check(
 );
 await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
+);
+
+// 25. resizing the side panes by dragging their right edges
+await page.keyboard.press("w");
+await page.waitForTimeout(200);
+for (const pane of ["sidebar", "tasks"]) {
+  const toggle = page.locator(`[data-pane-toggle=${pane}]`);
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+}
+await page.waitForTimeout(350);
+const paneWidth = (pane: string) =>
+  page.locator(`[data-pane=${pane}]`).evaluate((element) => element.getBoundingClientRect().width);
+// The device setting a drag saved (fixture mode keeps device settings in memory).
+const savedWidth = (key: "sidebarWidth" | "tasksWidth") =>
+  page.evaluate((name) => window.calTest?.device()[name], key);
+const handleAt = async (pane: string) => {
+  const box = await boxOf(page.locator(`[data-resize=${pane}]`));
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+};
+await grid.evaluate((element) => {
+  element.scrollTop = 300;
+});
+const beforeResize = await gridState();
+const daysBeforeResize = await page
+  .locator("[data-column]")
+  .evaluateAll((columns) => columns.map((column) => column.getAttribute("data-column")));
+let handle = await handleAt("sidebar");
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(handle.x + 30, handle.y, { steps: 3 });
+await page.mouse.move(handle.x + 60, handle.y, { steps: 3 });
+// Read at once: with the slide still on, the width would lag behind the pointer.
+const midDrag = await paneWidth("sidebar");
+const selected = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+await page.mouse.up();
+await page.waitForTimeout(100);
+const afterResize = await gridState();
+const daysAfterResize = await page
+  .locator("[data-column]")
+  .evaluateAll((columns) => columns.map((column) => column.getAttribute("data-column")));
+check(
+  "dragging the sidebar's edge resizes it live and saves the width on release",
+  midDrag === 284 &&
+    (await paneWidth("sidebar")) === 284 &&
+    (await savedWidth("sidebarWidth")) === 284,
+);
+check(
+  "the sidebar's content fills the dragged width",
+  (await page
+    .locator("[data-pane=sidebar] aside")
+    .evaluate((aside) => aside.getBoundingClientRect().width)) === 284,
+);
+check(
+  "resizing keeps the grid's scrollTop and dates, and selects no text",
+  afterResize.scrollTop === beforeResize.scrollTop &&
+    daysAfterResize.join() === daysBeforeResize.join() &&
+    selected === "",
+);
+handle = await handleAt("sidebar");
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(handle.x + 200, handle.y, { steps: 4 });
+await page.mouse.up();
+await page.waitForTimeout(100);
+check("the sidebar stops at 320px", (await paneWidth("sidebar")) === 320);
+handle = await handleAt("sidebar");
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(handle.x - 60, handle.y, { steps: 3 });
+await page.keyboard.press("Escape");
+await page.mouse.up();
+await page.waitForTimeout(100);
+check(
+  "Escape mid-drag puts the starting width back",
+  (await paneWidth("sidebar")) === 320 && (await savedWidth("sidebarWidth")) === 320,
+);
+handle = await handleAt("sidebar");
+await page.mouse.dblclick(handle.x, handle.y);
+await page.waitForTimeout(350);
+check(
+  "double-clicking the edge resets the sidebar to 224px",
+  (await paneWidth("sidebar")) === 224 && (await savedWidth("sidebarWidth")) === 224,
+);
+// The to-do list: wider, its content following.
+handle = await handleAt("tasks");
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(handle.x + 80, handle.y, { steps: 4 });
+await page.mouse.up();
+await page.waitForTimeout(100);
+check(
+  "dragging the to-do list's edge resizes it and its content",
+  (await paneWidth("tasks")) === 400 &&
+    (await savedWidth("tasksWidth")) === 400 &&
+    (await page
+      .locator("[data-pane=tasks] section")
+      .first()
+      .evaluate((list) => list.getBoundingClientRect().width)) === 400,
+);
+// Drag to close: 60px under the minimum collapses the pane; back out restores it.
+handle = await handleAt("tasks");
+await page.mouse.move(handle.x, handle.y);
+await page.mouse.down();
+await page.mouse.move(handle.x - 220, handle.y, { steps: 6 });
+const collapsed = await paneWidth("tasks");
+await page.mouse.move(handle.x - 100, handle.y, { steps: 3 });
+const restored = await paneWidth("tasks");
+await page.mouse.move(handle.x - 220, handle.y, { steps: 3 });
+await page.mouse.up();
+await page.waitForTimeout(350);
+check(
+  "dragging the edge far past the minimum collapses the pane, and back out restores it",
+  collapsed === 0 && restored === 300,
+);
+check(
+  "letting go past the threshold closes the to-do list, keeping its saved width",
+  (await page.locator("[data-pane-toggle=tasks]").getAttribute("aria-pressed")) === "false" &&
+    (await paneWidth("tasks")) === 0 &&
+    (await savedWidth("tasksWidth")) === 400,
+);
+await page.keyboard.press("Meta+/");
+await page.waitForTimeout(350);
+check("⌘/ brings it back at its saved width", (await paneWidth("tasks")) === 400);
+await page.keyboard.press("Meta+k");
+await page.keyboard.type("Reset Pane Widths");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(350);
+check(
+  "Reset Pane Widths puts both panes back to their defaults",
+  (await paneWidth("sidebar")) === 224 && (await paneWidth("tasks")) === 320,
+);
+
+// 26. the hidden sidebar peeks over the content from the window's left edge
+await page.keyboard.press("Meta+\\");
+await page.waitForTimeout(350);
+const peekPanel = page.locator("[data-peek]");
+const firstColumn = async () => (await col(daysBeforeResize[0] ?? "")).x;
+const columnBefore = await firstColumn();
+await page.mouse.move(300, 400);
+await page.mouse.move(2, 400);
+await page.waitForTimeout(80);
+const tooSoon = await peekPanel.count();
+await page.waitForTimeout(250);
+check(
+  "resting at the left edge peeks the sidebar without moving the calendar",
+  tooSoon === 0 &&
+    (await page.locator("[data-peek=in]").count()) === 1 &&
+    Math.round((await boxOf(peekPanel)).width) === 224 &&
+    (await paneWidth("sidebar")) === 0 &&
+    (await firstColumn()) === columnBefore &&
+    (await page.locator("[data-pane-toggle=sidebar]").getAttribute("aria-pressed")) === "false",
+);
+const toggleBox = await boxOf(page.locator("[data-pane-toggle=tasks]"));
+check(
+  "the pane toggles stay on top of the peeked sidebar",
+  await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-pane-toggle]") !== null,
+    { x: toggleBox.x + toggleBox.width / 2, y: toggleBox.y + toggleBox.height / 2 },
+  ),
+);
+await page.locator("[data-peek] li", { hasText: "Upcoming" }).first().click();
+await page.waitForTimeout(150);
+check(
+  "clicking a list in the peeked sidebar shows it and keeps the peek",
+  (await page.locator("h2", { hasText: "Upcoming" }).count()) === 1 &&
+    (await page.locator("[data-peek=in]").count()) === 1,
+);
+await page.mouse.move(600, 400);
+await page.waitForTimeout(150);
+await page.mouse.move(100, 400);
+await page.waitForTimeout(300);
+const stayed = await page.locator("[data-peek=in]").count();
+await page.mouse.move(600, 400);
+await page.waitForTimeout(150);
+const lingering = await page.locator("[data-peek=in]").count();
+await page.waitForTimeout(500);
+check(
+  "the peek stays when the pointer comes back, and leaves 300ms after it goes",
+  stayed === 1 && lingering === 1 && (await peekPanel.count()) === 0,
+);
+await page.mouse.move(2, 400);
+await page.waitForTimeout(300);
+const peekedAgain = await page.locator("[data-peek=in]").count();
+await page.keyboard.press("Escape");
+await page.waitForTimeout(50);
+check("Escape closes the peek at once", peekedAgain === 1 && (await peekPanel.count()) === 0);
+// A press held from the empty end of the to-do list.
+await page.mouse.move(160, 860);
+await page.mouse.down();
+await page.mouse.move(2, 860, { steps: 4 });
+await page.waitForTimeout(300);
+const peekWhileDragging = await peekPanel.count();
+await page.mouse.up();
+check("a drag never starts a peek", peekWhileDragging === 0);
+await page.mouse.move(300, 400);
+await page.mouse.move(2, 400);
+await page.waitForTimeout(300);
+const peekedOnce = await page.locator("[data-peek=in]").count();
+await page.keyboard.press("Meta+\\");
+await page.waitForTimeout(350);
+check(
+  "showing the real sidebar ends the peek",
+  peekedOnce === 1 && (await peekPanel.count()) === 0 && (await paneWidth("sidebar")) === 224,
 );
 
 await app.close();

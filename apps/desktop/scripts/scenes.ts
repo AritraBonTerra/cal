@@ -5,9 +5,15 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * from a fresh fixture launch (seeded data, clock at Wed 2026-10-28 10:40), seeds any
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
- * capture. `steps` runs any sequence of those in order instead.
+ * capture. `steps` runs any sequence of those in order instead, plus pointer moves to a
+ * window point (`move`).
  */
-export type Step = { press: string } | { type: string } | { click: string } | { wait: number };
+export type Step =
+  | { press: string }
+  | { type: string }
+  | { click: string }
+  | { move: { x: number; y: number } }
+  | { wait: number };
 
 export interface Scene {
   name: string;
@@ -25,12 +31,44 @@ export interface Scene {
 
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
 const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
+// A to-do in Today with notes, tags, a deadline and an estimate.
+const PRICING = "li:has-text('Update pricing page copy')";
 
 export const scenes: Scene[] = [
   { name: "week-light" },
   { name: "week-dark", dark: true },
   { name: "day", keys: ["1"] },
   { name: "three-day", keys: ["3"] },
+  // The day headers: deadlines, the workload row, and each day's to-dos without a block.
+  { name: "day-agenda" },
+  { name: "day-agenda-dark", dark: true },
+  { name: "day-agenda-wide", keys: ["Meta+\\", "Meta+/"] },
+  { name: "day-agenda-three-day", keys: ["3"] },
+  { name: "day-agenda-deadlines", click: "[data-deadlines='2026-10-30']" },
+  // Short working hours over-plan Wednesday: the bar and its label turn red.
+  {
+    name: "day-agenda-over",
+    settings: { account: { workingHours: { start: 11 * 60, end: 15 * 60 } } },
+    keys: ["Meta+\\", "Meta+/"],
+  },
+  // Travelling to Tokyo with extra zone columns and weekends hidden: days are Tokyo's.
+  {
+    name: "day-agenda-travel-dark",
+    dark: true,
+    settings: {
+      account: {
+        showWeekends: false,
+        timeZones: [{ zone: "Europe/London", label: "Ldn" }, { zone: "Asia/Kolkata" }],
+      },
+    },
+    keys: ["z"],
+    text: "tokyo",
+    after: ["Enter"],
+  },
+  { name: "day-agenda-hidden", settings: { device: { workloadBar: false } } },
+  // Narrow columns: compact habit rings with each habit's initial in its own hue.
+  { name: "habit-rings" },
+  { name: "habit-rings-dark", dark: true },
   { name: "month", keys: ["m"] },
   { name: "palette", keys: ["Meta+k"] },
   { name: "shortcuts", keys: ["?"] },
@@ -41,6 +79,43 @@ export const scenes: Scene[] = [
   },
   { name: "today", keys: ["ArrowDown", "ArrowDown"] },
   { name: "when-picker", keys: ["ArrowDown", "Meta+s"] },
+  // A to-do opened into a card with Return: notes, then the When/Deadline/Estimate/
+  // Project/Tags chips.
+  { name: "task-card", steps: [{ click: PRICING }, { press: "Enter" }] },
+  { name: "task-card-dark", dark: true, steps: [{ click: PRICING }, { press: "Enter" }] },
+  {
+    name: "task-card-project",
+    steps: [
+      { click: PRICING },
+      { press: "Enter" },
+      { click: "[data-card] button >> text=Launch v2" },
+    ],
+  },
+  {
+    name: "task-card-deadline",
+    dark: true,
+    steps: [{ click: PRICING }, { press: "Enter" }, { click: "[data-card] button >> text=Fri" }],
+  },
+  // ⌘N opens the new row as a card with the title focused; its chips show quiet labels.
+  { name: "task-card-new", keys: ["Meta+n"], text: "Call the bank" },
+  // Today split into Scheduled (with each row's start time) and Not scheduled.
+  { name: "today-scheduled-dark", dark: true },
+  // From next week, the time on a Scheduled row brings today's block back into view
+  // and selects it.
+  {
+    name: "scheduled-reveal",
+    steps: [
+      { press: "j" },
+      { click: "li:has-text('Write launch spec') button[title='Show in Calendar']" },
+    ],
+  },
+  // Anytime by project (loose to-dos first); rows lead with the next block's time.
+  { name: "anytime-projects", keys: ["Meta+4"] },
+  { name: "anytime-projects-dark", dark: true, keys: ["Meta+4"] },
+  // Upcoming by day for the week (with each day's events), then by month.
+  { name: "upcoming-days", keys: ["Meta+3"] },
+  { name: "upcoming-days-dark", dark: true, keys: ["Meta+3"] },
+  { name: "upcoming-narrow", width: 760, height: 700, keys: ["Meta+3"] },
   { name: "block-selected", click: "[data-item^='block:'] [data-edge=end] >> xpath=.." },
   {
     name: "sign-in",
@@ -49,11 +124,84 @@ export const scenes: Scene[] = [
     click: "[role=option][aria-selected=true]",
   },
   { name: "narrow", width: 860, height: 700 },
+  // Panes dragged wider: the sidebar and the to-do list lay out at the saved widths.
+  { name: "panes-resized", settings: { device: { sidebarWidth: 300, tasksWidth: 440 } } },
+  {
+    name: "panes-resized-dark",
+    dark: true,
+    settings: { device: { sidebarWidth: 300, tasksWidth: 440 } },
+  },
+  // The pointer over the sidebar's right edge shows the resize line.
+  { name: "pane-resize-hover", steps: [{ move: { x: 224, y: 400 } }] },
+  // The narrowest window with both panes shown at their defaults.
+  { name: "narrow-760-panes", width: 760, height: 700, keys: ["Meta+\\", "Meta+/"] },
+  // The hidden sidebar peeks over the calendar when the pointer rests at the left edge.
+  {
+    name: "sidebar-peek",
+    keys: ["Meta+\\"],
+    steps: [{ move: { x: 200, y: 400 } }, { move: { x: 2, y: 400 } }, { wait: 300 }],
+  },
+  {
+    name: "sidebar-peek-dark",
+    dark: true,
+    keys: ["Meta+\\"],
+    steps: [{ move: { x: 200, y: 400 } }, { move: { x: 2, y: 400 } }, { wait: 300 }],
+  },
   // The grid fills a tall window: no blank space under 11 PM.
   { name: "tall-fit", width: 1440, height: 1200, settings: { device: { hourHeight: 0 } } },
   { name: "zoomed-in", keys: ["Meta+Shift+.", "Meta+Shift+."] },
   { name: "zoomed-in-dark", dark: true, keys: ["Meta+Shift+.", "Meta+Shift+."] },
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
+  // Both panes hidden: the title clears the traffic lights and the pane toggles.
+  { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },
+  // The sidebar's + menu, and a project just made with ⌥⌘N, its title being typed.
+  { name: "new-list-menu", click: "[data-new-list]" },
+  { name: "new-project", keys: ["Meta+Alt+n"], text: "Garden" },
+  { name: "new-project-dark", dark: true, keys: ["Meta+Alt+n"], text: "Garden" },
+  // New Habit… from the + beside the habit strip, set to a weekly quota.
+  {
+    name: "new-habit",
+    steps: [
+      { click: "button[aria-label='New Habit…']" },
+      { type: "Stretch" },
+      { click: "[role=radio]:has-text('Times per')" },
+    ],
+  },
+  {
+    name: "new-habit-dark",
+    dark: true,
+    steps: [
+      { click: "button[aria-label='New Habit…']" },
+      { type: "Read" },
+      { click: "[role=radio]:has-text('On days')" },
+      { click: "[role=radio]:has-text('An amount')" },
+    ],
+  },
+  // The to-do bar's Move menu for the selected to-do (⇧⌘M).
+  { name: "task-move", keys: ["ArrowDown", "Meta+Shift+m"] },
+  { name: "task-move-dark", dark: true, keys: ["ArrowDown", "Meta+Shift+m"] },
+  // The sidebar's mini month and calendar list, one calendar hidden (an outlined swatch).
+  { name: "sidebar-calendars", settings: { device: { hiddenCalendars: ["holidays"] } } },
+  {
+    name: "sidebar-calendars-dark",
+    dark: true,
+    settings: { device: { hiddenCalendars: ["holidays"] } },
+  },
+  // A click on Nov 4 shows its week and flashes the day; the mini month bands it.
+  {
+    name: "mini-month-jump",
+    click: "[data-mini-month] button[aria-label='Wednesday, November 4']",
+  },
+  // Both sections collapsed to their headings.
+  {
+    name: "sidebar-sections-collapsed",
+    settings: { device: { showMiniMonth: false, showCalendarList: false } },
+  },
+  // A short, narrow window: the lists scroll between the month and the footer.
+  { name: "sidebar-short", width: 760, height: 520, keys: ["Meta+\\"] },
+  // Smart-list icons in their own colors; Upcoming is the active row and the pane header.
+  { name: "list-colors", keys: ["Meta+3"] },
+  { name: "list-colors-dark", dark: true, keys: ["Meta+3"] },
   { name: "settings-general", keys: ["Meta+,"] },
   { name: "settings-general-dark", dark: true, keys: ["Meta+,"] },
   { name: "settings-grid", keys: ["Meta+,"], click: "[data-section=grid]" },
