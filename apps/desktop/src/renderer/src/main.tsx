@@ -24,6 +24,7 @@ const entries = <T extends object>(patch: T) => Object.entries(patch) as [keyof 
 // Fixture mode lets the screenshot and smoke scripts seed settings for a scene.
 if (window.cal.config.fixture) {
   window.calTest = {
+    device: () => cal.settings.device,
     seed: async ({ account = {}, device = {} }) => {
       for (const [key, value] of entries<Partial<AccountSettings>>(account)) {
         if (value !== undefined) await cal.settings.setAccount(key, value);

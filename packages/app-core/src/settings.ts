@@ -56,6 +56,10 @@ export const deviceDefaults = {
   launchAtLogin: false,
   // Zones picked lately, newest first, so the picker can offer them before the search.
   recentZones: [] as string[],
+  // Widths of the Mac's sidebar and to-do list in px, set by dragging their edges. The
+  // window clamps them to each pane's limits.
+  sidebarWidth: 224,
+  tasksWidth: 320,
 };
 
 export type AccountSettings = typeof accountDefaults;
@@ -146,6 +150,8 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   defaultCalendar: nullable(isString),
   launchAtLogin: isBool,
   recentZones: arrayOf(isZone, 20),
+  sidebarWidth: isInt(0, 2000),
+  tasksWidth: isInt(0, 2000),
 };
 
 // `json` parsed, if it passes `check`.

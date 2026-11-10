@@ -4,8 +4,10 @@ import type { CalBridge } from "../../shared/api";
 declare global {
   interface Window {
     cal: CalBridge;
-    // Fixture-mode hook for the screenshot and smoke scripts: seeds settings for a scene.
+    // Fixture-mode hook for the screenshot and smoke scripts: seeds settings for a scene,
+    // and reads the device settings back.
     calTest?: {
+      device(): DeviceSettings;
       seed(settings: {
         account?: Partial<AccountSettings>;
         device?: Partial<DeviceSettings>;

@@ -16,6 +16,7 @@ import {
   spanFor,
 } from "./lib/events";
 import { newTaskIn, SMART_LISTS, SMART_TITLES, tasksIn } from "./lib/lists";
+import { PANES } from "./lib/panes";
 import {
   closeOverlay,
   goToday,
@@ -45,7 +46,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount } = useSettings();
+  const { setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -148,6 +149,15 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["mod+/"],
         aliases: ["tasks", "pane"],
         run: () => togglePane("tasks"),
+      },
+      {
+        id: "view.paneWidths",
+        title: "Reset Pane Widths",
+        group: "View",
+        aliases: ["sidebar width", "to-do list width", "resize panes"],
+        run: () => {
+          for (const pane of Object.values(PANES)) setDevice(pane.setting, pane.initial);
+        },
       },
       {
         id: "view.weekends",

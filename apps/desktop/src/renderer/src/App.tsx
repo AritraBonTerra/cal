@@ -15,6 +15,7 @@ import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
 import { Palette } from "./components/Palette";
+import { Pane, useSidebarPeek } from "./components/Pane";
 import { PaneToggles } from "./components/PaneToggles";
 import { QuickEntry } from "./components/QuickEntry";
 import { ShortcutSheet } from "./components/ShortcutSheet";
@@ -32,6 +33,7 @@ import { useCalendars, useChipPalette, useEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
 import { useKeyboard } from "./lib/keyboard";
+import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
 import { setTimeFormat } from "./lib/time";
 import { COMPACT_WIDTH, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
@@ -109,6 +111,10 @@ export function App() {
   const overlay = useUi((state) => state.overlay);
   const travelZone = useUi((state) => state.travelZone);
   const zone = travelZone ?? account.primaryZone ?? deviceZone;
+  const peek = useSidebarPeek(
+    !sidebar && overlay === null,
+    clampWidth("sidebar", device.sidebarWidth),
+  );
   const gridToday = zonedDayKey(now, zone);
 
   const days = useMemo(
@@ -178,10 +184,10 @@ export function App() {
         data-ready={data.loaded && eventsLoaded ? "" : undefined}
       >
         <PaneToggles />
-        <Pane open={sidebar} width={224} name="sidebar">
+        <Pane name="sidebar" open={sidebar} peek={peek}>
           <Sidebar auth={auth} sync={sync} access={access} requestAccess={requestAccess} />
         </Pane>
-        <Pane open={tasks} width={320} name="tasks">
+        <Pane name="tasks" open={tasks}>
           <TaskPane />
         </Pane>
         <main className="flex min-w-0 flex-1 flex-col">
@@ -199,37 +205,5 @@ export function App() {
         {overlay === "zonePicker" && <ZonePicker />}
       </div>
     </AppContext.Provider>
-  );
-}
-
-/**
- * A side pane that slides open and closed by width (200ms ease-out; instant under
- * reduced motion). Its content keeps a fixed width and stays mounted, so scroll
- * positions survive a toggle and the calendar beside it only ever changes width.
- */
-function Pane({
-  open,
-  width,
-  name,
-  children,
-}: {
-  open: boolean;
-  width: number;
-  name: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="pane-slide shrink-0 overflow-hidden"
-      style={{ width: open ? width : 0 }}
-      aria-hidden={!open}
-      inert={!open}
-      data-pane={name}
-      data-open={open ? "" : undefined}
-    >
-      <div className="h-full" style={{ width }}>
-        {children}
-      </div>
-    </div>
   );
 }
