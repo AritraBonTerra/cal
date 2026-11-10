@@ -121,7 +121,7 @@ const CHOICES = [
 
 // A small popover with the common spans; any other count comes from ⌘K ("Show 14 days").
 function ViewMenu({ label }: { label: string }) {
-  const { today } = useApp();
+  const { today, gridToday } = useApp();
   const commands = useCommandList(true);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -159,7 +159,7 @@ function ViewMenu({ label }: { label: string }) {
               onClick={() => {
                 setOpen(false);
                 if (choice.count === 0) showMonth(today);
-                else if (choice.count < 0) showYear(today);
+                else if (choice.count < 0) showYear(gridToday);
                 else showDays(choice.count, today);
               }}
               className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body text-ink hover:bg-hover"

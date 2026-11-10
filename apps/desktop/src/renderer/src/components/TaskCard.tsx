@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { type KeyboardEvent, type MouseEvent, type Ref, useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
-import { cardText, closeCard, saveCardText, useCardText } from "../lib/card";
+import { cardText, closeCard, saveCardText, trackDraft, useCardText } from "../lib/card";
 import { parseCardTitle, previewTask } from "../lib/cardEntry";
 import { now } from "../lib/clock";
 import { parseDurationText } from "../lib/clockText";
@@ -378,18 +378,26 @@ function TextChip({
     }
   }, [text]);
 
-  // The draft and where it goes, for the unmount below.
-  const draft = useRef({ text, commit: onCommit });
-  draft.current = { text, commit: onCommit };
-  // A card closed with the field still open (a press elsewhere) keeps what was typed:
-  // an unmounting field gets no blur.
-  useEffect(
-    () => () => {
-      const { text: left, commit } = draft.current;
-      if (left !== null) commit(left);
-    },
-    [],
-  );
+  // The draft and where it goes; `left` once a closing card has committed it.
+  const draft = useRef({ text, commit: onCommit, left: false });
+  draft.current.text = text;
+  draft.current.commit = onCommit;
+  // A card closed with the field still open (a press elsewhere) keeps what was typed.
+  // The closing card commits it first (lib/card.ts), ahead of its own save; unmounting
+  // covers any other way out, since an unmounting field gets no blur.
+  useEffect(() => {
+    const commit = () => {
+      const state = draft.current;
+      if (state.text === null || state.left) return;
+      state.left = true;
+      state.commit(state.text);
+    };
+    const untrack = trackDraft(commit);
+    return () => {
+      untrack();
+      commit();
+    };
+  }, []);
 
   // Ends the edit once, whether by key or by blur.
   const finish = (save: boolean) => {
@@ -407,7 +415,10 @@ function TextChip({
           // biome-ignore lint/a11y/noAutofocus: the field appears because the chip was pressed.
           autoFocus
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            draft.current.left = false;
+            setText(event.target.value);
+          }}
           onBlur={() => finish(true)}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;

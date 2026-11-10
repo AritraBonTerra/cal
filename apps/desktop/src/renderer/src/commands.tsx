@@ -160,7 +160,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         title: "Year",
         group: "View",
         keys: ["y"],
-        run: () => showYear(latest.current.today),
+        run: () => showYear(latest.current.gridToday),
       },
       ...Array.from({ length: 22 }, (_, index) => index + 10).map(
         (count): Command => ({

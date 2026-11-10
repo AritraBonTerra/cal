@@ -52,6 +52,21 @@ export function openCard(task: Pick<Task, "uuid" | "title" | "notes">, isNew = f
   ui.set({ selection: { kind: "task", uuid: task.uuid }, editing: task.uuid, tasks: true });
 }
 
+/*
+ * The card's chip fields with something typed and not yet saved (Estimate, Tags). A
+ * closing card commits them before its own save, so a new card's parse is queued after
+ * them: it reads the estimate they set and stays the last word on any field both name.
+ */
+const drafts = new Set<() => void>();
+
+// Registers a chip field's commit for the card's close; returns the unregister.
+export function trackDraft(commit: () => void) {
+  drafts.add(commit);
+  return () => {
+    drafts.delete(commit);
+  };
+}
+
 // Closes the open card and keeps its row selected; `useCardSaver` saves it.
 export const closeCard = () => ui.set({ editing: null });
 
@@ -90,6 +105,7 @@ async function finishCard(actions: Actions, context: CardParseContext) {
     await actions.deleteTask(uuid);
     return;
   }
+  for (const commit of [...drafts]) commit();
   if (isNew) {
     const entry = parseCardTitle(title, literals, context, now());
     if (entry.title.trim()) {

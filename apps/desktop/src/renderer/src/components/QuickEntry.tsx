@@ -133,9 +133,20 @@ export function QuickEntry() {
       label="Quick Entry"
       onKeyDown={(event) => {
         const pick = entryKindKey(event);
+        // Focus on the panel itself, after a click on its blank parts.
+        const loose = event.target === event.currentTarget;
         if (event.key === "Escape") closeOverlay();
-        else if (pick === "task" || (pick === "event" && writable.length)) setChosen(pick);
-        else return;
+        else if (pick === "task" || (pick === "event" && writable.length)) {
+          setChosen(pick);
+          input.current?.focus();
+        } else if (loose && event.key === "Enter") void submit();
+        else if (loose && !event.metaKey && !event.ctrlKey) {
+          // Typing goes to the text, never to the window's single-key shortcuts: the
+          // field takes focus before the key's character is entered.
+          input.current?.focus();
+          event.stopPropagation();
+          return;
+        } else return;
         event.preventDefault();
         event.stopPropagation();
       }}

@@ -276,6 +276,21 @@ check(
     (await page.locator("li", { hasText: /^someday$/ }).count()) === 1,
 );
 
+// 12e. a chip field left open when the card closes saves first, so the typed text wins
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Chip race ~45m");
+await page.locator("[data-card] button", { hasText: "45m" }).click();
+await page.keyboard.press("Meta+a");
+await page.keyboard.type("15m");
+await page.locator("header h1").click();
+await page.waitForTimeout(400);
+const raceText = (await page.locator("li", { hasText: "Chip race" }).textContent()) ?? "";
+check(
+  "the title's estimate beats a chip field left open",
+  raceText.includes("45m") && !raceText.includes("15m"),
+);
+
 // 13. event move (writable calendar)
 const retro = page.locator("[data-item^='event:'] > div", { hasText: "Retro" });
 box = await boxOf(retro);
@@ -555,6 +570,14 @@ await page.waitForTimeout(100);
 const switchedFromBlank =
   ((await quickFooter().textContent())?.includes("Add event") ?? false) &&
   (await page.locator("h2", { hasText: "Inbox" }).count()) === 0;
+// The keyboard switch hands focus back to the text, and typing from the panel lands there.
+const keyBackInField = await page.evaluate(() => document.activeElement?.tagName === "INPUT");
+await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
+await page.keyboard.type("c");
+await page.waitForTimeout(100);
+const typedFromBlank =
+  (await quickPanel.count()) === 1 &&
+  (await quickPanel.locator("input").inputValue()) === "Water the plantsc";
 await quickPanel.getByRole("radio", { name: "To-do" }).click();
 const backInField = await page.evaluate(() => document.activeElement?.tagName === "INPUT");
 await quickPanel.locator("footer").click({ position: { x: 300, y: 16 } });
@@ -562,7 +585,12 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(100);
 check(
   "a click on Quick Entry's blank parts keeps ⌘1 and Esc there; the switch hands focus back",
-  focusOnPanel && switchedFromBlank && backInField && (await quickPanel.count()) === 0,
+  focusOnPanel &&
+    switchedFromBlank &&
+    keyBackInField &&
+    typedFromBlank &&
+    backInField &&
+    (await quickPanel.count()) === 0,
 );
 
 // 13k. undoing a repeating event's creation removes every occurrence
