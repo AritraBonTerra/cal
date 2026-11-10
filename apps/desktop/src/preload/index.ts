@@ -22,6 +22,15 @@ function listen<T>(channel: string, listener: (payload: T) => void) {
   };
 }
 
+// What the window wants done before it closes. Main waits for the answer, so with
+// nothing registered the answer goes straight back.
+const closing = new Set<() => Promise<void>>();
+ipcRenderer.on(channels.closing, () => {
+  void Promise.allSettled([...closing].map((listener) => listener())).then(() =>
+    ipcRenderer.send(channels.closeReady),
+  );
+});
+
 const callData = (call: DataCall) => ipcRenderer.invoke(channels.data, call);
 const callCalendar = (call: CalendarCall) => ipcRenderer.invoke(channels.calendar, call);
 const callAuth = (call: AuthCall): Promise<AuthState> => ipcRenderer.invoke(channels.auth, call);
@@ -68,6 +77,12 @@ const bridge: CalBridge = {
   calendar,
   onCommand: (listener) => listen<string>("cal:command", listener),
   setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
+  onClosing: (listener) => {
+    closing.add(listener);
+    return () => {
+      closing.delete(listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld("cal", bridge);
