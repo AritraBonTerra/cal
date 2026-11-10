@@ -78,7 +78,9 @@ export function createDesktopAuth(siteUrl: string, file: string) {
         ? (linkOrCode.split("#token=")[1] ?? "")
         : linkOrCode.trim();
       if (!token) throw new Error("That code is empty.");
-      await client.authenticate({ token });
+      // The exchange reports a server refusal (expired or reused code) instead of throwing.
+      const { error } = await client.authenticate({ token });
+      if (error) throw new Error(error.message ?? "Sign-in didn't complete. Try again.");
     },
   };
 }
