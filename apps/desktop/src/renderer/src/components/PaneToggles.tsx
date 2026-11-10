@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useShortcut, withShortcut } from "../lib/shortcuts";
 import { togglePane, useUi } from "../lib/ui";
 
 /*
@@ -11,7 +12,9 @@ import { togglePane, useUi } from "../lib/ui";
  * `PANE_TOGGLES_END` is where they stop, for the toolbar to keep its title clear of them
  * once both panes are hidden.
  */
-const LEFT = 82; // 12px after the green light's right edge (x ≈ 70).
+// 12px after the green light's right edge: x ≈ 75 on macOS 26 and later, whose lights are
+// wider and further apart than before (x ≈ 70 there, so the gap is a little larger).
+const LEFT = 87;
 const SIZE = 30;
 const GAP = 4;
 export const PANE_TOGGLES_END = LEFT + SIZE * 2 + GAP;
@@ -19,13 +22,15 @@ export const PANE_TOGGLES_END = LEFT + SIZE * 2 + GAP;
 export function PaneToggles() {
   const sidebar = useUi((state) => state.sidebar);
   const tasks = useUi((state) => state.tasks);
+  const sidebarKey = useShortcut("view.sidebar");
+  const tasksKey = useShortcut("view.tasks");
   return (
     <div className="fixed top-[11px] z-40 flex" style={{ left: LEFT, gap: GAP }}>
       <Toggle
         pane="sidebar"
         label="Sidebar"
         open={sidebar}
-        title={`${sidebar ? "Hide" : "Show"} sidebar (⌘\\)`}
+        title={withShortcut(`${sidebar ? "Hide" : "Show"} sidebar`, sidebarKey)}
       >
         <SidebarIcon open={sidebar} />
       </Toggle>
@@ -33,7 +38,7 @@ export function PaneToggles() {
         pane="tasks"
         label="To-dos"
         open={tasks}
-        title={`${tasks ? "Hide" : "Show"} to-dos (⌘/)`}
+        title={withShortcut(`${tasks ? "Hide" : "Show"} to-dos`, tasksKey)}
       >
         <TodoIcon open={tasks} />
       </Toggle>
