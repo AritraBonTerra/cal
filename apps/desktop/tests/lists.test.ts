@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { LocalStore, type SqlDatabase, type SqlRow } from "@cal/sync";
 import { monthGridDays } from "../src/renderer/src/components/WhenPicker";
-import { newTaskIn, tasksIn } from "../src/renderer/src/lib/lists";
+import { listTitle, moveInto, newTaskIn, tasksIn } from "../src/renderer/src/lib/lists";
 
 function memoryStore() {
   const db = new Database(":memory:");
@@ -45,5 +45,35 @@ describe("monthGridDays", () => {
   test("a month that fits in five rows gets five", () => {
     // February 2027 starts on a Monday and has 28 days.
     expect(monthGridDays("2027-02-01")).toHaveLength(35);
+  });
+});
+
+describe("moveInto", () => {
+  const task = { uuid: "t", title: "Spec", position: 0, created_at: 0, updated_at: 0 };
+  test("a to-do holds a project or an area, never both", () => {
+    expect(moveInto({ ...task, when: "anytime", area_uuid: "home" }, { project: "p" })).toEqual({
+      project_uuid: "p",
+      area_uuid: null,
+    });
+    expect(moveInto({ ...task, when: "someday", project_uuid: "p" }, { area: "home" })).toEqual({
+      area_uuid: "home",
+      project_uuid: null,
+    });
+  });
+
+  test("leaving the Inbox for a project puts it in Anytime", () => {
+    expect(moveInto({ ...task, when: "inbox" }, { project: "p" })).toMatchObject({
+      when: "anytime",
+    });
+  });
+});
+
+describe("listTitle", () => {
+  test("a new project or area reads as such until it has a title", () => {
+    const projects = [{ uuid: "p", title: "", position: 0, created_at: 0, updated_at: 0 }];
+    const areas = [{ uuid: "a", title: "", position: 0, created_at: 0, updated_at: 0 }];
+    expect(listTitle("project:p", projects, areas)).toBe("New Project");
+    expect(listTitle("area:a", projects, areas)).toBe("New Area");
+    expect(listTitle("project:gone", projects, areas)).toBe("");
   });
 });

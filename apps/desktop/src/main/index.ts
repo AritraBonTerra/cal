@@ -251,6 +251,9 @@ function buildMenu() {
       submenu: [
         command("New To-Do", "task.new", "CmdOrCtrl+N"),
         command("Quick Entry", "task.quickEntry", "CmdOrCtrl+Shift+N"),
+        command("New Project", "project.new", "CmdOrCtrl+Alt+N"),
+        command("New Area", "area.new"),
+        command("New Habit…", "habit.new"),
         { type: "separator" },
         { role: "close" },
       ],

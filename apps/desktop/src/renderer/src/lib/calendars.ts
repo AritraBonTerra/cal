@@ -73,10 +73,55 @@ export function useChipPalette(
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
     for (const calendar of calendars) {
-      palette.set(calendar.id, chipColorsFromHex(overrides[calendar.id] ?? calendar.color, mode));
+      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode));
     }
     return palette;
   }, [calendars, mode, overrides]);
+}
+
+// Events the grid shows: none from hidden calendars, and declined ones only when asked.
+export function visibleEvents(
+  events: readonly ExternalEvent[],
+  hiddenCalendars: readonly string[],
+  showDeclined: boolean,
+) {
+  const hidden = new Set(hiddenCalendars);
+  return events.filter(
+    (event) => !hidden.has(event.calendarId) && (showDeclined || event.myStatus !== "declined"),
+  );
+}
+
+// A calendar's color in Cal: the override from Settings, else the calendar's own.
+export const calendarColor = (
+  calendar: DeviceCalendar,
+  overrides: Readonly<Record<string, string>>,
+) => overrides[calendar.id] ?? calendar.color;
+
+// Calendars grouped by account, accounts in the order their first calendar appears.
+export function byAccount(calendars: readonly DeviceCalendar[]) {
+  const accounts = [...new Set(calendars.map((calendar) => calendar.account))];
+  return accounts.map((account) => ({
+    account,
+    calendars: calendars.filter((calendar) => calendar.account === account),
+  }));
+}
+
+// `list` with `id` added (on) or removed (off): hidden or free calendar ids.
+export const withId = (list: readonly string[], id: string, on: boolean) =>
+  on ? [...new Set([...list, id])] : list.filter((each) => each !== id);
+
+/**
+ * The hidden list after ⌥-clicking calendar `id`: everything but it is hidden, or, when
+ * it's already the only one showing, every calendar shows again.
+ */
+export function soloCalendar(
+  calendars: readonly DeviceCalendar[],
+  hidden: readonly string[],
+  id: string,
+) {
+  const shown = calendars.filter((calendar) => !hidden.includes(calendar.id));
+  if (shown.length === 1 && shown[0]?.id === id) return [];
+  return calendars.filter((calendar) => calendar.id !== id).map((calendar) => calendar.id);
 }
 
 // A fallback for events whose calendar isn't listed (shouldn't happen, but never crash).

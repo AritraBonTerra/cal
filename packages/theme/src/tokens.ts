@@ -4,7 +4,8 @@ import { type Oklch, oklch } from "./color";
  * Cal's design values (PLAN §6, research/07 §7). Colors are authored in OKLCH and
  * compiled to opaque hex for both platforms by `scripts/build-css.ts` (Tailwind on the
  * Mac) and the TS exports below (Uniwind on iOS). Neutrals sit on hue 75 with almost no
- * chroma so calendar colors read true; blue is the one accent and red means "now".
+ * chroma so calendar colors read true; blue is the one accent and red means "now". The
+ * smart-list icon colors are the one exception in the chrome.
  */
 
 export type Mode = "light" | "dark";
@@ -38,6 +39,14 @@ export const colors = {
   success: { light: oklch(0.55, 0.14, 150), dark: oklch(0.72, 0.14, 150) },
   warning: { light: oklch(0.7, 0.15, 70), dark: oklch(0.78, 0.14, 75) },
   white: { light: oklch(1, 0, 0), dark: oklch(1, 0, 0) },
+  // The six smart-list icons, Things-style: the only color in the sidebar's chrome. Each
+  // keeps at least 3:1 on the sidebar, the canvas and the active row in both modes.
+  "list-inbox": { light: oklch(0.55, 0.17, 255), dark: oklch(0.72, 0.13, 255) },
+  "list-today": { light: oklch(0.62, 0.14, 72), dark: oklch(0.78, 0.14, 78) },
+  "list-upcoming": { light: oklch(0.58, 0.19, 25), dark: oklch(0.7, 0.16, 25) },
+  "list-anytime": { light: oklch(0.58, 0.1, 190), dark: oklch(0.74, 0.1, 190) },
+  "list-someday": { light: oklch(0.6, 0.07, 70), dark: oklch(0.74, 0.06, 70) },
+  "list-logbook": { light: oklch(0.56, 0.14, 150), dark: oklch(0.72, 0.14, 150) },
 } satisfies Record<string, Record<Mode, Oklch>>;
 
 export type ColorToken = keyof typeof colors;

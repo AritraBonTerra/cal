@@ -4,6 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { now } from "../../lib/clock";
 import { geometry } from "../../lib/drag";
+import { NewHabitButton } from "../NewHabit";
 import { AllDayRow } from "./AllDayRow";
 import { deadlinesByDay, unscheduledByDay, type Workload, workloadOn } from "./agenda";
 import { DayHeaders } from "./DayHeaders";
@@ -182,7 +183,7 @@ export function DaysView() {
         </div>
         <WorkloadRow days={days} loads={loads} columnWidth={columnWidth} gutter={gutter} />
         <div className="flex">
-          <div className="shrink-0" style={{ width: gutter }} />
+          <NewHabitButton width={gutter} />
           <HabitStrip days={days} columnWidth={columnWidth} />
         </div>
         <div className="flex border-t border-grid">

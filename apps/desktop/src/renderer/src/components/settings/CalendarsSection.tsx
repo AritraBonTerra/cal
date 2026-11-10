@@ -3,6 +3,7 @@ import type { DeviceCalendar } from "@cal/calendar-source";
 import { Check, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
+import { byAccount, calendarColor, withId } from "../../lib/calendars";
 import { Select, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
@@ -40,11 +41,8 @@ const REMINDERS = [
 export function CalendarsSection() {
   const { calendars } = useApp();
   const { account, device, setAccount, setDevice } = useSettings();
-  const accounts = [...new Set(calendars.map((calendar) => calendar.account))];
   const hidden = new Set(device.hiddenCalendars);
   const free = new Set(device.freeCalendars);
-  const toggle = (list: readonly string[], id: string, on: boolean) =>
-    on ? [...new Set([...list, id])] : list.filter((each) => each !== id);
   // Without a choice, the first writable calendar stands in for the system default.
   const fallback = calendars.find((calendar) => calendar.writable)?.id ?? null;
   const defaultCalendar = device.defaultCalendar ?? fallback;
@@ -56,31 +54,29 @@ export function CalendarsSection() {
           No calendars yet. Allow calendar access from the sidebar to see them here.
         </p>
       )}
-      {accounts.map((name) => (
+      {byAccount(calendars).map(({ account: name, calendars: group }) => (
         <Group key={name} title={name}>
-          {calendars
-            .filter((calendar) => calendar.account === name)
-            .map((calendar) => (
-              <CalendarRow
-                key={calendar.id}
-                calendar={calendar}
-                color={device.calendarColors[calendar.id]}
-                shown={!hidden.has(calendar.id)}
-                busy={!free.has(calendar.id)}
-                isDefault={defaultCalendar === calendar.id}
-                onColor={(color) => {
-                  const { [calendar.id]: _previous, ...rest } = device.calendarColors;
-                  setDevice("calendarColors", color ? { ...rest, [calendar.id]: color } : rest);
-                }}
-                onShown={(on) =>
-                  setDevice("hiddenCalendars", toggle(device.hiddenCalendars, calendar.id, !on))
-                }
-                onBusy={(on) =>
-                  setDevice("freeCalendars", toggle(device.freeCalendars, calendar.id, !on))
-                }
-                onDefault={() => setDevice("defaultCalendar", calendar.id)}
-              />
-            ))}
+          {group.map((calendar) => (
+            <CalendarRow
+              key={calendar.id}
+              calendar={calendar}
+              color={calendarColor(calendar, device.calendarColors)}
+              shown={!hidden.has(calendar.id)}
+              busy={!free.has(calendar.id)}
+              isDefault={defaultCalendar === calendar.id}
+              onColor={(color) => {
+                const { [calendar.id]: _previous, ...rest } = device.calendarColors;
+                setDevice("calendarColors", color ? { ...rest, [calendar.id]: color } : rest);
+              }}
+              onShown={(on) =>
+                setDevice("hiddenCalendars", withId(device.hiddenCalendars, calendar.id, !on))
+              }
+              onBusy={(on) =>
+                setDevice("freeCalendars", withId(device.freeCalendars, calendar.id, !on))
+              }
+              onDefault={() => setDevice("defaultCalendar", calendar.id)}
+            />
+          ))}
         </Group>
       ))}
       <Group title="New events">
@@ -100,7 +96,7 @@ export function CalendarsSection() {
 
 interface CalendarRowProps {
   calendar: DeviceCalendar;
-  color: string | undefined;
+  color: string;
   shown: boolean;
   busy: boolean;
   isDefault: boolean;
@@ -123,7 +119,7 @@ function CalendarRow({
 }: CalendarRowProps) {
   return (
     <div className="flex h-11 items-center gap-3 px-3 [&+&]:border-t [&+&]:border-grid">
-      <ColorDot color={color ?? calendar.color} own={calendar.color} onChange={onColor} />
+      <ColorDot color={color} own={calendar.color} onChange={onColor} />
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className={`truncate text-body ${shown ? "text-ink" : "text-ink-3"}`}>
           {calendar.title}

@@ -62,6 +62,9 @@ export const deviceDefaults = {
   // window clamps them to each pane's limits.
   sidebarWidth: 224,
   tasksWidth: 320,
+  // Whether the sidebar's mini month and calendar list are expanded.
+  showMiniMonth: true,
+  showCalendarList: true,
 };
 
 export type AccountSettings = typeof accountDefaults;
@@ -155,6 +158,8 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   recentZones: arrayOf(isZone, 20),
   sidebarWidth: isInt(0, 2000),
   tasksWidth: isInt(0, 2000),
+  showMiniMonth: isBool,
+  showCalendarList: isBool,
 };
 
 // `json` parsed, if it passes `check`.

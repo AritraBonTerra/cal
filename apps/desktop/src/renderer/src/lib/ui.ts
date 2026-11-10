@@ -32,6 +32,8 @@ export type Overlay =
   | "quickEntry"
   | "signIn"
   | "when"
+  | "move"
+  | "newHabit"
   | "settings"
   | "zonePicker";
 
@@ -56,6 +58,9 @@ export interface UiState {
   overlay: Overlay | null;
   // The task whose title is being edited inline.
   editing: string | null;
+  // The project or area whose sidebar row is being renamed, and the list to go back to
+  // if it was new and gets discarded (Escape or an empty title).
+  renaming: { uuid: string; back: ListId } | null;
   // Set after a jump (T, `.`) so the grid can flash the target day once.
   flashDay: DayKey | null;
   // First day of the week (0 = Sunday), mirrored from the account setting so view
@@ -78,6 +83,7 @@ export const ui = createStore<UiState>({
   selection: null,
   overlay: null,
   editing: null,
+  renaming: null,
   flashDay: null,
   weekStart: 1,
   settingsSection: "general",
@@ -140,7 +146,8 @@ export function moveWeek(direction: 1 | -1) {
   ui.set(({ anchor }) => ({ anchor: addDays(anchor, direction * WEEK) }));
 }
 
-// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T).
+// `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T). The mini
+// month jumps to any day the same way: the week holding it, or a span starting on it.
 export function goToday(today: DayKey, leftAlign = false) {
   ui.set(({ view, weekStart }) => ({
     anchor:
