@@ -73,8 +73,13 @@ export const scenes: Scene[] = [
       { click: "li:has-text('Write launch spec') button[title='Show in Calendar']" },
     ],
   },
-  // Other lists lead the meta line with the next block's day and time.
-  { name: "anytime-next-block", keys: ["Meta+4"] },
+  // Anytime by project (loose to-dos first); rows lead with the next block's time.
+  { name: "anytime-projects", keys: ["Meta+4"] },
+  { name: "anytime-projects-dark", dark: true, keys: ["Meta+4"] },
+  // Upcoming by day for the week (with each day's events), then by month.
+  { name: "upcoming-days", keys: ["Meta+3"] },
+  { name: "upcoming-days-dark", dark: true, keys: ["Meta+3"] },
+  { name: "upcoming-narrow", width: 760, height: 700, keys: ["Meta+3"] },
   { name: "block-selected", click: "[data-item^='block:'] [data-edge=end] >> xpath=.." },
   {
     name: "sign-in",

@@ -168,7 +168,7 @@ function Row({
 }
 
 // Things' project pie: a ring that fills as the project completes.
-function Progress({ done, total }: { done: number; total: number }) {
+export function Progress({ done, total }: { done: number; total: number }) {
   const fraction = total === 0 ? 0 : done / total;
   const r = 5;
   const c = 2 * Math.PI * r;

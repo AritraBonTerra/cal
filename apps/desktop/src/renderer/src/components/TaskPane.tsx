@@ -1,4 +1,13 @@
-import type { Task } from "@cal/domain";
+import type { ExternalEvent } from "@cal/calendar-source";
+import {
+  addDays,
+  type DayKey,
+  fromDayKey,
+  isOpen,
+  type Project,
+  type Task,
+  toOffsetIso,
+} from "@cal/domain";
 import {
   Archive,
   CalendarRange,
@@ -9,14 +18,30 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useApp } from "../lib/app";
+import { eventsOnDay, graphite, useEvents, visibleEvents } from "../lib/calendars";
 import { useCardSaver } from "../lib/card";
 import { useNow } from "../lib/clock";
 import { geometry, useDrag } from "../lib/drag";
-import { isSmartList, listSections, listTitle, type Section } from "../lib/lists";
-import { formatRelativeDay } from "../lib/time";
-import { select, useUi } from "../lib/ui";
+import {
+  isSmartList,
+  listSections,
+  listTitle,
+  type Section,
+  sectionKey,
+  UPCOMING_DAYS,
+} from "../lib/lists";
+import {
+  dayNumber,
+  formatMinutes,
+  formatMonth,
+  formatRelativeDay,
+  formatWeekday,
+} from "../lib/time";
+import { select, showList, useUi } from "../lib/ui";
+import { deviceZone, zonedDayKey, zonedMinutes } from "../lib/zones";
+import { Progress } from "./Sidebar";
 import { TaskRow } from "./TaskRow";
 import { Keycaps } from "./ui";
 
@@ -99,9 +124,13 @@ export function TaskPane() {
             </span>
           </p>
         )}
-        {sections.map((section) => (
-          <SectionRows key={section.kind} section={section} showNext={list !== "today"} />
-        ))}
+        {list === "upcoming" ? (
+          <UpcomingSections sections={sections} />
+        ) : (
+          sections.map((section) => (
+            <SectionRows key={sectionKey(section)} section={section} showNext={list !== "today"} />
+          ))
+        )}
       </div>
 
       {removing && (
@@ -122,12 +151,40 @@ export function TaskPane() {
   );
 }
 
+// Upcoming's day sections list that day's calendar events above its to-dos, so the
+// pane fetches the coming week's events itself (the grid may show another week).
+function UpcomingSections({ sections }: { sections: Section[] }) {
+  const { today, account, device } = useApp();
+  const from = addDays(today, 1);
+  const { events: fetched } = useEvents(
+    toOffsetIso(fromDayKey(from)),
+    toOffsetIso(fromDayKey(addDays(from, UPCOMING_DAYS))),
+  );
+  const events = useMemo(
+    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
+    [fetched, device.hiddenCalendars, account.showDeclined],
+  );
+  return sections.map((section) => (
+    <SectionRows key={sectionKey(section)} section={section} showNext events={events} />
+  ));
+}
+
 /**
  * One section of the list: its heading, if it has one, then its rows. Rows lead their
  * meta line with their next block (`showNext`) everywhere but Today, where Scheduled
- * rows show the time in a column instead.
+ * rows show the time in a column instead, and skip what their heading already says
+ * (the day, the project). A day section in Upcoming also lists `events` on that day.
  */
-function SectionRows({ section, showNext }: { section: Section; showNext: boolean }) {
+function SectionRows({
+  section,
+  showNext,
+  events = [],
+}: {
+  section: Section;
+  showNext: boolean;
+  events?: readonly ExternalEvent[];
+}) {
+  const { today } = useApp();
   const rows = (
     <ul>
       {section.rows.map((task) => (
@@ -136,6 +193,7 @@ function SectionRows({ section, showNext }: { section: Section; showNext: boolea
           task={task}
           slot={section.kind === "scheduled" ? section.next.get(task.uuid) : undefined}
           showNext={showNext}
+          omit={section.kind === "day" ? "day" : section.kind === "project" ? "project" : undefined}
         />
       ))}
     </ul>
@@ -167,7 +225,93 @@ function SectionRows({ section, showNext }: { section: Section; showNext: boolea
           {rows}
         </>
       );
+    case "day":
+      return (
+        <>
+          <DateHeading
+            big={String(dayNumber(section.day))}
+            small={
+              section.day === addDays(today, 1) ? "Tomorrow" : formatWeekday(section.day, true)
+            }
+          />
+          {eventsOnDay(events, section.day).map((event) => (
+            <EventLine key={event.id} event={event} day={section.day} />
+          ))}
+          {rows}
+        </>
+      );
+    case "month":
+      return (
+        <>
+          <MonthHeading month={section.month} />
+          {rows}
+        </>
+      );
+    case "project":
+      return (
+        <>
+          <ProjectHeading project={section.project} />
+          {rows}
+        </>
+      );
   }
+}
+
+// Upcoming's group heading: a large numeral (or month) and a small word after it.
+function DateHeading({ big, small }: { big: string; small?: string }) {
+  return (
+    <h3 className="mt-3 mb-1 flex items-baseline gap-2 border-b border-grid px-2 pb-1 first:mt-0">
+      <span className="text-title-2 font-semibold tnum">{big}</span>
+      {small && <span className="text-small font-medium text-ink-3 tnum">{small}</span>}
+    </h3>
+  );
+}
+
+// "November", with the year when it isn't this one: "January 2027".
+function MonthHeading({ month }: { month: DayKey }) {
+  const { today } = useApp();
+  const year = month.slice(0, 4);
+  return (
+    <DateHeading big={formatMonth(month)} small={year === today.slice(0, 4) ? undefined : year} />
+  );
+}
+
+// A quiet line for an event on an Upcoming day: its calendar's bar, title and start.
+function EventLine({ event, day }: { event: ExternalEvent; day: DayKey }) {
+  const { palette, mode } = useApp();
+  const start = new Date(event.start);
+  const startsToday = !event.allDay && zonedDayKey(start, deviceZone) === day;
+  return (
+    <div className="flex items-center gap-2 px-2 py-0.5 text-small text-ink-2">
+      <span
+        className="h-3 w-[3px] shrink-0 rounded-full"
+        style={{ background: (palette.get(event.calendarId) ?? graphite(mode)).bar }}
+      />
+      <span className="min-w-0 flex-1 truncate">{event.title}</span>
+      {startsToday && (
+        <span className="shrink-0 tnum">{formatMinutes(zonedMinutes(start, deviceZone))}</span>
+      )}
+    </div>
+  );
+}
+
+// Anytime's project heading: the progress ring and title; pressing it opens the project.
+function ProjectHeading({ project }: { project: Project }) {
+  const { data } = useApp();
+  const tasks = data.tasks.filter((task) => task.project_uuid === project.uuid);
+  const open = tasks.filter(isOpen).length;
+  return (
+    <h3 className="mt-4 mb-1 first:mt-0">
+      <button
+        type="button"
+        onClick={() => showList(`project:${project.uuid}`)}
+        className="flex h-6 w-full items-center gap-1.5 rounded-md px-2 text-left text-small font-medium text-ink transition-colors duration-100 hover:bg-hover hover:duration-0"
+      >
+        <Progress done={tasks.length - open} total={tasks.length} />
+        <span className="truncate">{project.title}</span>
+      </button>
+    </h3>
+  );
 }
 
 // A section label, with an optional quiet hint at the right; the first one sits flush.

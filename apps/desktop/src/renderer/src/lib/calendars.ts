@@ -1,4 +1,5 @@
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
+import { addDays, type DayKey, fromDayKey } from "@cal/domain";
 import { type ChipColors, chipColorsFromHex, type Mode } from "@cal/theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -61,6 +62,35 @@ export function useEvents(start: string, end: string) {
     };
   }, [start, end]);
   return { ...state, refresh };
+}
+
+/**
+ * The events the user wants to see: none from calendars hidden in Settings, and no
+ * declined invitations unless they're turned on. The grid and Upcoming both use it.
+ */
+export function visibleEvents(
+  events: readonly ExternalEvent[],
+  hiddenCalendars: readonly string[],
+  showDeclined: boolean,
+) {
+  const hidden = new Set(hiddenCalendars);
+  return events.filter(
+    (event) => !hidden.has(event.calendarId) && (showDeclined || event.myStatus !== "declined"),
+  );
+}
+
+// Events overlapping `day` on this Mac, all-day ones first, then by start.
+export function eventsOnDay(events: readonly ExternalEvent[], day: DayKey) {
+  const start = fromDayKey(day).getTime();
+  const end = fromDayKey(addDays(day, 1)).getTime();
+  return events
+    .filter((event) => Date.parse(event.start) < end && Date.parse(event.end) > start)
+    .sort(
+      (a, b) =>
+        Number(b.allDay) - Number(a.allDay) ||
+        Date.parse(a.start) - Date.parse(b.start) ||
+        a.title.localeCompare(b.title),
+    );
 }
 
 // Chip colors per calendar for the current mode, computed once per calendar. A color

@@ -31,6 +31,8 @@ interface TaskRowProps {
   slot?: TimeBlock;
   // Whether the meta line leads with the next block's day and time (all lists but Today).
   showNext?: boolean;
+  // What the row's section heading already says, so the meta line leaves it out.
+  omit?: "day" | "project";
 }
 
 /*
@@ -39,7 +41,7 @@ interface TaskRowProps {
  * double-click or Return opens it into a card in place, and dragging it onto the grid
  * schedules it; an open card can't be dragged.
  */
-export function TaskRow({ task, slot, showNext = false }: TaskRowProps) {
+export function TaskRow({ task, slot, showNext = false, omit }: TaskRowProps) {
   const { data, today, zone, gridToday, days } = useApp();
   const actions = useActions();
   const selected = useUi(
@@ -60,15 +62,19 @@ export function TaskRow({ task, slot, showNext = false }: TaskRowProps) {
   const timed = slot !== undefined || next !== undefined;
 
   const meta: { text: string }[] = [];
-  if (project || area) meta.push({ text: project?.title ?? area?.title ?? "" });
-  if (task.when_date && task.when_date > today) {
+  if ((project || area) && omit !== "project") {
+    meta.push({ text: project?.title ?? area?.title ?? "" });
+  }
+  if (task.when_date && task.when_date > today && omit !== "day") {
     meta.push({ text: formatRelativeDay(task.when_date, today) });
   }
   if (next) {
     const start = new Date(next.start_at);
-    meta.push({
-      text: `${formatRelativeDay(zonedDayKey(start, zone), gridToday)} ${formatMinutes(zonedMinutes(start, zone))}`,
-    });
+    const day = zonedDayKey(start, zone);
+    const time = formatMinutes(zonedMinutes(start, zone));
+    // Under its day's heading, a block on that day shows just its time.
+    const sameDay = omit === "day" && day === task.when_date;
+    meta.push({ text: sameDay ? time : `${formatRelativeDay(day, gridToday)} ${time}` });
   }
   const suffix = timed ? "" : " scheduled";
   if (task.estimate_min !== undefined) {

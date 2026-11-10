@@ -8,6 +8,7 @@ import {
   isThisEvening,
   type Project,
   type SmartList,
+  startOfMonth,
   type Task,
   type TimeBlock,
 } from "@cal/domain";
@@ -65,13 +66,36 @@ export interface ListTime {
 /*
  * A list as the pane draws it: sections in order, each with its rows. A "plain" section
  * has no heading. Today splits into Scheduled (with each row's next block today, in
- * time order), Not scheduled and This Evening once anything is scheduled.
+ * time order), Not scheduled and This Evening once anything is scheduled. Upcoming
+ * groups by day for the next week, then by month; Anytime puts loose to-dos first,
+ * then one section per project.
  */
 export type Section =
   | { kind: "plain"; rows: Task[] }
   | { kind: "scheduled"; rows: Task[]; next: ReadonlyMap<string, TimeBlock> }
   | { kind: "unscheduled"; rows: Task[] }
-  | { kind: "evening"; rows: Task[] };
+  | { kind: "evening"; rows: Task[] }
+  | { kind: "day"; day: DayKey; rows: Task[] }
+  // `month` is the month's first day.
+  | { kind: "month"; month: DayKey; rows: Task[] }
+  | { kind: "project"; project: Project; rows: Task[] };
+
+// Days of Upcoming that get a section each, from tomorrow; later to-dos group by month.
+export const UPCOMING_DAYS = 7;
+
+// A stable React key for a section.
+export function sectionKey(section: Section) {
+  switch (section.kind) {
+    case "day":
+      return `day:${section.day}`;
+    case "month":
+      return `month:${section.month}`;
+    case "project":
+      return `project:${section.project.uuid}`;
+    default:
+      return section.kind;
+  }
+}
 
 // A task's next block that isn't done and hasn't ended (it may be running now).
 export function nextBlock(task: Task, blocks: readonly TimeBlock[], now: Date) {
@@ -139,12 +163,67 @@ function todaySections(rows: Task[], blocks: readonly TimeBlock[], at: ListTime)
   ];
 }
 
+// Upcoming, already in day order: a section per day through the next week, then per month.
+function upcomingSections(rows: Task[], today: DayKey) {
+  const last = addDays(today, UPCOMING_DAYS);
+  const sections: Section[] = [];
+  for (const task of rows) {
+    const day = task.when_date ?? today;
+    const current = sections.at(-1);
+    if (day <= last) {
+      if (current?.kind === "day" && current.day === day) current.rows.push(task);
+      else sections.push({ kind: "day", day, rows: [task] });
+    } else {
+      const month = startOfMonth(day);
+      if (current?.kind === "month" && current.month === month) current.rows.push(task);
+      else sections.push({ kind: "month", month, rows: [task] });
+    }
+  }
+  return sections;
+}
+
+// Anytime: to-dos outside any project, then each project's, ordered by area (projects
+// without one first) and then by the project's position.
+function anytimeSections(rows: Task[], data: ListData): Section[] {
+  const area = new Map(data.areas.map((each) => [each.uuid, each]));
+  const areaPosition = (project: Project) =>
+    area.get(project.area_uuid ?? "")?.position ?? Number.NEGATIVE_INFINITY;
+  const projects = [...data.projects].sort(
+    (a, b) => areaPosition(a) - areaPosition(b) || byPosition(a, b),
+  );
+  const known = new Set(projects.map((project) => project.uuid));
+  return [
+    {
+      kind: "plain",
+      rows: rows.filter((task) => !task.project_uuid || !known.has(task.project_uuid)),
+    },
+    ...projects.map(
+      (project): Section => ({
+        kind: "project",
+        project,
+        rows: rows.filter((task) => task.project_uuid === project.uuid),
+      }),
+    ),
+  ];
+}
+
 // The sections of `list` in display order. Empty sections are left out.
 export function listSections(list: ListId, data: ListData, at: ListTime): Section[] {
   const rows = rowsOf(list, data.tasks, at.today);
-  const sections: Section[] =
-    list === "today" ? todaySections(rows, data.blocks, at) : [{ kind: "plain", rows }];
-  return sections.filter((section) => section.rows.length > 0);
+  return group(list, rows, data, at).filter((section) => section.rows.length > 0);
+}
+
+function group(list: ListId, rows: Task[], data: ListData, at: ListTime): Section[] {
+  switch (list) {
+    case "today":
+      return todaySections(rows, data.blocks, at);
+    case "upcoming":
+      return upcomingSections(rows, at.today);
+    case "anytime":
+      return anytimeSections(rows, data);
+    default:
+      return [{ kind: "plain", rows }];
+  }
 }
 
 // Open tasks of `list` in display order: the rows of its sections, top to bottom.
