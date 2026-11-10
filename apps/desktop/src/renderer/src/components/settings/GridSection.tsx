@@ -24,7 +24,8 @@ const LENGTHS = [15, 30, 45, 60, 90].map((minutes) => ({
   label: minutes < 60 ? `${minutes}m` : minutes === 60 ? "1h" : "1h30",
 }));
 
-// Grid: hour height, working hours, the length of a click-made block, half-hour lines.
+// Grid: hour height, half-hour lines, working hours and the workload row, the length of
+// a click-made block.
 export function GridSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const { start, end } = account.workingHours;
@@ -77,6 +78,13 @@ export function GridSection() {
             onChange={(value) => void setAccount("workingHours", { start, end: value })}
             label="Working hours end"
             width={104}
+          />
+        </Row>
+        <Row label="Workload bar" note="Meetings and planned work against working hours">
+          <Switch
+            checked={device.workloadBar}
+            onChange={(value) => setDevice("workloadBar", value)}
+            label="Workload bar"
           />
         </Row>
       </Group>

@@ -1,30 +1,22 @@
 import { useActions } from "@cal/app-core";
-import {
-  dropLengthMinutes,
-  isOpen,
-  isOverdue,
-  scheduledMinutes,
-  snapMinutes,
-  type Task,
-} from "@cal/domain";
+import { isOpen, isOverdue, scheduledMinutes, type Task } from "@cal/domain";
 import { Flag } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
-import { DRAG_THRESHOLD, drag, geometry, useDrag } from "../lib/drag";
+import { useTaskDrag } from "../lib/taskDrag";
 import { formatDuration, formatRelativeDay } from "../lib/time";
 import { select, ui, useUi } from "../lib/ui";
-import { zonedInstant } from "../lib/zones";
 import { Checkbox } from "./ui";
 import { WhenPicker } from "./WhenPicker";
 
 /*
  * One to-do: checkbox, title, and a line of metadata (project, deadline, scheduled time).
- * Click selects, double-click or Enter edits the title, and dragging it onto the grid
- * schedules it.
+ * Click selects, double-click or Enter edits the title, dragging it onto the grid
+ * schedules it, and dragging it onto a day's header dates it to that day.
  */
 export function TaskRow({ task }: { task: Task }) {
-  const { data, today, zone } = useApp();
+  const { data, today } = useApp();
   const actions = useActions();
   const selected = useUi(
     (state) => state.selection?.kind === "task" && state.selection.uuid === task.uuid,
@@ -52,84 +44,12 @@ export function TaskRow({ task }: { task: Task }) {
     });
   } else if (scheduled > 0) meta.push({ text: `${formatDuration(scheduled)} scheduled` });
 
-  const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
-  const dragging = useDrag((state) => state.task?.uuid === task.uuid);
-
-  // Drops the drag without scheduling: a cancelled pointer, or Escape mid-drag.
-  const cancel = () => {
-    press.current = null;
-    clearDrag();
-  };
-  useEffect(() => {
-    if (!dragging) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      press.current = null;
-      clearDrag();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [dragging]);
-
-  const onPointerDown = (event: React.PointerEvent<HTMLLIElement>) => {
-    if (event.button !== 0 || editing) return;
-    select({ kind: "task", uuid: task.uuid });
-    press.current = { x: event.clientX, y: event.clientY, dragging: false };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const onPointerMove = (event: React.PointerEvent<HTMLLIElement>) => {
-    const state = press.current;
-    if (!state) return;
-    if (!state.dragging) {
-      if (Math.hypot(event.clientX - state.x, event.clientY - state.y) < DRAG_THRESHOLD) return;
-      state.dragging = true;
-      drag.set({
-        task: {
-          uuid: task.uuid,
-          title: task.title,
-          lengthMin: dropLengthMinutes(task, data.blocks, at),
-        },
-      });
-    }
-    const point = geometry.grid?.locate(event.clientX, event.clientY) ?? null;
-    const length = drag.get().task?.lengthMin ?? 30;
-    drag.set({
-      pointer: { x: event.clientX, y: event.clientY },
-      ghost: point
-        ? {
-            day: point.day,
-            start: Math.min(1440 - length, snapMinutes(point.minute, event.shiftKey ? 1 : 15)),
-            end: Math.min(1440, snapMinutes(point.minute, event.shiftKey ? 1 : 15) + length),
-          }
-        : null,
-    });
-  };
-
-  const onPointerUp = () => {
-    const state = press.current;
-    press.current = null;
-    if (!state?.dragging) return;
-    const { ghost } = drag.get();
-    clearDrag();
-    // The ghost's day and minutes are wall-clock values in the grid's zone.
-    if (ghost) {
-      void actions.scheduleTask(
-        task.uuid,
-        zonedInstant(ghost.day, ghost.start, zone),
-        zonedInstant(ghost.day, ghost.end, zone),
-      );
-    }
-  };
+  const { handlers } = useTaskDrag(task, () => select({ kind: "task", uuid: task.uuid }), editing);
 
   return (
     <li
       className="relative list-none"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={cancel}
+      {...handlers}
       onDoubleClick={() => ui.set({ editing: task.uuid })}
     >
       <div
@@ -183,8 +103,6 @@ export function TaskRow({ task }: { task: Task }) {
     </li>
   );
 }
-
-const clearDrag = () => drag.set({ task: null, ghost: null, pointer: null });
 
 // Inline title editing: Enter saves, Escape reverts, and an empty new to-do is removed.
 function TitleEditor({ task }: { task: Task }) {

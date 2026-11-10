@@ -45,7 +45,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount } = useSettings();
+  const { setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -164,6 +164,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["mod+shift+d"],
         aliases: ["hide declined", "show declined"],
         run: () => void setAccount("showDeclined", !latest.current.account.showDeclined),
+      },
+      {
+        id: "view.workload",
+        title: "Toggle Workload Bar",
+        group: "View",
+        aliases: ["capacity", "meetings", "planned", "busy"],
+        run: () => setDevice("workloadBar", !latest.current.device.workloadBar),
       },
       {
         id: "zone.add",
@@ -645,5 +652,5 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
     ];
 
     return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess, setAccount]);
+  }, [actions, history, auth.status, requestAccess, setAccount, setDevice]);
 }
