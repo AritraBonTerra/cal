@@ -12,6 +12,16 @@ export const SMART_ICONS: Record<SmartList, typeof Inbox> = {
   logbook: CheckCircle2,
 };
 
+// Each smart list's icon color (theme `list-*` tokens), the one color in the sidebar's chrome.
+export const SMART_COLORS: Record<SmartList, string> = {
+  inbox: "text-list-inbox",
+  today: "text-list-today",
+  upcoming: "text-list-upcoming",
+  anytime: "text-list-anytime",
+  someday: "text-list-someday",
+  logbook: "text-list-logbook",
+};
+
 // Things' project pie: a ring that fills as the project completes.
 export function ProjectRing({ done, total }: { done: number; total: number }) {
   const fraction = total === 0 ? 0 : done / total;

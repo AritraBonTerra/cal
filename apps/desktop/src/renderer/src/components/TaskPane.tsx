@@ -15,6 +15,7 @@ import { geometry, useDrag } from "../lib/drag";
 import { isSmartList, listTitle, tasksIn } from "../lib/lists";
 import { formatRelativeDay } from "../lib/time";
 import { select, useUi } from "../lib/ui";
+import { SMART_COLORS } from "./listIcons";
 import { TaskPaneBar } from "./TaskPaneBar";
 import { TaskRow } from "./TaskRow";
 import { Keycaps } from "./ui";
@@ -68,7 +69,14 @@ export function TaskPane() {
     >
       <div className="drag-region h-13 shrink-0" />
       <header className="flex items-center gap-2 px-5 pb-2">
-        {Icon && <Icon size={20} strokeWidth={1.5} absoluteStrokeWidth className="text-accent" />}
+        {Icon && (
+          <Icon
+            size={20}
+            strokeWidth={1.5}
+            absoluteStrokeWidth
+            className={isSmartList(list) ? SMART_COLORS[list] : undefined}
+          />
+        )}
         <h2 className="min-w-0 flex-1 truncate text-title-2 font-semibold">
           {listTitle(list, data.projects, data.areas)}
         </h2>

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chipColors,
   chipColorsFromHex,
+  colors,
   contrast,
   fromHex,
   mix,
@@ -55,6 +56,18 @@ describe("chips", () => {
     const gray = chipColorsFromHex("#888888", "light");
     expect(fromHex(gray.fill).c).toBeLessThan(0.005);
   });
+});
+
+test("smart-list icon colors keep 3:1 on the sidebar, canvas and active row", () => {
+  const lists = ["inbox", "today", "upcoming", "anytime", "someday", "logbook"] as const;
+  for (const mode of ["light", "dark"] as const) {
+    for (const list of lists) {
+      const icon = fromHex(toHex(colors[`list-${list}`][mode]));
+      for (const surface of ["sidebar", "canvas", "active"] as const) {
+        expect(contrast(icon, fromHex(toHex(colors[surface][mode])))).toBeGreaterThanOrEqual(3);
+      }
+    }
+  }
 });
 
 test("theme.css is up to date with tokens.ts", async () => {

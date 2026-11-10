@@ -8,7 +8,7 @@ import { useApp } from "../lib/app";
 import { byAccount, calendarColor, soloCalendar, withId } from "../lib/calendars";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
 import { type ListId, openSettings, showList, toggleOverlay, ui, useUi } from "../lib/ui";
-import { ProjectRing, SMART_ICONS } from "./listIcons";
+import { ProjectRing, SMART_COLORS, SMART_ICONS } from "./listIcons";
 import { PopMenu, useDismiss } from "./Menu";
 import { MiniMonth } from "./MiniMonth";
 import { IconButton } from "./ui";
@@ -80,7 +80,13 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
             return (
               <li key={list} className={GROUP_STARTS.includes(list) ? "mt-3" : undefined}>
                 <Row active={current === list} onClick={() => showList(list)}>
-                  <Icon size={16} strokeWidth={1.5} absoluteStrokeWidth className="shrink-0" />
+                  <Icon
+                    size={16}
+                    strokeWidth={1.5}
+                    absoluteStrokeWidth
+                    className={`shrink-0 ${SMART_COLORS[list]}`}
+                    data-tint
+                  />
                   <span className="flex-1 truncate">{SMART_TITLES[list]}</span>
                   {count > 0 && <span className="text-caption text-ink-3 tnum">{count}</span>}
                 </Row>
@@ -135,6 +141,8 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
   );
 }
 
+// A sidebar row. Icons go accent when active, ink-2 otherwise, except a smart list's
+// own colored icon (marked `data-tint`), which keeps its color either way.
 function Row({
   active,
   onClick,
@@ -154,8 +162,8 @@ function Row({
       aria-current={active || undefined}
       className={`${ROW} ${
         active
-          ? "bg-active text-ink [&>svg]:text-accent"
-          : "text-ink hover:bg-hover [&>svg]:text-ink-2"
+          ? "bg-active text-ink [&>svg:not([data-tint])]:text-accent"
+          : "text-ink hover:bg-hover [&>svg:not([data-tint])]:text-ink-2"
       }`}
     >
       {children}

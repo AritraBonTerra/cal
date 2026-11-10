@@ -53,6 +53,12 @@
       --color-success: #1c8742;
       --color-warning: #d98b09;
       --color-white: #ffffff;
+      --color-list-inbox: #1570d1;
+      --color-list-today: #b67700;
+      --color-list-upcoming: #d33a3c;
+      --color-list-anytime: #018d87;
+      --color-list-someday: #9b7951;
+      --color-list-logbook: #218a45;
     }
     @variant dark {
       --color-canvas: #141211;
@@ -74,6 +80,12 @@
       --color-success: #5bbd74;
       --color-warning: #eba941;
       --color-white: #ffffff;
+      --color-list-inbox: #6aa7f4;
+      --color-list-today: #e8ab3e;
+      --color-list-upcoming: #f2716a;
+      --color-list-anytime: #52bfb9;
+      --color-list-someday: #c4a582;
+      --color-list-logbook: #5bbd74;
     }
   }
 }

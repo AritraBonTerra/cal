@@ -101,6 +101,9 @@ export const scenes: Scene[] = [
   },
   // A short, narrow window: the lists scroll between the month and the footer.
   { name: "sidebar-short", width: 760, height: 520, keys: ["Meta+\\"] },
+  // Smart-list icons in their own colors; Upcoming is the active row and the pane header.
+  { name: "list-colors", keys: ["Meta+3"] },
+  { name: "list-colors-dark", dark: true, keys: ["Meta+3"] },
   { name: "settings-general", keys: ["Meta+,"] },
   { name: "settings-general-dark", dark: true, keys: ["Meta+,"] },
   { name: "settings-grid", keys: ["Meta+,"], click: "[data-section=grid]" },

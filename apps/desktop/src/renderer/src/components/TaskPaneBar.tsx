@@ -7,7 +7,7 @@ import { useDrag } from "../lib/drag";
 import { isMac } from "../lib/keyboard";
 import { moveInto } from "../lib/lists";
 import { closeOverlay, useUi } from "../lib/ui";
-import { ProjectRing, SMART_ICONS } from "./listIcons";
+import { ProjectRing, SMART_COLORS, SMART_ICONS } from "./listIcons";
 import { PopMenu, type PopMenuItem, useDismiss } from "./Menu";
 import { IconButton } from "./ui";
 
@@ -117,7 +117,7 @@ function MoveMenu() {
       id: list,
       label,
       keys,
-      icon: <Icon {...ICON} className="text-ink-2" />,
+      icon: <Icon {...ICON} className={SMART_COLORS[list]} />,
       run: () => commands.run(command),
     };
   });
