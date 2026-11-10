@@ -6,6 +6,7 @@ import {
   fromDayKey,
   startOfMonth,
   toOffsetIso,
+  weekday,
 } from "@cal/domain";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -13,7 +14,7 @@ import { useApp } from "../lib/app";
 import { useEvents, visibleEvents } from "../lib/calendars";
 import { bandRow, MINI_WEEKS, markedDays, miniMonthDays } from "../lib/miniMonth";
 import { dayNumber, formatMonthYear } from "../lib/time";
-import { goToday, useUi } from "../lib/ui";
+import { goToday, showDays, useUi } from "../lib/ui";
 
 /*
  * The month at the top of the sidebar (Notion Calendar's). The days the main calendar
@@ -60,10 +61,23 @@ export function MiniMonth() {
       ),
     [fetched, device.hiddenCalendars, account.showDeclined, data.blocks, zone],
   );
-  // In month view the band covers that month, not the neighboring days its grid shows.
+  const hiddenWeekend = (day: DayKey) =>
+    !account.showWeekends && (weekday(day) === 0 || weekday(day) === 6);
+  // In month view the band covers that month's shown days, not the neighboring days its
+  // grid also holds.
   const visible = new Set(
-    view.kind === "month" ? days.filter((day) => day.slice(0, 7) === anchor.slice(0, 7)) : days,
+    view.kind === "month"
+      ? days.filter((day) => day.slice(0, 7) === anchor.slice(0, 7) && !hiddenWeekend(day))
+      : days,
   );
+  // A click shows the day in the calendar. A weekend that the week or month view is
+  // hiding opens in day view instead, so the click always lands on the day.
+  const jump = (day: DayKey) => {
+    if (hiddenWeekend(day) && (view.kind === "month" || view.count === 7)) {
+      showDays(1, gridToday, day);
+    }
+    goToday(day);
+  };
   const weeks = Array.from({ length: MINI_WEEKS }, (_, row) => cells.slice(row * 7, row * 7 + 7));
 
   return (
@@ -117,6 +131,7 @@ export function MiniMonth() {
                     today={day === gridToday}
                     marked={marked.has(day)}
                     band={band}
+                    onJump={jump}
                   />
                 );
               })}
@@ -134,17 +149,18 @@ interface DayProps {
   today: boolean;
   marked: boolean;
   band: { on: boolean; start: boolean; end: boolean };
+  onJump: (day: DayKey) => void;
 }
 
 // One day: banded when the calendar shows it; click jumps there and flashes it.
-function Day({ day, inMonth, today, marked, band }: DayProps) {
+function Day({ day, inMonth, today, marked, band, onJump }: DayProps) {
   return (
     <button
       type="button"
       tabIndex={-1}
       aria-label={fullDate.format(fromDayKey(day))}
       aria-current={today ? "date" : undefined}
-      onClick={() => goToday(day)}
+      onClick={() => onJump(day)}
       className={`relative flex h-6 items-center justify-center text-caption tnum ${
         band.on ? "bg-active" : "hover:bg-hover rounded-md"
       } ${band.start ? "rounded-l-md" : ""} ${band.end ? "rounded-r-md" : ""}`}
