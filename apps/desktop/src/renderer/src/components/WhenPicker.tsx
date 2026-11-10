@@ -133,7 +133,8 @@ export function Popover({
           event.preventDefault();
           step(event.key === "ArrowDown" ? 1 : -1);
         }
-        event.stopPropagation();
+        // Keys stay in the popover, except ⌘↩, which closes the card it belongs to.
+        if (!(event.key === "Enter" && (event.metaKey || event.ctrlKey))) event.stopPropagation();
       }}
       className="pop-in absolute left-2 top-full z-30 mt-1 w-64 origin-top-left rounded-lg bg-raised p-1 shadow-float outline-none"
     >

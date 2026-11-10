@@ -9,10 +9,10 @@ import {
   CircleDashed,
   Clock,
   Flag,
-  Hash,
   Layers,
   Moon,
   Star,
+  Tag,
   X,
 } from "lucide-react";
 import { type MouseEvent, type Ref, useEffect, useRef, useState } from "react";
@@ -81,7 +81,8 @@ export function TaskCard({ task }: { task: Task }) {
             onChange={(event) => cardText.set({ title: event.target.value })}
             onBlur={() => saveCardText(actions)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
+              const composing = event.nativeEvent.isComposing;
+              if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !composing) {
                 event.preventDefault();
                 closeCard();
               }
@@ -183,7 +184,7 @@ function Chips({ task }: { task: Task }) {
         }}
       />
       <TextChip
-        icon={Hash}
+        icon={Tag}
         label="Tags"
         value={tags.join(" ")}
         display={tags.map((name) => `#${name}`).join(" ")}
@@ -333,9 +334,23 @@ function TextChip({
     }
   }, [text]);
 
+  // The draft and where it goes, for the unmount below.
+  const draft = useRef({ text, commit: onCommit });
+  draft.current = { text, commit: onCommit };
+  // A card closed with the field still open (a press elsewhere) keeps what was typed:
+  // an unmounting field gets no blur.
+  useEffect(
+    () => () => {
+      const { text: left, commit } = draft.current;
+      if (left !== null) commit(left);
+    },
+    [],
+  );
+
   // Ends the edit once, whether by key or by blur.
   const finish = (save: boolean) => {
     if (text === null) return;
+    draft.current.text = null;
     if (save) onCommit(text);
     setText(null);
   };
@@ -351,7 +366,11 @@ function TextChip({
           onChange={(event) => setText(event.target.value)}
           onBlur={() => finish(true)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === "Escape") {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              // ⌘↩ saves the field and carries on to Close To-Do.
+              finish(true);
+            } else if (event.key === "Enter" || event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
               refocus.current = true;

@@ -52,11 +52,12 @@ export function saveCardText(actions: Actions) {
   void actions.updateTask(uuid, patch);
 }
 
-// Saves a card that just closed. A new to-do closed with no title is removed, as before.
+// Saves a card that just closed. A to-do closed with neither a title nor notes is removed,
+// as an empty new to-do always was; one with only notes is kept.
 function finishCard(actions: Actions) {
-  const { uuid, title, saved } = cardText.get();
+  const { uuid, title, notes, saved } = cardText.get();
   if (!uuid) return;
-  if (!title.trim() && !saved.title) {
+  if (!title.trim() && !saved.title && !notes.trim()) {
     cardText.set(CLOSED);
     const { selection } = ui.get();
     if (selection?.kind === "task" && selection.uuid === uuid) select(null);
@@ -67,16 +68,23 @@ function finishCard(actions: Actions) {
   cardText.set(CLOSED);
 }
 
-// Mounted once (by the to-do pane): saves each card as it closes, however it closed.
+// Mounted once (by the to-do pane): saves each card as it closes, however it closed,
+// including the window closing or the app quitting with a card still open.
 export function useCardSaver() {
   const actions = useActions();
   useEffect(() => {
     let open = ui.get().editing;
-    return ui.subscribe(() => {
+    const stop = ui.subscribe(() => {
       const next = ui.get().editing;
       if (next === open) return;
       open = next;
       if (cardText.get().uuid !== next) finishCard(actions);
     });
+    const onUnload = () => finishCard(actions);
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      stop();
+      window.removeEventListener("beforeunload", onUnload);
+    };
   }, [actions]);
 }
