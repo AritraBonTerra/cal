@@ -219,8 +219,8 @@ export function createActions(history: History, now: () => Date = () => new Date
         tx.insert("habits", { ...habit, position: await endOf("habits") }),
       ),
 
-    updateHabit: (uuid: string, patch: RowPatch<"habits">) =>
-      history.transact("Edit Habit", (tx) => tx.update("habits", uuid, patch)),
+    updateHabit: (uuid: string, patch: RowPatch<"habits">, label = "Edit Habit") =>
+      history.transact(label, (tx) => tx.update("habits", uuid, patch)),
 
     // Logs a habit for a day, replacing that day's value; a value of 0 unchecks it.
     logHabit: (

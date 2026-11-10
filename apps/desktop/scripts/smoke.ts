@@ -171,6 +171,33 @@ await habit.click();
 await page.waitForTimeout(200);
 check("habit chip toggles", (await habit.getAttribute("aria-pressed")) === "true");
 
+// 10b. the sidebar's Habits: a row toggles today, as today's chip does; right-click archives
+const readRow = page.locator("[data-habit-list] li", { hasText: "Read" }).locator("button");
+await readRow.click();
+await page.waitForTimeout(200);
+check(
+  "sidebar habit row logs today's target",
+  (await readRow.getAttribute("aria-pressed")) === "true" &&
+    ((await readRow.textContent()) ?? "").includes("20/20 min"),
+);
+await readRow.click();
+await page.waitForTimeout(200);
+await readRow.click({ button: "right" });
+await page.locator("[role=menuitem]", { hasText: "Archive" }).click();
+await page.waitForTimeout(200);
+const archived =
+  (await readRow.count()) === 0 && (await page.locator("button[title^='Read ·']").count()) === 0;
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(200);
+check(
+  "archiving a habit hides it from sidebar and strip; undo brings it back",
+  archived && (await readRow.count()) === 1,
+);
+check(
+  "the strip's dashed + is in today's column",
+  (await page.locator("[data-add-habit]").count()) === 1,
+);
+
 // 11. Quick entry creates a task with a block
 before = await blocks();
 await page.keyboard.press("Meta+Shift+n");

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { scheduledWeekdays } from "@cal/domain";
-import { emptyHabit, habitRow } from "../src/renderer/src/lib/habits";
+import { type Habit, type HabitEntry, scheduledWeekdays } from "@cal/domain";
+import {
+  activeHabits,
+  emptyHabit,
+  habitDay,
+  habitProgress,
+  habitRow,
+  quotaCount,
+} from "../src/renderer/src/lib/habits";
 import { areaForNewProject } from "../src/renderer/src/lib/lists";
 
 describe("habitRow", () => {
@@ -86,5 +93,76 @@ describe("areaForNewProject", () => {
     expect(areaForNewProject("project:p1", projects)).toBe("work");
     expect(areaForNewProject("project:p2", projects)).toBeUndefined();
     expect(areaForNewProject("today", projects)).toBeUndefined();
+  });
+});
+
+// A synced habit row with the fields these tests care about.
+const habit = (fields: Partial<Habit> & Pick<Habit, "uuid">): Habit => ({
+  title: fields.uuid,
+  kind: "check",
+  schedule: "fixed",
+  display: "strip",
+  position: 0,
+  created_at: 0,
+  updated_at: 0,
+  ...fields,
+});
+const entry = (habit_uuid: string, date: string, value = 1): HabitEntry => ({
+  uuid: `${habit_uuid}|${date}`,
+  habit_uuid,
+  date,
+  value,
+  source: "manual",
+  created_at: 0,
+  updated_at: 0,
+});
+
+describe("habit progress", () => {
+  const read = habit({ uuid: "read", kind: "measure", target: 20, unit: "min" });
+  const gym = habit({ uuid: "gym", schedule: "quota", quota_count: 3, quota_period: "week" });
+  const swim = habit({ uuid: "swim", schedule: "quota", quota_count: 8, quota_period: "month" });
+
+  test("a day's value, ring and toggle", () => {
+    const entries = [entry("read", "2026-10-28", 15)];
+    expect(habitDay(read, entries, "2026-10-28")).toEqual({
+      value: 15,
+      target: 20,
+      done: false,
+      fraction: 0.75,
+      toggle: 0,
+    });
+    expect(habitDay(gym, entries, "2026-10-28")).toMatchObject({ done: false, toggle: 1 });
+  });
+
+  test("quotas count done days in their Monday week or calendar month", () => {
+    // Wed 2026-10-28: its week runs Mon 26 to Sun 1 Nov.
+    const entries = [
+      entry("gym", "2026-10-25"),
+      entry("gym", "2026-10-26"),
+      entry("gym", "2026-11-01"),
+      entry("swim", "2026-09-30"),
+      entry("swim", "2026-10-01"),
+      entry("swim", "2026-10-31"),
+    ];
+    expect(quotaCount(gym, entries, "2026-10-28")).toBe(2);
+    expect(quotaCount(swim, entries, "2026-10-28")).toBe(2);
+    expect(quotaCount(read, entries, "2026-10-28")).toBeUndefined();
+  });
+
+  test("the sidebar's status: amount for a measure, count for a quota, else nothing", () => {
+    const entries = [entry("read", "2026-10-28", 15), entry("gym", "2026-10-27")];
+    expect(habitProgress(read, entries, "2026-10-28")).toBe("15/20 min");
+    expect(habitProgress({ ...read, unit: undefined }, entries, "2026-10-28")).toBe("15/20");
+    expect(habitProgress(gym, entries, "2026-10-28")).toBe("1/3");
+    expect(habitProgress(habit({ uuid: "meditate" }), entries, "2026-10-28")).toBe("");
+  });
+
+  test("archived habits drop out; the rest keep their order", () => {
+    const habits = [
+      habit({ uuid: "b", position: 1 }),
+      habit({ uuid: "gone", position: 0, archived_at: 5 }),
+      habit({ uuid: "a", position: 0 }),
+    ];
+    expect(activeHabits(habits).map((each) => each.uuid)).toEqual(["a", "b"]);
   });
 });

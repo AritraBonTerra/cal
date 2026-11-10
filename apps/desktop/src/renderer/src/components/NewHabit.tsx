@@ -1,15 +1,14 @@
-import { useActions, useCal } from "@cal/app-core";
-import { Plus } from "lucide-react";
+import { useActions } from "@cal/app-core";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../lib/app";
 import { emptyHabit, type HabitDraft, type HabitSchedule, habitRow } from "../lib/habits";
 import { closeOverlay } from "../lib/ui";
-import { IconButton, Keycaps, Overlay, Segmented } from "./ui";
+import { Keycaps, Overlay, Segmented } from "./ui";
 
 /*
- * New Habit… (⌘K, or the + beside the habit strip): a title, how often (every day,
- * specific weekdays, N times per week or month, or every N days) and whether it's done
- * or measured toward a target. Enter creates it in the day strip; Escape cancels.
+ * New Habit… (⌘K, the dashed + in the habit strip, or the + in the sidebar's Habits): a
+ * title, how often (every day, specific weekdays, N times per week or month, or every N
+ * days) and whether it's done or measured toward a target. Enter creates it in the day strip; Escape cancels.
  */
 
 const SCHEDULES: readonly { value: HabitSchedule; label: string }[] = [
@@ -210,17 +209,5 @@ function NumberInput({
       aria-label={label}
       className={`${inputClass} w-12 text-center tnum`}
     />
-  );
-}
-
-// The + in the gutter cell beside the habit strip, `width` wide; runs New Habit….
-export function NewHabitButton({ width }: { width: number }) {
-  const { commands } = useCal();
-  return (
-    <div className="flex shrink-0 items-center justify-end pr-1" style={{ width }}>
-      <IconButton label="New Habit…" onClick={() => commands.run("habit.new")}>
-        <Plus size={16} strokeWidth={1.5} absoluteStrokeWidth />
-      </IconButton>
-    </div>
   );
 }

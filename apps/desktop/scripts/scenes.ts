@@ -6,12 +6,13 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
  * capture. `steps` runs any sequence of those in order instead, plus pointer moves to a
- * window point (`move`).
+ * window point (`move`) and right-clicks (`context`, a CSS selector).
  */
 export type Step =
   | { press: string }
   | { type: string }
   | { click: string }
+  | { context: string }
   | { move: { x: number; y: number } }
   | { wait: number };
 
@@ -28,6 +29,12 @@ export interface Scene {
   click?: string;
   steps?: Step[];
 }
+
+// Archives every fixture habit from the sidebar's Habits, for the no-habits state.
+const NO_HABITS: Step[] = ["Gym", "Read", "Meditate"].flatMap((title) => [
+  { context: `[data-habit-list] li:has-text('${title}') button` },
+  { click: "[role=menuitem]:has-text('Archive')" },
+]);
 
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
 const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
@@ -158,11 +165,11 @@ export const scenes: Scene[] = [
   { name: "new-list-menu", click: "[data-new-list]" },
   { name: "new-project", keys: ["Meta+Alt+n"], text: "Garden" },
   { name: "new-project-dark", dark: true, keys: ["Meta+Alt+n"], text: "Garden" },
-  // New Habit… from the + beside the habit strip, set to a weekly quota.
+  // New Habit… from the dashed + in the habit strip, set to a weekly quota.
   {
     name: "new-habit",
     steps: [
-      { click: "button[aria-label='New Habit…']" },
+      { click: "[data-add-habit]" },
       { type: "Stretch" },
       { click: "[role=radio]:has-text('Times per')" },
     ],
@@ -171,11 +178,31 @@ export const scenes: Scene[] = [
     name: "new-habit-dark",
     dark: true,
     steps: [
-      { click: "button[aria-label='New Habit…']" },
+      { click: "[data-add-habit]" },
       { type: "Read" },
       { click: "[role=radio]:has-text('On days')" },
       { click: "[role=radio]:has-text('An amount')" },
     ],
+  },
+  // Habits in the sidebar (today's ring, progress) and the strip's "habits" caption and +.
+  { name: "habits", keys: ["3"] },
+  { name: "habits-dark", dark: true },
+  { name: "habits-narrow", width: 860, height: 700 },
+  // No habits: the strip's "Add a habit" pill in today's column, "No habits yet" in the
+  // sidebar; in a window too narrow for the pill, the dashed + instead.
+  { name: "habits-empty", steps: NO_HABITS },
+  { name: "habits-empty-dark", dark: true, steps: NO_HABITS },
+  // The sidebar is hidden at this width: show it to archive, then hide it again.
+  {
+    name: "habits-empty-narrow",
+    width: 760,
+    height: 700,
+    steps: [{ press: "Meta+\\" }, ...NO_HABITS, { press: "Meta+\\" }],
+  },
+  // A habit row's right-click menu (the footer + menu is new-list-menu).
+  {
+    name: "habit-archive-menu",
+    steps: [{ context: "[data-habit-list] li:has-text('Read') button" }],
   },
   // The to-do bar's Move menu for the selected to-do (⇧⌘M).
   { name: "task-move", keys: ["ArrowDown", "Meta+Shift+m"] },

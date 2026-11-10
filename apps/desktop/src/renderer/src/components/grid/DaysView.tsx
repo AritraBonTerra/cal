@@ -4,7 +4,6 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { now } from "../../lib/clock";
 import { geometry } from "../../lib/drag";
-import { NewHabitButton } from "../NewHabit";
 import { AllDayRow } from "./AllDayRow";
 import { deadlinesByDay, unscheduledByDay, type Workload, workloadOn } from "./agenda";
 import { DayHeaders } from "./DayHeaders";
@@ -17,7 +16,7 @@ import { ZoneHeaders } from "./ZoneHeaders";
 
 /*
  * N-day view: day headers (with each day's deadlines), the workload row, the habit
- * strip, the all-day row (events, then the day's to-dos without a block), then the
+ * strip (always shown, so there's a place to add one), the all-day row (events, then the day's to-dos without a block), then the
  * scrolling hour grid. The header rows pad for the body's scrollbar so columns line up.
  * The gutter holds the main zone's hour labels plus one 44px column per extra time zone.
  * A to-do dragged onto a day's header column is re-dated to that day.
@@ -183,7 +182,12 @@ export function DaysView() {
         </div>
         <WorkloadRow days={days} loads={loads} columnWidth={columnWidth} gutter={gutter} />
         <div className="flex">
-          <NewHabitButton width={gutter} />
+          <div
+            className="shrink-0 pt-1 pr-2 text-right text-caption leading-5 text-ink-3"
+            style={{ width: gutter }}
+          >
+            habits
+          </div>
           <HabitStrip days={days} columnWidth={columnWidth} />
         </div>
         <div className="flex border-t border-grid">

@@ -55,6 +55,7 @@ for (const scene of scenes.filter((each) => !wanted.length || wanted.includes(ea
     if ("press" in step) await page.keyboard.press(step.press);
     else if ("type" in step) await page.keyboard.type(step.type, { delay: 10 });
     else if ("click" in step) await page.click(step.click);
+    else if ("context" in step) await page.click(step.context, { button: "right" });
     else if ("move" in step) await page.mouse.move(step.move.x, step.move.y);
     else await page.waitForTimeout(step.wait);
     await page.waitForTimeout(150);

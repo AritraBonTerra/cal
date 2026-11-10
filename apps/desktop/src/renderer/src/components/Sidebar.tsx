@@ -1,13 +1,14 @@
 import { useActions, useCal, useSettings } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
 import { type Area, byPosition, inList, isOpen, type Project } from "@cal/domain";
-import { Box, CalendarDays, ChevronDown, Plus, Settings } from "lucide-react";
+import { Box, CalendarDays, ChevronDown, Plus, Repeat, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
 import { byAccount, calendarColor, soloCalendar, withId } from "../lib/calendars";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
 import { type ListId, openSettings, showList, toggleOverlay, ui, useUi } from "../lib/ui";
+import { HabitList } from "./HabitList";
 import { ProjectRing, SMART_COLORS, SMART_ICONS } from "./listIcons";
 import { PopMenu, useDismiss } from "./Menu";
 import { MiniMonth } from "./MiniMonth";
@@ -15,17 +16,17 @@ import { IconButton } from "./ui";
 
 /*
  * The sidebar: a mini month, then Things-style navigation (smart lists with counts, in
- * three groups; projects outside any area; areas and their projects), the device's
- * calendars, and a footer with Settings, a + menu for new projects and areas, and the
- * account. Double-click a project or area to rename it. The navigation scrolls between
- * the month and the footer. The top band is the window's drag region; the traffic
- * lights and the pane toggles sit over it.
+ * three groups; projects outside any area; areas and their projects), habits, the
+ * device's calendars, and a footer with Settings, a + menu for new projects, areas and
+ * habits, and the account. Double-click a project or area to rename it. The navigation
+ * scrolls between the month and the footer. The top band is the window's drag region;
+ * the traffic lights and the pane toggles sit over it.
  */
 
 // Smart lists that open a new group, as in Things.
 const GROUP_STARTS: readonly ListId[] = ["today", "logbook"];
 
-const ROW =
+export const ROW =
   "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-100 hover:duration-0";
 
 interface SidebarProps {
@@ -104,6 +105,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
           </section>
         ))}
 
+        <HabitList />
         <CalendarList />
       </nav>
 
@@ -342,7 +344,8 @@ function NameEditor({
   );
 }
 
-// The footer's +: a menu with New Project and New Area, running the same commands as ⌘K.
+// The footer's +: a menu with New Project, New Area and New Habit, running the same
+// commands as ⌘K.
 // The menu hangs from the footer (not the button), so it stays inside the sidebar.
 function NewListButton() {
   const { commands } = useCal();
@@ -380,6 +383,14 @@ function NewListButton() {
               label: "New Area",
               icon: <Box size={16} strokeWidth={1.5} absoluteStrokeWidth className="text-ink-2" />,
               run: () => commands.run("area.new"),
+            },
+            {
+              id: "habit",
+              label: "New Habit",
+              icon: (
+                <Repeat size={16} strokeWidth={1.5} absoluteStrokeWidth className="text-ink-2" />
+              ),
+              run: () => commands.run("habit.new"),
             },
           ]}
         />
