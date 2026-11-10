@@ -12,18 +12,17 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../lib/app";
 import { useEvents, visibleEvents } from "../lib/calendars";
-import { bandRow, MINI_WEEKS, markedDays, miniMonthDays } from "../lib/miniMonth";
+import { bandRow, MINI_WEEKS, markedDays, miniMonthDays, WEEKDAY_LETTERS } from "../lib/miniMonth";
 import { dayNumber, formatMonthYear } from "../lib/time";
-import { goToday, showDays, useUi } from "../lib/ui";
+import { jumpTo, useUi } from "../lib/ui";
 
 /*
  * The month at the top of the sidebar (Notion Calendar's). The days the main calendar
- * shows are banded, today is a red square, and a dot marks days with events or blocks.
+ * shows are banded (none in the year view, which shows them all), today is a red square, and a dot marks days with events or blocks.
  * Click a day to show it in the calendar; the chevrons page this month only, and it
  * follows the calendar back when that moves to another month. The title collapses it.
  */
 
-const LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 const fullDate = new Intl.DateTimeFormat(undefined, {
   weekday: "long",
   month: "long",
@@ -36,8 +35,9 @@ export function MiniMonth() {
   const { setDevice } = useSettings();
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
-  // The month the calendar is in: the month view's, or the first visible day's.
-  const followed = startOfMonth(view.kind === "month" ? anchor : (days[0] ?? gridToday));
+  // The month the calendar is in: the first visible day's, or the month or year view's
+  // anchor.
+  const followed = startOfMonth(view.kind === "days" ? (days[0] ?? gridToday) : anchor);
   const [month, setMonth] = useState(followed);
   useEffect(() => setMonth(followed), [followed]);
 
@@ -64,20 +64,16 @@ export function MiniMonth() {
   const hiddenWeekend = (day: DayKey) =>
     !account.showWeekends && (weekday(day) === 0 || weekday(day) === 6);
   // In month view the band covers that month's shown days, not the neighboring days its
-  // grid also holds.
+  // grid also holds. The year view shows every day, so nothing is banded.
   const visible = new Set(
     view.kind === "month"
       ? days.filter((day) => day.slice(0, 7) === anchor.slice(0, 7) && !hiddenWeekend(day))
-      : days,
+      : view.kind === "year"
+        ? []
+        : days,
   );
-  // A click shows the day in the calendar. A weekend that the week or month view is
-  // hiding opens in day view instead, so the click always lands on the day.
-  const jump = (day: DayKey) => {
-    if (hiddenWeekend(day) && (view.kind === "month" || view.count === 7)) {
-      showDays(1, gridToday, day);
-    }
-    goToday(day);
-  };
+  // A click shows the day in the calendar (see `jumpTo`), so it always lands on the day.
+  const jump = (day: DayKey) => jumpTo(day, gridToday, hiddenWeekend(day));
   const weeks = Array.from({ length: MINI_WEEKS }, (_, row) => cells.slice(row * 7, row * 7 + 7));
 
   return (
@@ -115,7 +111,7 @@ export function MiniMonth() {
                 key={day}
                 className="flex h-6 items-center justify-center text-caption font-medium tracking-[0.02em] text-ink-3"
               >
-                {LETTERS[fromDayKey(day).getDay()]}
+                {WEEKDAY_LETTERS[fromDayKey(day).getDay()]}
               </span>
             ))}
           </div>

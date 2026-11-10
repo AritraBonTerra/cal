@@ -38,6 +38,7 @@ import {
   showDays,
   showList,
   showMonth,
+  showYear,
   toggleOverlay,
   togglePane,
   ui,
@@ -147,7 +148,20 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         aliases: ["7 days"],
         run: () => showDays(7, latest.current.today),
       },
-      { id: "view.month", title: "Month", group: "View", keys: ["m"], run: showMonth },
+      {
+        id: "view.month",
+        title: "Month",
+        group: "View",
+        keys: ["m"],
+        run: () => showMonth(latest.current.today),
+      },
+      {
+        id: "view.year",
+        title: "Year",
+        group: "View",
+        keys: ["y"],
+        run: () => showYear(latest.current.today),
+      },
       ...Array.from({ length: 22 }, (_, index) => index + 10).map(
         (count): Command => ({
           id: `view.days.${count}`,

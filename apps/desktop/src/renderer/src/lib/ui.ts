@@ -9,6 +9,7 @@ import {
   toDayKey,
 } from "@cal/domain";
 import { createStore, useStore } from "./store";
+import { sameYear, startOfYear } from "./year";
 
 /*
  * What the window is showing: the calendar view and its first day, which list the
@@ -16,7 +17,7 @@ import { createStore, useStore } from "./store";
  * `useUi`; commands and pointer handlers write it through the helpers below.
  */
 
-export type View = { kind: "days"; count: number } | { kind: "month" };
+export type View = { kind: "days"; count: number } | { kind: "month" } | { kind: "year" };
 
 // A sidebar entry: a smart list, or one project or area.
 export type ListId = SmartList | `project:${string}` | `area:${string}`;
@@ -49,7 +50,7 @@ export type ZonePickerPurpose =
 
 export interface UiState {
   view: View;
-  // First visible day (days view) or any day of the visible month.
+  // First visible day (days view) or any day of the visible month or year.
   anchor: DayKey;
   sidebar: boolean;
   tasks: boolean;
@@ -93,18 +94,27 @@ export const ui = createStore<UiState>({
 
 export const useUi = <R>(select: (state: UiState) => R) => useStore(ui, select);
 
+// Whether the view on screen holds `today`.
+function showsToday({ view, anchor }: UiState, today: DayKey) {
+  if (view.kind === "days") return dayRange(anchor, view.count).includes(today);
+  return view.kind === "month" ? anchor.slice(0, 7) === today.slice(0, 7) : sameYear(anchor, today);
+}
+
 /**
  * Shows `count` days. A week starts on the configured weekday. Narrower spans start on
  * today when it's in view (week → day lands on today, like Notion), else keep their
- * first day.
+ * first day (a month's or a year's first day).
  */
 export function showDays(count: number, today: DayKey, from?: DayKey) {
-  ui.set(({ anchor, view, weekStart }) => {
-    const visible =
-      view.kind === "days"
-        ? dayRange(anchor, view.count).includes(today)
-        : anchor.slice(0, 7) === today.slice(0, 7);
-    const base = from ?? (visible ? today : view.kind === "month" ? startOfMonth(anchor) : anchor);
+  ui.set((state) => {
+    const { anchor, view, weekStart } = state;
+    const first =
+      view.kind === "month"
+        ? startOfMonth(anchor)
+        : view.kind === "year"
+          ? startOfYear(anchor)
+          : anchor;
+    const base = from ?? (showsToday(state, today) ? today : first);
     return {
       view: { kind: "days", count },
       anchor: count === WEEK ? startOfWeek(base, weekStart) : base,
@@ -128,22 +138,46 @@ export function setWeekStart(weekStart: number, today: DayKey) {
 export const COMPACT_WIDTH = 1100;
 export const TIGHT_WIDTH = 900;
 
-export function showMonth() {
-  ui.set({ view: { kind: "month" } });
+// Shows the anchor's month. From the year view: today's month when today is in that
+// year, else January.
+export function showMonth(today: DayKey) {
+  ui.set((state) => ({
+    view: { kind: "month" },
+    anchor:
+      state.view.kind !== "year"
+        ? state.anchor
+        : showsToday(state, today)
+          ? today
+          : startOfYear(state.anchor),
+  }));
 }
 
-// Moves by the visible span: N days, or a month.
+// Shows the year holding today when the view shows today, else the anchor's year.
+export function showYear(today: DayKey) {
+  ui.set((state) => ({
+    view: { kind: "year" },
+    anchor: showsToday(state, today) ? today : state.anchor,
+  }));
+}
+
+// Moves by the visible span: N days, a month, or a year.
 export function moveView(direction: 1 | -1) {
   ui.set(({ view, anchor }) => ({
     anchor:
       view.kind === "month"
         ? addMonths(anchor, direction)
-        : addDays(anchor, direction * view.count),
+        : view.kind === "year"
+          ? addMonths(anchor, direction * 12)
+          : addDays(anchor, direction * view.count),
   }));
 }
 
+// `J`/`K`: a week on, or a year in the year view, where a week wouldn't show.
 export function moveWeek(direction: 1 | -1) {
-  ui.set(({ anchor }) => ({ anchor: addDays(anchor, direction * WEEK) }));
+  ui.set(({ view, anchor }) => ({
+    anchor:
+      view.kind === "year" ? addMonths(anchor, direction * 12) : addDays(anchor, direction * WEEK),
+  }));
 }
 
 // `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T). The mini
@@ -156,6 +190,20 @@ export function goToday(today: DayKey, leftAlign = false) {
         : today,
     flashDay: today,
   }));
+}
+
+/**
+ * Shows `day` in the calendar and flashes it: a click in the mini month or the year view.
+ * The year view, and a week or month that hides `day` as a weekend (`hiddenWeekend`),
+ * give way to a span that shows it: the week holding it, or the day alone.
+ */
+export function jumpTo(day: DayKey, today: DayKey, hiddenWeekend: boolean) {
+  const { view } = ui.get();
+  if (view.kind === "year") showDays(hiddenWeekend ? 1 : WEEK, today, day);
+  else if (hiddenWeekend && (view.kind === "month" || view.count === WEEK)) {
+    showDays(1, today, day);
+  }
+  goToday(day);
 }
 
 // Shows or hides the sidebar or the to-do list (⌘\ and ⌘/, and the buttons by the

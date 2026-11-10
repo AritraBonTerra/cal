@@ -16,6 +16,7 @@ import { useAppCommands } from "./commands";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
+import { YearView } from "./components/grid/YearView";
 import { NewHabit } from "./components/NewHabit";
 import { Palette } from "./components/Palette";
 import { Pane, useSidebarPeek } from "./components/Pane";
@@ -41,6 +42,7 @@ import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
 import { setTimeFormat } from "./lib/time";
 import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
+import { yearDays } from "./lib/year";
 import { deviceZone, zonedDayKey } from "./lib/zones";
 
 // Weeks shown by the month view: the one holding the 1st through the one holding the last day.
@@ -148,11 +150,14 @@ export function App() {
   );
   const gridToday = zonedDayKey(now, zone);
 
+  // The year view's days are its whole year, so one fetch covers every month.
   const days = useMemo(
     () =>
       view.kind === "days"
         ? visibleDays(anchor, view.count, account.showWeekends)
-        : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
+        : view.kind === "year"
+          ? yearDays(anchor)
+          : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
     [view, anchor, account.showWeekends, account.weekStart],
   );
   const first = days[0] ?? today;
@@ -219,7 +224,13 @@ export function App() {
         </Pane>
         <main className="flex min-w-0 flex-1 flex-col">
           <Toolbar first={first} last={last} />
-          {view.kind === "days" ? <DaysView /> : <MonthView />}
+          {view.kind === "days" ? (
+            <DaysView />
+          ) : view.kind === "month" ? (
+            <MonthView />
+          ) : (
+            <YearView />
+          )}
         </main>
         {/*
           Order matters: Electron builds the draggable area in document order, so a drag

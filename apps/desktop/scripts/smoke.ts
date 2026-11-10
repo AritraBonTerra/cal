@@ -1067,5 +1067,38 @@ check(
   peekedOnce === 1 && (await peekPanel.count()) === 0 && (await paneWidth("sidebar")) === 224,
 );
 
+// The year view: Y shows it, arrows move a year, T comes back, a day or month name leaves.
+const toolbarTitle = () => page.locator("header h1").textContent();
+await page.keyboard.press("y");
+await page.waitForTimeout(200);
+check(
+  "Y shows the year's twelve months",
+  (await toolbarTitle()) === "2026" && (await page.locator("[data-year-month]").count()) === 12,
+);
+check(
+  "the year marks today and dots busy days",
+  (await page.locator("[data-year-day='2026-10-28'][aria-current=date]").count()) === 1 &&
+    (await page.locator("[data-year-day='2026-10-29'] .rounded-full").count()) === 1 &&
+    (await page.locator("[data-year-day='2026-03-12'] .rounded-full").count()) === 0,
+);
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(150);
+const nextYear = await toolbarTitle();
+await page.keyboard.press("t");
+await page.waitForTimeout(150);
+check("→ moves a year and T comes back", nextYear === "2027" && (await toolbarTitle()) === "2026");
+await page.locator("[data-year-day='2026-03-12']").click();
+await page.waitForTimeout(200);
+check(
+  "a day click leaves the year for that day's week",
+  (await page.locator("[data-year-view]").count()) === 0 &&
+    (await page.locator("[data-column='2026-03-12']").count()) === 1,
+);
+await page.keyboard.press("y");
+await page.waitForTimeout(150);
+await page.locator("[data-year-month='2026-06-01'] button", { hasText: "June" }).click();
+await page.waitForTimeout(150);
+check("a month name opens that month", (await toolbarTitle()) === "June 2026");
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

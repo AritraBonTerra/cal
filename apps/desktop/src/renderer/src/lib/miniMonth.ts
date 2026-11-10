@@ -2,11 +2,14 @@ import { addDays, type DayKey, dayRange, startOfMonth, startOfWeek, toDayKey } f
 import { zonedDayKey } from "./zones";
 
 /*
- * The sidebar's mini month: which days it shows, which have something on them, and how
+ * The sidebar's mini month (and each month of the year view): which days it shows, which have something on them, and how
  * the band marking the main calendar's visible days is drawn.
  */
 
 export const MINI_WEEKS = 6;
+
+// Weekday initials by `weekday` number (0 = Sunday), for the column headers.
+export const WEEKDAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // Six weeks from the week holding `month`'s 1st, so the grid keeps one height as it pages.
 export const miniMonthDays = (month: DayKey, weekStart: number) =>

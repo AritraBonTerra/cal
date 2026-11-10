@@ -3,7 +3,16 @@ import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
 import { formatMonthYear, formatSpan, weekNumber } from "../lib/time";
-import { goToday, moveView, showDays, showMonth, toggleOverlay, ui, useUi } from "../lib/ui";
+import {
+  goToday,
+  moveView,
+  showDays,
+  showMonth,
+  showYear,
+  toggleOverlay,
+  ui,
+  useUi,
+} from "../lib/ui";
 import { zoneCity } from "../lib/zones";
 import { PANE_TOGGLES_END } from "./PaneToggles";
 import { IconButton, Keycaps } from "./ui";
@@ -25,7 +34,12 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
   const travelZone = useUi((state) => state.travelZone);
-  const title = view.kind === "month" ? formatMonthYear(anchor) : formatSpan(first, last);
+  const title =
+    view.kind === "month"
+      ? formatMonthYear(anchor)
+      : view.kind === "year"
+        ? anchor.slice(0, 4)
+        : formatSpan(first, last);
   const weeks =
     view.kind === "days" && account.weekNumbers
       ? [weekNumber(first, account.weekStart), weekNumber(last, account.weekStart)]
@@ -33,11 +47,13 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   const label =
     view.kind === "month"
       ? "Month"
-      : view.count === 1
-        ? "Day"
-        : view.count === 7
-          ? "Week"
-          : `${view.count} days`;
+      : view.kind === "year"
+        ? "Year"
+        : view.count === 1
+          ? "Day"
+          : view.count === 7
+            ? "Week"
+            : `${view.count} days`;
 
   return (
     <header className="drag-region flex h-13 shrink-0 items-center gap-1 pr-3 pl-4">
@@ -86,11 +102,13 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   );
 }
 
+// `count` 0 is the month view and -1 the year view.
 const CHOICES = [
   { label: "Day", keys: "1", count: 1 },
   { label: "3 days", keys: "3", count: 3 },
   { label: "Week", keys: "w", count: 7 },
   { label: "Month", keys: "m", count: 0 },
+  { label: "Year", keys: "y", count: -1 },
 ];
 
 // A small popover with the common spans; any other count comes from ⌘K ("Show 14 days").
@@ -131,7 +149,8 @@ function ViewMenu({ label }: { label: string }) {
               key={choice.label}
               onClick={() => {
                 setOpen(false);
-                if (choice.count === 0) showMonth();
+                if (choice.count === 0) showMonth(today);
+                else if (choice.count < 0) showYear(today);
                 else showDays(choice.count, today);
               }}
               className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body text-ink hover:bg-hover"

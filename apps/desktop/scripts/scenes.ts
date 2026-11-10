@@ -77,6 +77,15 @@ export const scenes: Scene[] = [
   { name: "habit-rings" },
   { name: "habit-rings-dark", dark: true },
   { name: "month", keys: ["m"] },
+  // The year: twelve mini months, today's badge, a dot on each busy day.
+  { name: "year", keys: ["y"] },
+  { name: "year-dark", dark: true, keys: ["y"] },
+  { name: "year-panes-hidden", keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-panes-hidden-dark", dark: true, keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-narrow", width: 860, height: 700, keys: ["y"] },
+  { name: "year-narrow-panes", width: 860, height: 700, keys: ["y", "Meta+\\", "Meta+/"] },
+  { name: "year-tight", width: 760, height: 520, keys: ["y"] },
+  { name: "year-tight-sidebar-dark", dark: true, width: 760, height: 520, keys: ["y", "Meta+\\"] },
   { name: "palette", keys: ["Meta+k"] },
   { name: "shortcuts", keys: ["?"] },
   {
