@@ -6,9 +6,12 @@ import { dayNumber, formatWeekday, formatWeekdayMonthDay } from "../../lib/time"
 import { showDays, showList, ui } from "../../lib/ui";
 import { type Deadlines, listShowing } from "./agenda";
 
+// Below this column width the flag would sit on top of the date, so it's left out.
+const FLAG_MIN = 56;
+
 // Weekday and date per column; today (in the grid's zone) gets the red badge. Click a
 // day to open it. Narrow columns keep one weekday letter so nothing truncates mid-word.
-// A day with deadlines shows a flag and their count at the right.
+// A day with deadlines shows a flag and their count at the right, where there's room.
 export function DayHeaders({
   days,
   columnWidth,
@@ -48,7 +51,7 @@ export function DayHeaders({
                 {dayNumber(day)}
               </span>
             </button>
-            {due && due.tasks.length + due.projects.length > 0 && (
+            {due && due.tasks.length + due.projects.length > 0 && columnWidth >= FLAG_MIN && (
               <DeadlineFlag day={day} deadlines={due} narrow={narrow} />
             )}
           </div>
