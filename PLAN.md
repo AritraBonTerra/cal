@@ -133,6 +133,7 @@ Key decisions (details are in the research docs):
 | `1`–`9`            | Show N days (`1`/`D` = day)                                                  |
 | `0` / `W`          | Week                                                                         |
 | `M`                | Month                                                                        |
+| `Y`                | Year: twelve months with a dot on busy days; click a day to open its week    |
 | `⌘K` → "14"        | Show any count from 1 to 31 days                                             |
 | `←` `→`            | Move by the visible span. Hold to repeat.                                    |
 | `J` `K`            | Next / previous week                                                         |
@@ -283,6 +284,8 @@ v1.1 (after testing the first DMG): the grid fills the window with zoom, panes s
 
 v1.2 (Mac, after a usability pass against Notion Calendar, Things 3 and TickTick): pane toggles pinned by the traffic lights, resizable panes and a sidebar peek; a sidebar footer with Settings, new project and area, and the account; a mini month and calendar list in the sidebar; creating projects, areas and habits; a to-do pane bottom bar; to-dos that open into a card (notes, tags, deadline, estimate, project); Today split into Scheduled and Not scheduled; Upcoming grouped by day and Anytime by project; each day's unscheduled to-dos, deadline flags and a workload bar in the day header; habit initials in compact rings.
 
+v1.3 (Mac, from using v1.2): keyboard shortcuts you can change (Settings > Shortcuts, synced with the account; the menu bar, tooltips and the `?` sheet follow them) and a Settings > About page; a year view on `Y`; pane toggles that take clicks, animate between open and closed and share a centre line with the traffic lights; a named habit row with an add button in the grid and a Habits section in the sidebar; a new to-do's card reads its title as Quick Entry text; the Event / To-do switch shows its keys inside each choice. Clerk was looked at again and Better Auth stays.
+
 Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
 
 ## 8. Not in v1
@@ -301,6 +304,7 @@ Still to do: repeating tasks, headings and checklists (checklists need a table);
 - 2026-10-28: Offline edits must never be lost. First choice was PowerSync (Cloud) on top of Convex.
 - 2026-10-28: Auth uses Convex Auth (email and password).
 - 2026-10-28 (v1.1): Sign in with Google is the requirement; Better Auth chosen over Clerk (Clerk's free plan signs out weekly and its Electron SDK is beta). Pinned to Better Auth 1.6.33 until `@convex-dev/better-auth` supports 1.7.
+- 2026-11-10 (v1.3): Custom shortcuts are an account setting, so they follow you to another Mac. Only commands in the registry can be rebound; keys a field handles itself (Return and Esc in popovers, `⌘1`/`⌘2` in the Event / To-do switch) stay fixed.
 - 2026-10-28: PowerSync's Convex connector needs Convex's streaming export, which is Pro only ($25/month); the account is on Starter. Build our own sync engine (`@cal/sync`, §3.1) instead. PowerSync is dropped.
 - 2026-10-28: Speech input ("MIF 2") dropped. Not needed.
 
