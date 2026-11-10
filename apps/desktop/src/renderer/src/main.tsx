@@ -1,9 +1,15 @@
 import { type AccountSettings, CalProvider, createCal, type DeviceSettings } from "@cal/app-core";
+import { startOfWeek, toDayKey } from "@cal/domain";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ClockProvider, now } from "./lib/clock";
+import { ui } from "./lib/ui";
 import "./styles.css";
+
+// The first week shown follows the window's clock, so a fixture launch opens on the
+// fixture week rather than the real one.
+ui.set({ anchor: startOfWeek(toDayKey(now())) });
 
 // Actions stamp completions with the window's clock, which is fixed in fixture mode.
 // Device settings live in localStorage, except in fixture mode, where every launch must

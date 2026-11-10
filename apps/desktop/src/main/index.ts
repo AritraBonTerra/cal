@@ -1,4 +1,5 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { storeSource } from "@cal/app-core";
@@ -31,20 +32,17 @@ const CONVEX_URL =
   import.meta.env.MAIN_VITE_CONVEX_URL ?? "https://charming-dachshund-581.convex.cloud";
 
 // Fixture mode (CAL_FIXTURE=1) starts from the same seeded data and clock every launch,
-// offline, for screenshots and design review.
+// offline, for screenshots and design review. Each launch gets its own throwaway data
+// directory in the system temp folder, emptied on quit, so several can run side by side.
 const fixture = process.env.CAL_FIXTURE === "1";
 
 // A second data directory (CAL_PROFILE=b) runs another "device" side by side for testing sync.
-const profile = fixture ? "fixture" : process.env.CAL_PROFILE;
-if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
+const profile = process.env.CAL_PROFILE;
+if (fixture) app.setPath("userData", mkdtempSync(join(tmpdir(), "cal-fixture-")));
+else if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
 
 const dataDir = app.getPath("userData");
 mkdirSync(dataDir, { recursive: true });
-if (fixture) {
-  for (const file of ["cal.sqlite", "cal.sqlite-wal", "cal.sqlite-shm"]) {
-    rmSync(join(dataDir, file), { force: true });
-  }
-}
 const store = new LocalStore(openDatabase(join(dataDir, "cal.sqlite")));
 if (fixture) seedFixture(store);
 const data = storeSource(store);
@@ -310,4 +308,8 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   calkit.stop();
   void session.close();
+});
+
+app.on("quit", () => {
+  if (fixture) rmSync(dataDir, { recursive: true, force: true });
 });

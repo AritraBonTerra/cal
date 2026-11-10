@@ -1,6 +1,7 @@
 import { type AccountSettings, type DeviceSettings, useCal, useSettings } from "@cal/app-core";
 import {
   addDays,
+  type DayKey,
   dayRange,
   fromDayKey,
   startOfMonth,
@@ -14,6 +15,7 @@ import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
 import { Palette } from "./components/Palette";
+import { PaneToggles } from "./components/PaneToggles";
 import { QuickEntry } from "./components/QuickEntry";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
@@ -60,8 +62,8 @@ function usePaneDefaults() {
 
 // Settings that live outside React: the week start the view helpers read, and the
 // window theme, which Electron applies to `prefers-color-scheme`.
-function useSettingsEffects(account: AccountSettings, device: DeviceSettings) {
-  useEffect(() => setWeekStart(account.weekStart), [account.weekStart]);
+function useSettingsEffects(account: AccountSettings, device: DeviceSettings, today: DayKey) {
+  useEffect(() => setWeekStart(account.weekStart, today), [account.weekStart, today]);
   useEffect(() => {
     void window.cal.setTheme(device.theme);
   }, [device.theme]);
@@ -95,7 +97,7 @@ export function App() {
   const { account, device } = useSettings();
   // Before anything below formats a time, so one render never mixes clocks.
   setTimeFormat(account.timeFormat);
-  useSettingsEffects(account, device);
+  useSettingsEffects(account, device, today);
   const calendars = useCalendars();
   const palette = useChipPalette(calendars, mode, device.calendarColors);
   const { auth, sync } = useAccount();
@@ -175,6 +177,7 @@ export function App() {
         className="flex h-screen w-screen overflow-hidden bg-canvas text-body text-ink"
         data-ready={data.loaded && eventsLoaded ? "" : undefined}
       >
+        <PaneToggles />
         <Pane open={sidebar} width={224} name="sidebar">
           <Sidebar auth={auth} sync={sync} access={access} requestAccess={requestAccess} />
         </Pane>

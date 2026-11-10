@@ -28,6 +28,7 @@ import {
   showList,
   showMonth,
   toggleOverlay,
+  togglePane,
   ui,
 } from "./lib/ui";
 import { zonedDayKey } from "./lib/zones";
@@ -138,7 +139,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         title: "Toggle Sidebar",
         group: "View",
         keys: ["mod+\\"],
-        run: () => ui.set((state) => ({ sidebar: !state.sidebar })),
+        run: () => togglePane("sidebar"),
       },
       {
         id: "view.tasks",
@@ -146,7 +147,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "View",
         keys: ["mod+/"],
         aliases: ["tasks", "pane"],
-        run: () => ui.set((state) => ({ tasks: !state.tasks })),
+        run: () => togglePane("tasks"),
       },
       {
         id: "view.weekends",

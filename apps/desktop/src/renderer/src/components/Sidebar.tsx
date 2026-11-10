@@ -7,20 +7,24 @@ import {
   CheckCircle2,
   Inbox,
   Layers,
-  PanelLeft,
+  Settings,
   Star,
 } from "lucide-react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
-import { type ListId, showList, toggleOverlay, ui, useUi } from "../lib/ui";
+import { type ListId, openSettings, showList, toggleOverlay, useUi } from "../lib/ui";
 import { IconButton } from "./ui";
 
 /*
- * Things-style navigation: smart lists with counts, then areas and their projects, then
- * the account row. The top band is the window's drag region and leaves room for the
- * inset traffic lights.
+ * Things-style navigation: smart lists with counts (Inbox, the dated lists and Logbook
+ * as three groups), then areas and their projects, then a footer with Settings and the
+ * account. The top band is the window's drag region; the traffic lights and the pane
+ * toggles sit over it.
  */
+
+// Smart lists that open a new group, as in Things.
+const GROUP_STARTS: readonly ListId[] = ["today", "logbook"];
 
 const ICONS = {
   inbox: Inbox,
@@ -48,11 +52,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
 
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col bg-sidebar" data-dense>
-      <div className="drag-region flex h-13 shrink-0 items-center justify-end pr-2 pl-20">
-        <IconButton label="Hide sidebar (⌘\\)" onClick={() => ui.set({ sidebar: false })}>
-          <PanelLeft size={16} strokeWidth={1.5} absoluteStrokeWidth />
-        </IconButton>
-      </div>
+      <div className="drag-region h-13 shrink-0" />
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2">
         <ul>
@@ -60,7 +60,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
             const Icon = ICONS[list];
             const count = counts(list);
             return (
-              <li key={list}>
+              <li key={list} className={GROUP_STARTS.includes(list) ? "mt-3" : undefined}>
                 <Row active={current === list} onClick={() => showList(list)}>
                   <Icon size={16} strokeWidth={1.5} absoluteStrokeWidth className="shrink-0" />
                   <span className="flex-1 truncate">{SMART_TITLES[list]}</span>
@@ -132,7 +132,12 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
         </div>
       )}
 
-      <AccountRow auth={auth} sync={sync} />
+      <div className="flex h-11 shrink-0 items-center gap-1 px-2" data-sidebar-footer>
+        <IconButton label="Settings (⌘,)" onClick={() => openSettings()} data-settings>
+          <Settings size={16} strokeWidth={1.5} absoluteStrokeWidth />
+        </IconButton>
+        <Account auth={auth} sync={sync} />
+      </div>
     </aside>
   );
 }
@@ -184,40 +189,53 @@ function Progress({ done, total }: { done: number; total: number }) {
   );
 }
 
-// Signed in: the account and a quiet sync status. Signed out: one line that opens sign-in.
-function AccountRow({ auth, sync }: { auth: AuthState; sync: SyncStatus }) {
-  if (auth.status === "signedOut") {
-    return (
+/*
+ * The account chip and, at the far right, the sync dot: hollow when signed out, green
+ * when synced, amber when offline or the session has lapsed. Signed out, the chip opens
+ * sign-in. Signed in, it names the account, or what sync is waiting on, and opens the
+ * account settings (or sign-in again, once the session has lapsed).
+ */
+function Account({ auth, sync }: { auth: AuthState; sync: SyncStatus }) {
+  const signedOut = auth.status === "signedOut";
+  const healthy = !signedOut && sync.connected && !sync.needsSignIn;
+  const status = signedOut
+    ? "Not signed in"
+    : sync.needsSignIn
+      ? "Sign in again"
+      : !sync.connected
+        ? sync.pending > 0
+          ? `Offline · ${sync.pending} to upload`
+          : "Offline"
+        : sync.pending > 0
+          ? `${sync.pending} to upload`
+          : "Synced";
+  const label = signedOut ? "Sign in to sync" : status === "Synced" ? auth.email : status;
+  return (
+    <>
       <button
         type="button"
-        onClick={() => toggleOverlay("signIn")}
-        className="mx-2 mb-2 flex h-7 items-center gap-2 rounded-md px-2 text-left text-small text-ink-3 hover:bg-hover"
+        onClick={() =>
+          signedOut || sync.needsSignIn ? toggleOverlay("signIn") : openSettings("account")
+        }
+        className="h-6 min-w-0 truncate rounded-full bg-canvas px-2.5 text-small font-medium text-ink-2 shadow-[inset_0_0_0_1px_var(--cal-edge)] transition-colors duration-100 tnum hover:bg-hover hover:duration-0 active:bg-active"
+        data-account
       >
-        <span className="h-2 w-2 rounded-full shadow-[inset_0_0_0_1.5px_var(--cal-edge-strong)]" />
-        Sign in to sync
+        {label}
       </button>
-    );
-  }
-  const status = sync.needsSignIn
-    ? "Sign in again"
-    : !sync.connected
-      ? sync.pending > 0
-        ? `Offline · ${sync.pending} to upload`
-        : "Offline"
-      : sync.pending > 0
-        ? `${sync.pending} to upload`
-        : "Synced";
-  return (
-    <div className="mx-2 mb-2 flex h-9 items-center gap-2 rounded-md px-2 text-small">
+      <span className="flex-1" />
       <span
-        className={`h-2 w-2 shrink-0 rounded-full ${
-          sync.connected && !sync.needsSignIn ? "bg-success" : "bg-warning"
+        role="img"
+        aria-label={status}
+        title={status}
+        className={`mr-2 h-2 w-2 shrink-0 rounded-full ${
+          signedOut
+            ? "shadow-[inset_0_0_0_1.5px_var(--cal-edge-strong)]"
+            : healthy
+              ? "bg-success"
+              : "bg-warning"
         }`}
+        data-sync-dot
       />
-      <div className="min-w-0">
-        <div className="truncate text-ink">{auth.email}</div>
-        <div className="truncate text-caption text-ink-3 tnum">{status}</div>
-      </div>
-    </div>
+    </>
   );
 }

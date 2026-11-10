@@ -54,6 +54,8 @@ export const scenes: Scene[] = [
   { name: "zoomed-in", keys: ["Meta+Shift+.", "Meta+Shift+."] },
   { name: "zoomed-in-dark", dark: true, keys: ["Meta+Shift+.", "Meta+Shift+."] },
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
+  // Both panes hidden: the title clears the traffic lights and the pane toggles.
+  { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },
   { name: "settings-general", keys: ["Meta+,"] },
   { name: "settings-general-dark", dark: true, keys: ["Meta+,"] },
   { name: "settings-grid", keys: ["Meta+,"], click: "[data-section=grid]" },

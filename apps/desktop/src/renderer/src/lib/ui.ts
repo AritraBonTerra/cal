@@ -106,12 +106,16 @@ export function showDays(count: number, today: DayKey, from?: DayKey) {
   });
 }
 
-// Applies a new first day of the week, re-aligning the week view to it.
-export function setWeekStart(weekStart: number) {
-  ui.set(({ view, anchor }) => ({
-    weekStart,
-    anchor: view.kind === "days" && view.count === WEEK ? startOfWeek(anchor, weekStart) : anchor,
-  }));
+/**
+ * Applies a new first day of the week, re-aligning the week view to it: to today's week
+ * when today is showing, otherwise to the week that shares the most days with the old one.
+ */
+export function setWeekStart(weekStart: number, today: DayKey) {
+  ui.set(({ view, anchor }) => {
+    if (view.kind !== "days" || view.count !== WEEK) return { weekStart };
+    const base = dayRange(anchor, WEEK).includes(today) ? today : addDays(anchor, 3);
+    return { weekStart, anchor: startOfWeek(base, weekStart) };
+  });
 }
 
 // Window-size defaults: panes hide on narrow windows and come back when there's room.
@@ -146,6 +150,11 @@ export function goToday(today: DayKey, leftAlign = false) {
     flashDay: today,
   }));
 }
+
+// Shows or hides the sidebar or the to-do list (⌘\ and ⌘/, and the buttons by the
+// traffic lights).
+export const togglePane = (pane: "sidebar" | "tasks") =>
+  ui.set((state) => ({ [pane]: !state[pane] }));
 
 export const select = (selection: Selection | null) => ui.set({ selection, editing: null });
 
