@@ -7,21 +7,25 @@ import {
   snapMinutes,
   type Task,
 } from "@cal/domain";
-import { Flag } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FileText, Flag } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useApp } from "../lib/app";
+import { openCard } from "../lib/card";
 import { now } from "../lib/clock";
 import { DRAG_THRESHOLD, drag, geometry, useDrag } from "../lib/drag";
+import { tagNames } from "../lib/tags";
 import { formatDuration, formatRelativeDay } from "../lib/time";
-import { select, ui, useUi } from "../lib/ui";
+import { select, useUi } from "../lib/ui";
 import { zonedInstant } from "../lib/zones";
+import { TaskCard } from "./TaskCard";
 import { Checkbox } from "./ui";
 import { WhenPicker } from "./WhenPicker";
 
 /*
- * One to-do: checkbox, title, and a line of metadata (project, deadline, scheduled time).
- * Click selects, double-click or Enter edits the title, and dragging it onto the grid
- * schedules it.
+ * One to-do: checkbox, title (with a note icon when it has notes), and a line of
+ * metadata (project, day, scheduled time, tags). Click selects, double-click or Return
+ * opens it into a card in place, and dragging it onto the grid schedules it; an open
+ * card can't be dragged.
  */
 export function TaskRow({ task }: { task: Task }) {
   const { data, today, zone } = useApp();
@@ -51,6 +55,8 @@ export function TaskRow({ task }: { task: Task }) {
           : formatDuration(task.estimate_min),
     });
   } else if (scheduled > 0) meta.push({ text: `${formatDuration(scheduled)} scheduled` });
+  const tags = tagNames(task.tags);
+  if (tags.length > 0) meta.push({ text: tags.map((name) => `#${name}`).join(" ") });
 
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
   const dragging = useDrag((state) => state.task?.uuid === task.uuid);
@@ -130,30 +136,43 @@ export function TaskRow({ task }: { task: Task }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={cancel}
-      onDoubleClick={() => ui.set({ editing: task.uuid })}
+      onDoubleClick={() => {
+        if (!editing) openCard(task);
+      }}
     >
-      <div
-        className={`flex items-start gap-2.5 rounded-md px-2 py-[5px] ${
-          selected ? "bg-accent-soft" : "hover:bg-hover"
-        }`}
-        data-selected={selected || undefined}
-      >
-        <div className="flex h-[18px] items-center">
-          <Checkbox
-            checked={done}
-            onChange={(checked) => void actions.setTaskDone(task.uuid, checked)}
-            label={done ? "Reopen" : "Complete"}
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          {editing ? (
-            <TitleEditor task={task} />
-          ) : (
+      {editing ? (
+        <TaskCard task={task} />
+      ) : (
+        <div
+          className={`flex items-start gap-2.5 rounded-md px-2 py-[5px] ${
+            selected ? "bg-accent-soft" : "hover:bg-hover"
+          }`}
+          data-selected={selected || undefined}
+        >
+          <div className="flex h-[18px] items-center">
+            <Checkbox
+              checked={done}
+              onChange={(checked) => void actions.setTaskDone(task.uuid, checked)}
+              label={done ? "Reopen" : "Complete"}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <div
-                className={`min-w-0 flex-1 truncate ${done ? "text-ink-3 line-through" : "text-ink"}`}
+                className={`flex min-w-0 flex-1 items-center gap-1.5 ${done ? "text-ink-3" : "text-ink"}`}
               >
-                {task.title || <span className="text-ink-3">New To-Do</span>}
+                <span className={`truncate ${done ? "line-through" : ""}`}>
+                  {task.title || <span className="text-ink-3">New To-Do</span>}
+                </span>
+                {task.notes && (
+                  <FileText
+                    size={12}
+                    strokeWidth={1.5}
+                    absoluteStrokeWidth
+                    aria-label="Has notes"
+                    className="shrink-0 text-ink-3"
+                  />
+                )}
               </div>
               {task.deadline && (
                 <span
@@ -166,65 +185,22 @@ export function TaskRow({ task }: { task: Task }) {
                 </span>
               )}
             </div>
-          )}
-          {meta.length > 0 && !editing && (
-            <div className="mt-px truncate text-small text-ink-3 tnum">
-              {meta.map((item, index) => (
-                <span key={item.text}>
-                  {index > 0 && <span className="mx-1">·</span>}
-                  {item.text}
-                </span>
-              ))}
-            </div>
-          )}
+            {meta.length > 0 && (
+              <div className="mt-px truncate text-small text-ink-3 tnum">
+                {meta.map((item, index) => (
+                  <span key={item.text}>
+                    {index > 0 && <span className="mx-1">·</span>}
+                    {item.text}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {whenOpen && <WhenPicker task={task} />}
+      )}
+      {whenOpen && !editing && <WhenPicker task={task} />}
     </li>
   );
 }
 
 const clearDrag = () => drag.set({ task: null, ghost: null, pointer: null });
-
-// Inline title editing: Enter saves, Escape reverts, and an empty new to-do is removed.
-function TitleEditor({ task }: { task: Task }) {
-  const actions = useActions();
-  const [value, setValue] = useState(task.title);
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  const finish = (save: boolean) => {
-    const title = value.trim();
-    ui.set({ editing: null });
-    if (save && title && title !== task.title) void actions.updateTask(task.uuid, { title });
-    else if (!task.title && (!save || !title)) {
-      select(null);
-      void actions.deleteTask(task.uuid);
-    }
-  };
-
-  return (
-    <input
-      ref={ref}
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          finish(true);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          finish(false);
-        }
-        event.stopPropagation();
-      }}
-      placeholder="New To-Do"
-      aria-label="Title"
-      className="w-full bg-transparent text-body text-ink outline-none placeholder:text-ink-3"
-    />
-  );
-}

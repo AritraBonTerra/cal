@@ -54,7 +54,7 @@ export interface UiState {
   list: ListId;
   selection: Selection | null;
   overlay: Overlay | null;
-  // The task whose title is being edited inline.
+  // The to-do open as a card (lib/card.ts); clearing it closes and saves the card.
   editing: string | null;
   // Set after a jump (T, `.`) so the grid can flash the target day once.
   flashDay: DayKey | null;

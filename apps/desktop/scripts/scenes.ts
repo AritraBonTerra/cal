@@ -25,6 +25,8 @@ export interface Scene {
 
 // The Standup occurrence on the fixture Wednesday: a repeating event with reminders.
 const STANDUP = "[data-item^='event:standup|2026-10-28'] > div";
+// A to-do in Today with notes, tags, a deadline and an estimate.
+const PRICING = "li:has-text('Update pricing page copy')";
 
 export const scenes: Scene[] = [
   { name: "week-light" },
@@ -41,6 +43,25 @@ export const scenes: Scene[] = [
   },
   { name: "today", keys: ["ArrowDown", "ArrowDown"] },
   { name: "when-picker", keys: ["ArrowDown", "Meta+s"] },
+  // A to-do opened into a card with Return: notes, then the When/Deadline/Estimate/
+  // Project/Tags chips.
+  { name: "task-card", steps: [{ click: PRICING }, { press: "Enter" }] },
+  { name: "task-card-dark", dark: true, steps: [{ click: PRICING }, { press: "Enter" }] },
+  {
+    name: "task-card-project",
+    steps: [
+      { click: PRICING },
+      { press: "Enter" },
+      { click: "[data-card] button >> text=Launch v2" },
+    ],
+  },
+  {
+    name: "task-card-deadline",
+    dark: true,
+    steps: [{ click: PRICING }, { press: "Enter" }, { click: "[data-card] button >> text=Fri" }],
+  },
+  // ⌘N opens the new row as a card with the title focused; its chips show quiet labels.
+  { name: "task-card-new", keys: ["Meta+n"], text: "Call the bank" },
   { name: "block-selected", click: "[data-item^='block:'] [data-edge=end] >> xpath=.." },
   {
     name: "sign-in",

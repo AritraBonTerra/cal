@@ -317,6 +317,7 @@ export function seedFixture(store: LocalStore) {
     estimate_min: 45,
     priority: 2,
     position: 1,
+    tags: "review",
   });
   task("Update pricing page copy", {
     project_uuid: launch,
@@ -325,6 +326,8 @@ export function seedFixture(store: LocalStore) {
     estimate_min: 60,
     deadline: day(4),
     position: 2,
+    notes: "Match the numbers in the launch spec. Ask Priya about the annual plan wording.",
+    tags: "writing",
   });
   task("Pay rent", {
     area_uuid: home,

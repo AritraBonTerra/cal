@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { LocalStore, type SqlDatabase, type SqlRow } from "@cal/sync";
 import { monthGridDays } from "../src/renderer/src/components/WhenPicker";
-import { newTaskIn, tasksIn } from "../src/renderer/src/lib/lists";
+import { listSections, newTaskIn, tasksIn } from "../src/renderer/src/lib/lists";
 
 function memoryStore() {
   const db = new Database(":memory:");
@@ -45,5 +45,25 @@ describe("monthGridDays", () => {
   test("a month that fits in five rows gets five", () => {
     // February 2027 starts on a Monday and has 28 days.
     expect(monthGridDays("2027-02-01")).toHaveLength(35);
+  });
+});
+
+describe("listSections", () => {
+  test("Today puts This Evening in its own section, last", () => {
+    const store = memoryStore();
+    store.insert("tasks", { title: "Evening", position: 0, when: "evening", when_date: today });
+    store.insert("tasks", { title: "Day", position: 1, when: "date", when_date: today });
+    const sections = listSections("today", store.list("tasks"), today);
+    expect(sections.map((section) => section.kind)).toEqual(["plain", "evening"]);
+    expect(tasksIn("today", store.list("tasks"), today).map((task) => task.title)).toEqual([
+      "Day",
+      "Evening",
+    ]);
+  });
+
+  test("an empty section is left out", () => {
+    const store = memoryStore();
+    store.insert("tasks", { title: "Day", position: 0, when: "date", when_date: today });
+    expect(listSections("today", store.list("tasks"), today)).toHaveLength(1);
   });
 });

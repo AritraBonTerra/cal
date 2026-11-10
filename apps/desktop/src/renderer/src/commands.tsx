@@ -3,6 +3,7 @@ import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain"
 import { useRef } from "react";
 import type { AuthState } from "../../shared/api";
 import type { AppState } from "./lib/app";
+import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
 import {
   closeEditor,
@@ -268,11 +269,10 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const { list } = ui.get();
           const { today } = latest.current;
+          // Opens as a card with the title focused; left untitled, it's removed on close.
           void actions
             .createTask({ title: "", ...newTaskIn(list, today) })
-            .then((uuid) =>
-              ui.set({ selection: { kind: "task", uuid }, editing: uuid, tasks: true }),
-            );
+            .then((uuid) => openCard({ uuid, title: "", notes: undefined }));
         },
       },
       {
@@ -302,14 +302,24 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
       {
         id: "task.edit",
-        title: "Edit Title",
+        title: "Open To-Do",
         group: "To-Do",
         keys: ["enter"],
+        aliases: ["edit", "rename", "notes", "details", "tags", "deadline", "estimate"],
         enabled: hasTask,
-        run: () =>
-          ui.set((state) => ({
-            editing: state.selection?.kind === "task" ? state.selection.uuid : null,
-          })),
+        run: () => {
+          const task = selectedTask();
+          if (task) openCard(task);
+        },
+      },
+      {
+        id: "task.close",
+        title: "Close To-Do",
+        group: "To-Do",
+        keys: ["mod+enter"],
+        aliases: ["done editing", "save"],
+        enabled: () => ui.get().editing !== null,
+        run: closeCard,
       },
       {
         id: "task.when",
@@ -317,7 +327,8 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         keys: ["mod+s"],
         aliases: ["schedule", "date"],
-        enabled: hasTask,
+        // Also from an open card, where it opens the card's When chip.
+        enabled: () => ui.get().selection?.kind === "task",
         run: () => toggleOverlay("when"),
       },
       {

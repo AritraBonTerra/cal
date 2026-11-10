@@ -1,4 +1,4 @@
-import { isThisEvening } from "@cal/domain";
+import type { Task } from "@cal/domain";
 import {
   Archive,
   CalendarRange,
@@ -9,18 +9,20 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../lib/app";
+import { useCardSaver } from "../lib/card";
 import { geometry, useDrag } from "../lib/drag";
-import { isSmartList, listTitle, tasksIn } from "../lib/lists";
+import { isSmartList, listSections, listTitle, type Section } from "../lib/lists";
 import { formatRelativeDay } from "../lib/time";
 import { select, useUi } from "../lib/ui";
 import { TaskRow } from "./TaskRow";
 import { Keycaps } from "./ui";
 
 /*
- * The to-do list for the sidebar's current entry. Rows can be dragged onto the grid to
- * schedule them, and a block dragged here is removed from the calendar.
+ * The to-do list for the sidebar's current entry, drawn from `listSections` (the same
+ * order ↑/↓ follow). Rows can be dragged onto the grid to schedule them, a block dragged
+ * here is removed from the calendar, and a row opens in place into a card.
  */
 
 const ICONS = {
@@ -34,21 +36,21 @@ const ICONS = {
 
 export function TaskPane() {
   const { data, today } = useApp();
+  useCardSaver();
   const list = useUi((state) => state.list);
   const removing = useDrag((state) => state.removing);
   const dragging = useDrag((state) => state.task);
   const pointer = useDrag((state) => state.pointer);
-  const rows = tasksIn(list, data.tasks, today);
   const selection = useUi((state) => state.selection);
   const editing = useUi((state) => state.editing);
+  const sections = useSteadyWhileOpen(listSections(list, data.tasks, today), data.tasks, editing);
+  const rows = sections.flatMap((section) => section.rows);
   // A selected task that left the list (completed, moved) is dropped, so Space and ⌘⌫
   // never act on a row that isn't on screen. A row still loading its new title is kept.
   useEffect(() => {
     if (selection?.kind !== "task" || editing === selection.uuid || !data.loaded) return;
     if (!rows.some((task) => task.uuid === selection.uuid)) select(null);
   }, [selection, editing, rows, data.loaded]);
-  const evening = list === "today" ? rows.filter((task) => isThisEvening(task, today)) : [];
-  const main = rows.filter((task) => !evening.includes(task));
   const Icon = isSmartList(list) ? ICONS[list] : null;
   const project = list.startsWith("project:")
     ? data.projects.find((each) => each.uuid === list.slice("project:".length))
@@ -91,24 +93,9 @@ export function TaskPane() {
             </span>
           </p>
         )}
-        <ul>
-          {main.map((task) => (
-            <TaskRow key={task.uuid} task={task} />
-          ))}
-        </ul>
-        {evening.length > 0 && (
-          <>
-            <h3 className="mt-4 mb-1 flex items-center gap-1.5 px-2 text-small font-medium text-ink-2">
-              <Moon size={12} strokeWidth={1.5} absoluteStrokeWidth />
-              This Evening
-            </h3>
-            <ul>
-              {evening.map((task) => (
-                <TaskRow key={task.uuid} task={task} />
-              ))}
-            </ul>
-          </>
-        )}
+        {sections.map((section) => (
+          <SectionRows key={section.kind} section={section} />
+        ))}
       </div>
 
       {removing && (
@@ -127,4 +114,47 @@ export function TaskPane() {
       )}
     </section>
   );
+}
+
+// One section of the list: its heading, if it has one, then its rows.
+function SectionRows({ section }: { section: Section }) {
+  const rows = (
+    <ul>
+      {section.rows.map((task) => (
+        <TaskRow key={task.uuid} task={task} />
+      ))}
+    </ul>
+  );
+  if (section.kind === "plain") return rows;
+  return (
+    <>
+      <h3 className="mt-4 mb-1 flex items-center gap-1.5 px-2 text-small font-medium text-ink-2">
+        <Moon size={12} strokeWidth={1.5} absoluteStrokeWidth />
+        This Evening
+      </h3>
+      {rows}
+    </>
+  );
+}
+
+/**
+ * While a card is open, the list keeps the layout it had when the card opened, with each
+ * row's latest data, so setting the card's When or project never moves or hides it
+ * mid-edit; the list settles when the card closes. ↑/↓ are off while a card is open,
+ * so they still follow what's on screen.
+ */
+function useSteadyWhileOpen(sections: Section[], tasks: readonly Task[], editing: string | null) {
+  const [frozen, setFrozen] = useState<{ uuid: string; sections: Section[] } | null>(null);
+  const shows = (each: Section[], uuid: string) =>
+    each.some((section) => section.rows.some((task) => task.uuid === uuid));
+  // A new to-do may reach the table a moment after its card opens: freeze once it's in.
+  if (editing && frozen?.uuid !== editing && shows(sections, editing)) {
+    setFrozen({ uuid: editing, sections });
+  } else if (!editing && frozen) setFrozen(null);
+  if (!editing || frozen?.uuid !== editing) return sections;
+  const latest = new Map(tasks.map((task) => [task.uuid, task]));
+  return frozen.sections.map((section) => ({
+    ...section,
+    rows: section.rows.flatMap((task) => latest.get(task.uuid) ?? []),
+  }));
 }

@@ -40,8 +40,14 @@ export const SMART_TITLES: Record<SmartList, string> = {
 export const isSmartList = (list: ListId): list is SmartList =>
   (SMART_LISTS as readonly string[]).includes(list);
 
-// Open tasks of `list` in display order; Today puts This Evening last.
-export function tasksIn(list: ListId, tasks: readonly Task[], today: DayKey) {
+/*
+ * A list as the pane draws it: sections in order, each with its rows. A section without
+ * a heading is "plain"; Today ends with This Evening.
+ */
+export type Section = { kind: "plain"; rows: Task[] } | { kind: "evening"; rows: Task[] };
+
+// The sections of `list` in display order. Empty sections are left out.
+export function listSections(list: ListId, tasks: readonly Task[], today: DayKey): Section[] {
   let rows: Task[];
   if (isSmartList(list)) rows = tasks.filter((task) => inList(task, list, today));
   else if (list.startsWith("project:")) {
@@ -52,19 +58,25 @@ export function tasksIn(list: ListId, tasks: readonly Task[], today: DayKey) {
     rows = tasks.filter((task) => isOpen(task) && task.area_uuid === uuid);
   }
   if (list === "logbook") {
-    return rows.sort(
+    rows.sort(
       (a, b) => (b.completed_at ?? b.canceled_at ?? 0) - (a.completed_at ?? a.canceled_at ?? 0),
     );
-  }
-  rows.sort(byPosition);
-  if (list === "today") {
-    const evening = rows.filter((task) => isThisEvening(task, today));
-    return [...rows.filter((task) => !evening.includes(task)), ...evening];
-  }
-  if (list === "upcoming")
+  } else if (list === "upcoming") {
     rows.sort((a, b) => (a.when_date ?? "").localeCompare(b.when_date ?? "") || byPosition(a, b));
-  return rows;
+  } else rows.sort(byPosition);
+  const sections: Section[] =
+    list === "today"
+      ? [
+          { kind: "plain", rows: rows.filter((task) => !isThisEvening(task, today)) },
+          { kind: "evening", rows: rows.filter((task) => isThisEvening(task, today)) },
+        ]
+      : [{ kind: "plain", rows }];
+  return sections.filter((section) => section.rows.length > 0);
 }
+
+// Open tasks of `list` in display order: the rows of its sections, top to bottom.
+export const tasksIn = (list: ListId, tasks: readonly Task[], today: DayKey) =>
+  listSections(list, tasks, today).flatMap((section) => section.rows);
 
 export function listTitle(list: ListId, projects: readonly Project[], areas: readonly Area[]) {
   if (isSmartList(list)) return SMART_TITLES[list];
