@@ -346,6 +346,14 @@ export function seedFixture(store: LocalStore) {
     when_date: day(5),
     estimate_min: 90,
   });
+  task("Prepare board deck", {
+    project_uuid: launch,
+    when: "date",
+    when_date: day(3),
+    estimate_min: 120,
+    position: 5,
+  });
+  task("Send invoices", { area_uuid: work, when: "date", when_date: day(4), estimate_min: 30 });
   task("Learn to make sourdough", { when: "someday" });
   task("Read 'The Making of Prince of Persia'", { when: "anytime", estimate_min: 60 });
   task("Renew passport", { when: "anytime", area_uuid: home, deadline: day(16) });

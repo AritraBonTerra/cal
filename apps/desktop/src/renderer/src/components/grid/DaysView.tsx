@@ -1,22 +1,30 @@
 import { useCommands } from "@cal/app-core";
-import { useLayoutEffect, useRef, useState } from "react";
+import type { DayKey } from "@cal/domain";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
+import { now } from "../../lib/clock";
+import { geometry } from "../../lib/drag";
 import { AllDayRow } from "./AllDayRow";
+import { deadlinesByDay, unscheduledByDay, type Workload, workloadOn } from "./agenda";
 import { DayHeaders } from "./DayHeaders";
 import { HabitStrip } from "./HabitStrip";
 import { GUTTER, type Item, withinDays, ZONE_COLUMN } from "./model";
 import { TimeGrid } from "./TimeGrid";
 import { useHourHeight } from "./useHourHeight";
+import { WorkloadRow } from "./WorkloadRow";
 import { ZoneHeaders } from "./ZoneHeaders";
 
 /*
- * N-day view: day headers, the habit strip, the all-day row, then the scrolling hour
- * grid. The header rows pad for the body's scrollbar so columns line up. The gutter
- * holds the main zone's hour labels plus one 44px column per extra time zone.
+ * N-day view: day headers (with each day's deadlines), the workload row, the habit
+ * strip, the all-day row (events, then the day's to-dos without a block), then the
+ * scrolling hour grid. The header rows pad for the body's scrollbar so columns line up.
+ * The gutter holds the main zone's hour labels plus one 44px column per extra time zone.
+ * A to-do dragged onto a day's header column is re-dated to that day.
  */
 export function DaysView() {
-  const { days, events, data, account, zone } = useApp();
+  const { days, events, data, account, device, zone, gridToday } = useApp();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const [scrollbar, setScrollbar] = useState(0);
   const [columnWidth, setColumnWidth] = useState(160);
   const gutter = GUTTER + ZONE_COLUMN * account.timeZones.length;
@@ -30,6 +38,65 @@ export function DaysView() {
     observer.observe(body);
     return () => observer.disconnect();
   }, [days.length, gutter]);
+
+  // Maps a window point over the header to its day column, for to-do drags.
+  useLayoutEffect(() => {
+    geometry.header = {
+      dayAt: (clientX, clientY) => {
+        const rect = headerRef.current?.getBoundingClientRect();
+        if (!rect || clientY < rect.top || clientY > rect.bottom) return null;
+        const left = rect.left + gutter;
+        const width = rect.width - gutter - scrollbar;
+        if (clientX < left || clientX >= left + width) return null;
+        return days[Math.floor(((clientX - left) / width) * days.length)] ?? null;
+      },
+    };
+    return () => {
+      geometry.header = null;
+    };
+  });
+
+  const todos = useMemo(
+    () => unscheduledByDay(days, data.tasks, data.blocks, gridToday, zone),
+    [days, data.tasks, data.blocks, gridToday, zone],
+  );
+  const deadlines = useMemo(
+    () => deadlinesByDay(days, data.tasks, data.projects),
+    [days, data.tasks, data.projects],
+  );
+  // Today and later only; past days show no workload.
+  const loads = useMemo(() => {
+    const byDay = new Map<DayKey, Workload>();
+    if (!device.workloadBar) return byDay;
+    for (const day of days) {
+      if (day < gridToday) continue;
+      byDay.set(
+        day,
+        workloadOn(day, {
+          events,
+          blocks: data.blocks,
+          tasks: data.tasks,
+          unscheduled: todos.get(day) ?? [],
+          hours: account.workingHours,
+          freeCalendars: device.freeCalendars,
+          zone,
+          now: now(),
+        }),
+      );
+    }
+    return byDay;
+  }, [
+    days,
+    events,
+    data.blocks,
+    data.tasks,
+    todos,
+    account.workingHours,
+    device.workloadBar,
+    device.freeCalendars,
+    zone,
+    gridToday,
+  ]);
 
   const { hour, fit, step, reset } = useHourHeight(bodyRef);
   useCommands(
@@ -104,11 +171,16 @@ export function DaysView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-grid" style={{ paddingRight: scrollbar }}>
+      <div
+        ref={headerRef}
+        className="shrink-0 border-b border-grid"
+        style={{ paddingRight: scrollbar }}
+      >
         <div className="flex">
           <ZoneHeaders />
-          <DayHeaders days={days} columnWidth={columnWidth} />
+          <DayHeaders days={days} columnWidth={columnWidth} deadlines={deadlines} />
         </div>
+        <WorkloadRow days={days} loads={loads} columnWidth={columnWidth} gutter={gutter} />
         <div className="flex">
           <div className="shrink-0" style={{ width: gutter }} />
           <HabitStrip days={days} columnWidth={columnWidth} />
@@ -120,7 +192,7 @@ export function DaysView() {
           >
             all-day
           </div>
-          <AllDayRow days={days} />
+          <AllDayRow days={days} todos={todos} />
         </div>
       </div>
       <TimeGrid days={days} items={items} bodyRef={bodyRef} hour={hour} fit={fit} />

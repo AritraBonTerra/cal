@@ -27,7 +27,7 @@ export function useData() {
 
 // Hues for project stripes and habit rings: spread around the wheel, none near the
 // "now" red, and hashed from the title so they're stable across devices and relaunches.
-const HUES = [255, 150, 60, 300, 190, 95, 230, 320];
+export const HUES = [255, 150, 60, 300, 190, 95, 230, 320];
 
 export function hueFor(record: Pick<Project, "title">) {
   let hash = 0;

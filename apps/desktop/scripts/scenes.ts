@@ -37,6 +37,36 @@ export const scenes: Scene[] = [
   { name: "week-dark", dark: true },
   { name: "day", keys: ["1"] },
   { name: "three-day", keys: ["3"] },
+  // The day headers: deadlines, the workload row, and each day's to-dos without a block.
+  { name: "day-agenda" },
+  { name: "day-agenda-dark", dark: true },
+  { name: "day-agenda-wide", keys: ["Meta+\\", "Meta+/"] },
+  { name: "day-agenda-three-day", keys: ["3"] },
+  { name: "day-agenda-deadlines", click: "[data-deadlines='2026-10-30']" },
+  // Short working hours over-plan Wednesday: the bar and its label turn red.
+  {
+    name: "day-agenda-over",
+    settings: { account: { workingHours: { start: 11 * 60, end: 15 * 60 } } },
+    keys: ["Meta+\\", "Meta+/"],
+  },
+  // Travelling to Tokyo with extra zone columns and weekends hidden: days are Tokyo's.
+  {
+    name: "day-agenda-travel-dark",
+    dark: true,
+    settings: {
+      account: {
+        showWeekends: false,
+        timeZones: [{ zone: "Europe/London", label: "Ldn" }, { zone: "Asia/Kolkata" }],
+      },
+    },
+    keys: ["z"],
+    text: "tokyo",
+    after: ["Enter"],
+  },
+  { name: "day-agenda-hidden", settings: { device: { workloadBar: false } } },
+  // Narrow columns: compact habit rings with each habit's initial in its own hue.
+  { name: "habit-rings" },
+  { name: "habit-rings-dark", dark: true },
   { name: "month", keys: ["m"] },
   { name: "palette", keys: ["Meta+k"] },
   { name: "shortcuts", keys: ["?"] },

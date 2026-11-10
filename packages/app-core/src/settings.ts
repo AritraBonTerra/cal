@@ -45,6 +45,8 @@ export const deviceDefaults = {
   // Pixels per hour; 0 fits the whole day in the window. The grid never goes below fit.
   hourHeight: 48,
   halfHourLines: false,
+  // The workload row under each day's date: meetings and planned work against working hours.
+  workloadBar: true,
   // Device calendars hidden from the grid, by calendar id.
   hiddenCalendars: [] as string[],
   // Color overrides by calendar id (hex), kept in Cal rather than written to the calendar.
@@ -144,6 +146,7 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
     value === 0 ||
     (typeof value === "number" && Number.isFinite(value) && value >= 16 && value <= 400),
   halfHourLines: isBool,
+  workloadBar: isBool,
   hiddenCalendars: arrayOf(isString, 1000),
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
   freeCalendars: arrayOf(isString, 1000),
