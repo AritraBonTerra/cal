@@ -60,6 +60,8 @@ export function HabitStrip({
                   type="button"
                   key={habit.uuid}
                   title={title}
+                  // The ring only has room for an initial; the name is the habit's.
+                  aria-label={title}
                   aria-pressed={done}
                   onClick={() => void actions.logHabit(habit.uuid, day, value ? 0 : target)}
                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-hover"
