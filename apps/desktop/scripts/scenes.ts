@@ -5,9 +5,15 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
  * from a fresh fixture launch (seeded data, clock at Wed 2026-10-28 10:40), seeds any
  * `settings`, then plays `keys` with Playwright's key names ("Meta+k", "ArrowRight",
  * "7"), types `text`, presses `after`, and clicks `click` (a CSS selector) before the
- * capture. `steps` runs any sequence of those in order instead.
+ * capture. `steps` runs any sequence of those in order instead, plus pointer moves to a
+ * window point (`move`).
  */
-export type Step = { press: string } | { type: string } | { click: string } | { wait: number };
+export type Step =
+  | { press: string }
+  | { type: string }
+  | { click: string }
+  | { move: { x: number; y: number } }
+  | { wait: number };
 
 export interface Scene {
   name: string;
@@ -49,6 +55,29 @@ export const scenes: Scene[] = [
     click: "[role=option][aria-selected=true]",
   },
   { name: "narrow", width: 860, height: 700 },
+  // Panes dragged wider: the sidebar and the to-do list lay out at the saved widths.
+  { name: "panes-resized", settings: { device: { sidebarWidth: 300, tasksWidth: 440 } } },
+  {
+    name: "panes-resized-dark",
+    dark: true,
+    settings: { device: { sidebarWidth: 300, tasksWidth: 440 } },
+  },
+  // The pointer over the sidebar's right edge shows the resize line.
+  { name: "pane-resize-hover", steps: [{ move: { x: 224, y: 400 } }] },
+  // The narrowest window with both panes shown at their defaults.
+  { name: "narrow-760-panes", width: 760, height: 700, keys: ["Meta+\\", "Meta+/"] },
+  // The hidden sidebar peeks over the calendar when the pointer rests at the left edge.
+  {
+    name: "sidebar-peek",
+    keys: ["Meta+\\"],
+    steps: [{ move: { x: 200, y: 400 } }, { move: { x: 2, y: 400 } }, { wait: 300 }],
+  },
+  {
+    name: "sidebar-peek-dark",
+    dark: true,
+    keys: ["Meta+\\"],
+    steps: [{ move: { x: 200, y: 400 } }, { move: { x: 2, y: 400 } }, { wait: 300 }],
+  },
   // The grid fills a tall window: no blank space under 11 PM.
   { name: "tall-fit", width: 1440, height: 1200, settings: { device: { hourHeight: 0 } } },
   { name: "zoomed-in", keys: ["Meta+Shift+.", "Meta+Shift+."] },

@@ -25,7 +25,7 @@ export const geometry: { grid: GridGeometry | null; taskPane: HTMLElement | null
 
 /**
  * Whether a window point is over the to-do pane's visible part. The pane slides closed
- * by width while its content stays mounted at full width (see `Pane` in App.tsx), so
+ * by width while its content stays mounted at full width (see components/Pane.tsx), so
  * the content's rect is clipped to its `[data-pane]` wrapper, and a closed pane is no
  * drop target at all, even mid-slide.
  */

@@ -51,7 +51,7 @@ export function Sidebar({ auth, sync, access, requestAccess }: SidebarProps) {
     ).length;
 
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col bg-sidebar" data-dense>
+    <aside className="flex h-full w-full shrink-0 flex-col bg-sidebar" data-dense>
       <div className="drag-region h-13 shrink-0" />
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2">

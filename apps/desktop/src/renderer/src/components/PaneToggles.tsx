@@ -4,7 +4,7 @@ import { IconButton } from "./ui";
 
 /*
  * The sidebar and to-do list switches, pinned beside the traffic lights above
- * whichever pane is leftmost. They never move, so the click that hides a pane brings
+ * whichever pane is leftmost, and above the sidebar when it peeks. They never move, so the click that hides a pane brings
  * it back; a hidden pane's icon dims. Each keeps one name and reports pressed or not,
  * and the tooltip says what a click will do. `PANE_TOGGLES_END` is where they stop, for
  * the toolbar to keep its title clear of them once both panes are hidden.
@@ -15,7 +15,7 @@ export function PaneToggles() {
   const sidebar = useUi((state) => state.sidebar);
   const tasks = useUi((state) => state.tasks);
   return (
-    <div className="fixed top-3 left-20 z-20 flex gap-1">
+    <div className="fixed top-3 left-20 z-40 flex gap-1">
       <IconButton
         label="Sidebar"
         title={`${sidebar ? "Hide" : "Show"} sidebar (⌘\\)`}
