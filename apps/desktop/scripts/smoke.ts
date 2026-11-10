@@ -214,6 +214,68 @@ await page.keyboard.press("Enter");
 await page.waitForTimeout(200);
 check("⌘N new to-do", (await page.locator("li", { hasText: "Typed task" }).count()) === 1);
 
+// 12b. a new card reads its title as Quick Entry text and applies it on close
+before = await blocks();
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Smoke card 4pm ~45m #home");
+await page.waitForTimeout(100);
+check(
+  "a new card lights up its tokens and previews the time",
+  (await page.locator("[data-card] [data-token]").count()) === 3 &&
+    (await page.locator("[data-card] button", { hasText: "Today 4 PM" }).count()) === 1,
+);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+const smokeRow = page.locator("li", { hasText: "Smoke card" });
+const smokeText = (await smokeRow.textContent()) ?? "";
+check(
+  "closing it saves the clean title, tag and estimate",
+  (await smokeRow.count()) === 1 &&
+    !smokeText.includes("4pm") &&
+    smokeText.includes("#home") &&
+    smokeText.includes("45m"),
+);
+check(
+  "closing it places a 4–4:45 PM block",
+  (await blocks()) === before + 1 &&
+    ((await page.locator("[data-item^='block:']", { hasText: "Smoke card" }).textContent()) ?? "")
+      .replace(/\s/g, "")
+      .includes("4–4:45PM"),
+);
+
+// 12c. an existing to-do's card never re-reads its title
+await page.keyboard.press("Enter");
+await page.waitForTimeout(200);
+// The title opens selected; → puts the caret at its end.
+await page.keyboard.press("ArrowRight");
+await page.keyboard.type(" tomorrow");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "editing an existing to-do keeps date words as text",
+  (await page.locator("li", { hasText: "Smoke card tomorrow" }).count()) === 1 &&
+    (await page.locator("[data-item^='block:']", { hasText: "Smoke card" }).count()) === 1,
+);
+
+// 12d. Backspace after a fresh token keeps it as text; a title of only tokens stays as typed
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("Read tomorrow");
+await page.keyboard.press("Backspace");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+n");
+await page.waitForTimeout(200);
+await page.keyboard.type("someday");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+check(
+  "un-parsed and token-only titles are kept as typed",
+  (await page.locator("li", { hasText: "Read tomorrow" }).count()) === 1 &&
+    (await page.locator("li", { hasText: /^someday$/ }).count()) === 1,
+);
+
 // 13. event move (writable calendar)
 const retro = page.locator("[data-item^='event:'] > div", { hasText: "Retro" });
 box = await boxOf(retro);

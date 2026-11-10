@@ -11,7 +11,47 @@ import {
 } from "@cal/domain";
 import type { TaskEntry } from "@cal/nlp";
 import type { NewRow, RowPatch } from "@cal/sync";
-import type { History } from "./history";
+import type { History, Writer } from "./history";
+
+/**
+ * The to-do fields a Quick Entry parse names, for a new to-do or one being updated.
+ * Fields the text didn't name are absent, so they keep the list's or the to-do's values.
+ */
+export function entryFields(entry: TaskEntry): Partial<NewRow<"tasks">> {
+  return {
+    ...(entry.when && { when: entry.when, when_date: entry.when_date }),
+    ...(entry.deadline && { deadline: entry.deadline }),
+    ...(entry.estimate_min !== undefined && { estimate_min: entry.estimate_min }),
+    ...(entry.priority !== undefined && { priority: entry.priority }),
+    ...(entry.project_uuid && { project_uuid: entry.project_uuid }),
+    ...(entry.tags?.length && { tags: entry.tags.join(",") }),
+    ...(entry.reminder_at && { reminder_at: entry.reminder_at }),
+    ...(entry.rrule && {
+      recurrence_rule: entry.rrule,
+      recurrence_mode: entry.repeat === "after_completion" ? "after_completion" : "fixed",
+    }),
+  };
+}
+
+// Places the block a parse with a time asks for: `minutes` long (the to-do's estimate),
+// else 30.
+async function placeEntryBlock(
+  tx: Writer,
+  taskUuid: string,
+  entry: TaskEntry,
+  minutes: number | undefined,
+) {
+  if (!entry.start_at) return;
+  const start = new Date(entry.start_at);
+  const end = new Date(start.getTime() + (minutes ?? 30) * 60_000);
+  await tx.insert("time_blocks", {
+    task_uuid: taskUuid,
+    start_at: toOffsetIso(start),
+    end_at: toOffsetIso(end),
+    time_zone: localTimeZone(),
+    source: "manual",
+  });
+}
 
 /**
  * Everything the UI can change, each as one undoable step. Views call these rather than
@@ -36,38 +76,40 @@ export function createActions(history: History, now: () => Date = () => new Date
      */
     createFromEntry: (entry: TaskEntry, defaults: Partial<NewRow<"tasks">> = {}) =>
       history.transact("New To-Do", async (tx) => {
-        const typed: Partial<NewRow<"tasks">> = {
-          ...(entry.when && { when: entry.when, when_date: entry.when_date }),
-          ...(entry.deadline && { deadline: entry.deadline }),
-          ...(entry.estimate_min !== undefined && { estimate_min: entry.estimate_min }),
-          ...(entry.priority !== undefined && { priority: entry.priority }),
-          ...(entry.project_uuid && { project_uuid: entry.project_uuid }),
-          ...(entry.tags?.length && { tags: entry.tags.join(",") }),
-          ...(entry.reminder_at && { reminder_at: entry.reminder_at }),
-          ...(entry.rrule && {
-            recurrence_rule: entry.rrule,
-            recurrence_mode: entry.repeat === "after_completion" ? "after_completion" : "fixed",
-          }),
-        };
         const uuid = await tx.insert("tasks", {
           position: -1,
           when: "inbox",
           ...defaults,
-          ...typed,
+          ...entryFields(entry),
           title: entry.title,
         });
-        if (entry.start_at) {
-          const start = new Date(entry.start_at);
-          const end = new Date(start.getTime() + (entry.estimate_min ?? 30) * 60_000);
-          await tx.insert("time_blocks", {
-            task_uuid: uuid,
-            start_at: toOffsetIso(start),
-            end_at: toOffsetIso(end),
-            time_zone: localTimeZone(),
-            source: "manual",
-          });
-        }
+        await placeEntryBlock(tx, uuid, entry, entry.estimate_min ?? defaults.estimate_min);
         return uuid;
+      }),
+
+    /**
+     * Applies a parse to an existing to-do (a new to-do's card, as it closes): the clean
+     * title and the fields the text names, plus a block when a time was given, as one
+     * step. Fields the text didn't name keep their values; `extra` rides along (notes).
+     * Where the text and a chip set by hand name the same field, the text wins: it was
+     * typed in the same card, so it is the latest word on it.
+     */
+    applyEntry: (uuid: string, entry: TaskEntry, extra: RowPatch<"tasks"> = {}) =>
+      history.transact("Edit To-Do", async (tx) => {
+        const id = tx.resolve(uuid);
+        const task = await source.get("tasks", id);
+        if (!task) return false;
+        await tx.update("tasks", id, {
+          ...extra,
+          ...entryFields(entry),
+          // An undated When (someday, anytime) clears the day the list gave it, and a
+          // typed project takes the to-do out of its area, as the Project chip does.
+          ...(entry.when && { when_date: entry.when_date ?? null }),
+          ...(entry.project_uuid && { area_uuid: null }),
+          title: entry.title,
+        });
+        await placeEntryBlock(tx, id, entry, entry.estimate_min ?? task.estimate_min);
+        return true;
       }),
 
     updateTask: (uuid: string, patch: RowPatch<"tasks">, label = "Edit To-Do") =>

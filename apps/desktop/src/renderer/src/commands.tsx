@@ -343,10 +343,11 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => {
           const { list } = ui.get();
           const { today } = latest.current;
-          // Opens as a card with the title focused; left untitled, it's removed on close.
+          // Opens as a card with the title focused, read as Quick Entry text ("Call the
+          // movers tomorrow 3pm"); left untitled, it's removed on close.
           void actions
             .createTask({ title: "", ...newTaskIn(list, today) })
-            .then((uuid) => openCard({ uuid, title: "", notes: undefined }));
+            .then((uuid) => openCard({ uuid, title: "", notes: undefined }, true));
         },
       },
       {

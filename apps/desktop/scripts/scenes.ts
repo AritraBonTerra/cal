@@ -114,6 +114,33 @@ export const scenes: Scene[] = [
   },
   // ⌘N opens the new row as a card with the title focused; its chips show quiet labels.
   { name: "task-card-new", keys: ["Meta+n"], text: "Call the bank" },
+  // A new card reads its title as Quick Entry text: tokens light up and the chips
+  // preview the day and time, deadline, estimate, project and tags.
+  {
+    name: "task-card-parse",
+    keys: ["Meta+n"],
+    text: "Movers tomorrow 3pm ~45m !fri",
+  },
+  {
+    name: "task-card-parse-dark",
+    dark: true,
+    keys: ["Meta+n"],
+    text: "Draft launch post 2pm /launch #writing",
+  },
+  // Backspace right after "tomorrow" was recognised keeps it as title text.
+  {
+    name: "task-card-parse-unparse",
+    keys: ["Meta+n"],
+    text: "Read tomorrow",
+    after: ["Backspace"],
+  },
+  // Closed with Return: the row has the clean title and the time, with a block on the grid.
+  {
+    name: "task-card-parse-closed",
+    keys: ["Meta+n"],
+    text: "Water the ferns 4pm ~30m #home",
+    after: ["Enter"],
+  },
   // Today split into Scheduled (with each row's start time) and Not scheduled.
   { name: "today-scheduled-dark", dark: true },
   // From next week, the time on a Scheduled row brings today's block back into view

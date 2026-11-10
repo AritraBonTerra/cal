@@ -15,13 +15,18 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { type MouseEvent, type Ref, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, type Ref, useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/app";
 import { cardText, closeCard, saveCardText, useCardText } from "../lib/card";
+import { parseCardTitle, previewTask } from "../lib/cardEntry";
+import { now } from "../lib/clock";
 import { parseDurationText } from "../lib/clockText";
+import { shiftLiterals } from "../lib/entryText";
 import { parseTags, tagNames } from "../lib/tags";
-import { formatDuration, formatRelativeDay } from "../lib/time";
+import { formatDuration, formatMinutes, formatRelativeDay } from "../lib/time";
 import { toggleOverlay, useUi } from "../lib/ui";
+import { zonedMinutes } from "../lib/zones";
+import { TokenText } from "./TokenText";
 import { Checkbox } from "./ui";
 import { MonthGrid, Option, Popover, WhenPicker } from "./WhenPicker";
 
@@ -30,15 +35,40 @@ import { MonthGrid, Option, Popover, WhenPicker } from "./WhenPicker";
  * their text, and a row of chips for When, Deadline, Estimate, Project and Tags. It
  * replaces the row's content inside the same list item, so rows below move down and
  * nothing above moves. Escape, ⌘↩, Return in the title, or a press outside closes it;
- * lib/card.ts saves the text, and each chip saves its own field as one undo step.
+ * lib/card.ts saves the text, and each chip saves its own field as one undo step. A new
+ * to-do's title (⌘N) is Quick Entry text: recognised parts light up, the chips preview
+ * them, and lib/card.ts applies them when the card closes.
  */
 export function TaskCard({ task }: { task: Task }) {
   const actions = useActions();
+  const { data, account, zone } = useApp();
   const title = useCardText((state) => state.title);
   const notes = useCardText((state) => state.notes);
+  const isNew = useCardText((state) => state.isNew);
+  const literals = useCardText((state) => state.literals);
   const ref = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const done = !isOpen(task);
+  const entry = isNew
+    ? parseCardTitle(
+        title,
+        literals,
+        { projects: data.projects, weekStartsOn: account.weekStart, timeZone: zone },
+        now(),
+      )
+    : null;
+  // Return in the title closes the card, unless an input method is composing.
+  const closeOnReturn = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (
+      event.key === "Enter" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      closeCard();
+    }
+  };
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -75,24 +105,36 @@ export function TaskCard({ task }: { task: Task }) {
           />
         </div>
         <div className="min-w-0 flex-1">
-          <input
-            ref={titleRef}
-            value={title}
-            onChange={(event) => cardText.set({ title: event.target.value })}
-            onBlur={() => saveCardText(actions)}
-            onKeyDown={(event) => {
-              const composing = event.nativeEvent.isComposing;
-              if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !composing) {
-                event.preventDefault();
-                closeCard();
+          {entry ? (
+            <TokenText
+              inputRef={titleRef}
+              value={title}
+              tokens={entry.tokens}
+              onChange={(next) =>
+                cardText.set({ title: next, literals: shiftLiterals(literals, title, next) })
               }
-            }}
-            placeholder="New To-Do"
-            aria-label="Title"
-            className={`w-full bg-transparent text-body font-medium outline-none placeholder:text-ink-3 ${
-              done ? "text-ink-3 line-through" : "text-ink"
-            }`}
-          />
+              onUnparse={(token) =>
+                cardText.set({ literals: [...literals, { start: token.start, end: token.end }] })
+              }
+              onKeyDown={closeOnReturn}
+              placeholder="New To-Do"
+              label="Title"
+              className={`text-body font-medium ${done ? "line-through" : ""}`}
+            />
+          ) : (
+            <input
+              ref={titleRef}
+              value={title}
+              onChange={(event) => cardText.set({ title: event.target.value })}
+              onBlur={() => saveCardText(actions)}
+              onKeyDown={closeOnReturn}
+              placeholder="New To-Do"
+              aria-label="Title"
+              className={`w-full bg-transparent text-body font-medium outline-none placeholder:text-ink-3 ${
+                done ? "text-ink-3 line-through" : "text-ink"
+              }`}
+            />
+          )}
           <textarea
             value={notes}
             onChange={(event) => cardText.set({ notes: event.target.value })}
@@ -104,7 +146,7 @@ export function TaskCard({ task }: { task: Task }) {
           />
         </div>
       </div>
-      <Chips task={task} />
+      <Chips task={entry ? previewTask(task, entry) : task} at={entry?.start_at} />
     </div>
   );
 }
@@ -112,9 +154,10 @@ export function TaskCard({ task }: { task: Task }) {
 type Menu = "deadline" | "project";
 
 // The card's chip row. Its popovers open under the row, left-aligned with it, so they
-// stay inside the pane whichever chip opened them.
-function Chips({ task }: { task: Task }) {
-  const { data, today } = useApp();
+// stay inside the pane whichever chip opened them. `at` is a block's start typed in a new
+// card's title, shown after the When chip's day.
+function Chips({ task, at }: { task: Task; at?: string }) {
+  const { data, today, zone } = useApp();
   const actions = useActions();
   const whenOpen = useUi((state) => state.overlay === "when");
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -123,6 +166,7 @@ function Chips({ task }: { task: Task }) {
   const project = data.projects.find((each) => each.uuid === task.project_uuid);
   const area = data.areas.find((each) => each.uuid === task.area_uuid);
   const when = whenChip(task, today);
+  const time = at && formatMinutes(zonedMinutes(new Date(at), zone));
   const tags = tagNames(task.tags);
   // Pressing a chip whose popover is open closes it, rather than letting the popover's
   // outside-press close it and the click open it again.
@@ -141,7 +185,7 @@ function Chips({ task }: { task: Task }) {
     <div className="relative mt-3 flex flex-wrap gap-1.5">
       <Chip
         icon={when.icon}
-        label={when.label}
+        label={time ? `${when.label} ${time}` : when.label}
         quiet={when.quiet}
         open={whenOpen}
         onClick={(event) => {

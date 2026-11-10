@@ -1,4 +1,4 @@
-export { type Actions, createActions } from "./actions";
+export { type Actions, createActions, entryFields } from "./actions";
 export {
   type Command,
   CommandRegistry,

@@ -171,6 +171,112 @@ describe("History", () => {
     });
   });
 
+  test("a parse applied to an open to-do writes what it names, in one step", async () => {
+    const { store, history, actions } = setup();
+    const uuid = await actions.createTask({
+      title: "",
+      position: -1,
+      when: "date",
+      when_date: "2026-10-28",
+      area_uuid: "home",
+      tags: "errand",
+    });
+    await actions.applyEntry(
+      uuid,
+      {
+        kind: "task",
+        title: "Call the movers",
+        tokens: [],
+        when: "date",
+        when_date: "2026-10-29",
+        start_at: "2026-10-29T15:00:00-07:00",
+        deadline: "2026-10-30",
+        estimate_min: 45,
+        priority: 2,
+        project_uuid: "launch",
+        tags: ["phone"],
+        reminder_at: "2026-10-29T14:45:00-07:00",
+        rrule: "FREQ=WEEKLY;BYDAY=TH",
+        repeat: "after_completion",
+      },
+      { notes: "Ask about Saturday" },
+    );
+    expect(store.get("tasks", uuid)).toMatchObject({
+      title: "Call the movers",
+      notes: "Ask about Saturday",
+      when: "date",
+      when_date: "2026-10-29",
+      deadline: "2026-10-30",
+      estimate_min: 45,
+      priority: 2,
+      project_uuid: "launch",
+      // The text's tags replace the ones set by hand.
+      tags: "phone",
+      reminder_at: "2026-10-29T14:45:00-07:00",
+      recurrence_rule: "FREQ=WEEKLY;BYDAY=TH",
+      recurrence_mode: "after_completion",
+    });
+    // A typed project takes the to-do out of the area it was made in.
+    expect(store.get("tasks", uuid)).not.toHaveProperty("area_uuid");
+    const [block] = store.list("time_blocks");
+    expect(block?.task_uuid).toBe(uuid);
+    expect(
+      new Date(block?.end_at ?? "").getTime() - new Date(block?.start_at ?? "").getTime(),
+    ).toBe(45 * 60_000);
+    expect(history.nextUndo).toBe("Edit To-Do");
+    await history.undo();
+    expect(store.get("tasks", uuid)).toMatchObject({ title: "", when_date: "2026-10-28" });
+    expect(store.list("time_blocks")).toEqual([]);
+  });
+
+  test("a parse leaves fields it doesn't name as the list and chips set them", async () => {
+    const { store, actions } = setup();
+    const uuid = await actions.createTask({
+      title: "",
+      position: -1,
+      when: "date",
+      when_date: "2026-10-28",
+      estimate_min: 20,
+      deadline: "2026-11-02",
+    });
+    await actions.applyEntry(uuid, {
+      kind: "task",
+      title: "Water plants",
+      tokens: [],
+      start_at: "2026-10-28T16:00:00-07:00",
+    });
+    expect(store.get("tasks", uuid)).toMatchObject({
+      title: "Water plants",
+      when: "date",
+      when_date: "2026-10-28",
+      estimate_min: 20,
+      deadline: "2026-11-02",
+    });
+    // The block lasts the estimate set by hand.
+    const [block] = store.list("time_blocks");
+    expect(
+      new Date(block?.end_at ?? "").getTime() - new Date(block?.start_at ?? "").getTime(),
+    ).toBe(20 * 60_000);
+  });
+
+  test("an undated When in the text clears the list's day", async () => {
+    const { store, actions } = setup();
+    const uuid = await actions.createTask({
+      title: "",
+      position: -1,
+      when: "date",
+      when_date: "2026-10-28",
+    });
+    await actions.applyEntry(uuid, {
+      kind: "task",
+      title: "Learn Italian",
+      tokens: [],
+      when: "someday",
+    });
+    expect(store.get("tasks", uuid)).toMatchObject({ title: "Learn Italian", when: "someday" });
+    expect(store.get("tasks", uuid)).not.toHaveProperty("when_date");
+  });
+
   test("logging a habit replaces the day's entry and 0 unchecks it", async () => {
     const { store, actions } = setup();
     await actions.logHabit("h", "2026-10-28", 1);
