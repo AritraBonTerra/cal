@@ -75,7 +75,7 @@ function reportMenuKeys(commands: CommandRegistry) {
 }
 
 /**
- * Takes the menu bar's command shortcuts away while a shortcut is being recorded, so
+ * Has the window ignore the menu bar's shortcuts while a shortcut is being recorded, so
  * the keys pressed reach the recorder and run nothing, and gives them back after.
  */
 export function pauseMenuKeys(commands: CommandRegistry, pause: boolean) {

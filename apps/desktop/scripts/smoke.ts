@@ -1208,6 +1208,14 @@ check(
   "the menu shows ⌘K for Command Menu",
   (await menuAccelerator("Command Menu")) === "CmdOrCtrl+K",
 );
+// The month view (left showing above) registers no zoom commands, so they lose their keys.
+const zoomInMonth = await menuAccelerator("Zoom Hours In");
+await page.keyboard.press("w");
+await page.waitForTimeout(200);
+check(
+  "a command its view isn't showing has no menu shortcut",
+  zoomInMonth === null && (await menuAccelerator("Zoom Hours In")) === "CmdOrCtrl+Shift+.",
+);
 await page.keyboard.press("Meta+,");
 await page.click("[data-section=shortcuts]");
 await page.waitForTimeout(200);
@@ -1231,13 +1239,6 @@ await page.fill("[aria-label='Search shortcuts']", "command menu");
 const paletteKey = page.locator("[data-command='palette.open'] [data-key]");
 await paletteKey.click();
 check("clicking a binding records", (await page.locator("[data-recording]").count()) === 1);
-check(
-  "recording pauses the menu's shortcuts",
-  await (async () => {
-    await page.waitForTimeout(150);
-    return (await menuAccelerator("Command Menu")) === null;
-  })(),
-);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(150);
 check(

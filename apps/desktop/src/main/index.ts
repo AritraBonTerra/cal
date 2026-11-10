@@ -259,17 +259,22 @@ function createWindow() {
   return window;
 }
 
-// The keys in effect for each command, as the window last reported them, and whether
-// the window has taken the menu's command shortcuts away while it records one.
-const menuKeys = new Map<string, readonly string[]>();
-let menuKeysPaused = false;
+// The keys in effect for each command, as the window last reported them. A command the
+// report leaves out (one its view isn't showing) has no menu shortcut until it's back.
+let menuKeys = new Map<string, readonly string[]>();
 
+// A null report means the window is recording a shortcut: until its next report every
+// menu shortcut is ignored, Close and Quit included, so the keys pressed run nothing.
 handle(channels.menuKeys, (keys: MenuKeys | null) => {
-  menuKeysPaused = keys === null;
-  for (const [id, list] of Object.entries(keys ?? {})) {
-    if (Array.isArray(list) && list.every((each) => typeof each === "string"))
-      menuKeys.set(id, list);
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.setIgnoreMenuShortcuts(keys === null);
   }
+  if (keys === null) return;
+  menuKeys = new Map(
+    Object.entries(keys).filter(
+      ([, list]) => Array.isArray(list) && list.every((each) => typeof each === "string"),
+    ),
+  );
   buildMenu();
 });
 
@@ -279,7 +284,7 @@ handle(channels.checkForUpdates, () => checkNow());
 // command's first ⌘ or ⌃ binding as the accelerator.
 const command = (label: string, id: string): MenuItemConstructorOptions => ({
   label,
-  accelerator: menuKeysPaused ? undefined : menuAccelerator(menuKeys.get(id) ?? []),
+  accelerator: menuAccelerator(menuKeys.get(id) ?? []),
   click: (_item, window) => {
     if (window instanceof BrowserWindow) window.webContents.send("cal:command", id);
   },

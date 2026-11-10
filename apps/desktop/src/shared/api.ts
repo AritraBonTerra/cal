@@ -44,8 +44,8 @@ export interface CalBridge {
   calendar: CalendarSource;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
-  // Gives the menu bar the commands' keys, merged over what it had; null takes its
-  // command shortcuts away until the next report (while a shortcut is being recorded).
+  // Gives the menu bar the commands' keys, replacing what it had; null makes the window
+  // ignore every menu shortcut until the next report (while a shortcut is being recorded).
   setMenuKeys(keys: MenuKeys | null): Promise<void>;
   // Checks for an update now and says what it found, like the app menu's item.
   checkForUpdates(): Promise<void>;
