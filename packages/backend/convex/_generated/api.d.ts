@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as handoff from "../handoff.js";
 import type * as http from "../http.js";
 import type * as sync from "../sync.js";
 import type * as syncTables from "../syncTables.js";
@@ -22,6 +23,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  handoff: typeof handoff;
   http: typeof http;
   sync: typeof sync;
   syncTables: typeof syncTables;

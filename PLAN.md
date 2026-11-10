@@ -305,6 +305,7 @@ Still to do: repeating tasks, headings and checklists (checklists need a table);
 - 2026-10-28: Auth uses Convex Auth (email and password).
 - 2026-10-28 (v1.1): Sign in with Google is the requirement; Better Auth chosen over Clerk (Clerk's free plan signs out weekly and its Electron SDK is beta). Pinned to Better Auth 1.6.33 until `@convex-dev/better-auth` supports 1.7.
 - 2026-11-10 (v1.3): Custom shortcuts are an account setting, so they follow you to another Mac. Only commands in the registry can be rebound; keys a field handles itself (Return and Esc in popovers, `⌘1`/`⌘2` in the Event / To-do switch) stay fixed.
+- 2026-11-10: Releases count up from the last `v*` tag, so only merges to main take a version. Every other build is a nightly (`0.1.13-nightly.<run>`), kept as a run artifact and never published; an installed nightly updates to the next release. CI publishes each release itself in one step, since electron-builder's parallel uploads made two releases per tag.
 - 2026-10-28: PowerSync's Convex connector needs Convex's streaming export, which is Pro only ($25/month); the account is on Starter. Build our own sync engine (`@cal/sync`, §3.1) instead. PowerSync is dropped.
 - 2026-10-28: Speech input ("MIF 2") dropped. Not needed.
 

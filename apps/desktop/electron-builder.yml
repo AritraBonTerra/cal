@@ -1,8 +1,9 @@
 # Packages the Mac app: `bun run dist` → release/Cal-<version>-arm64.dmg (+ .zip).
 # Locally it signs with the identity named by CSC_NAME, if set, and isn't notarized.
 # CI (.github/workflows/release.yml) signs with the Developer ID certificate in
-# CSC_LINK, notarizes with the App Store Connect key in APPLE_API_KEY*, and publishes
-# to GitHub Releases, which the app's updater reads (src/main/updater.ts).
+# CSC_LINK and notarizes with the App Store Connect key in APPLE_API_KEY*; the workflow
+# then publishes release/ to GitHub Releases itself, which the app's updater reads
+# (src/main/updater.ts). The `publish` block below tells the updater where to look.
 appId: dev.aritra.cal
 productName: Cal
 directories:
@@ -32,6 +33,11 @@ mac:
     NSCalendarsUsageDescription: Cal shows and edits the events in your calendars.
 dmg:
   title: Cal
+  # A plain window and the stock volume icon: no background image and no custom icon,
+  # so the DMG holds only Cal.app and the Applications link. (Those two files show up,
+  # greyed, in Finder whenever hidden files are visible.)
+  backgroundColor: "#ffffff"
+  icon: null
 # Google sign-in returns to the app through this URL scheme (see src/main/auth.ts).
 protocols:
   - name: Cal

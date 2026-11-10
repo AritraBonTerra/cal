@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
+import { handoffToken } from "./handoff";
 
 const http = httpRouter();
 authComponent.registerRoutes(http, createAuth);
@@ -17,15 +18,14 @@ http.route({
   path: "/",
   method: "GET",
   handler: httpAction(async (_ctx, request) => {
-    const cookie = request.headers.get("cookie") ?? "";
-    const token = /(?:^|;\s*)(?:__Secure-)?better-auth\.electron=([^;]+)/.exec(cookie)?.[1];
-    // The token is base64url; anything else is dropped before it reaches HTML or a URL.
-    const clean = (text: string) => text.replace(/[^\w-]/g, "");
-    const body = token
+    const token = handoffToken(request.headers.get("cookie") ?? "");
+    // The app URL-decodes the token, so the link carries it encoded; the code is shown as is.
+    const link = token && MAC_CALLBACK + encodeURIComponent(token);
+    const body = link
       ? `<p>Signed in. Returning to Cal…</p>
-<p><a href="${MAC_CALLBACK}${clean(token)}">Open Cal</a></p>
-<p>Development build? Paste this code into Cal:</p><pre>${clean(token)}</pre>
-<script>location.replace(${JSON.stringify(MAC_CALLBACK + clean(token))});</script>`
+<p><a href="${link}">Open Cal</a></p>
+<p>Development build? Paste this code into Cal:</p><pre>${token}</pre>
+<script>location.replace(${JSON.stringify(link)});</script>`
       : "<p>Nothing to do here. You can close this tab.</p>";
     return new Response(
       `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Cal</title>
