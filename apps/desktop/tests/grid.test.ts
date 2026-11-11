@@ -4,6 +4,8 @@ import {
   dragged,
   dragSpan,
   withinDays,
+  ZOOM_STEPS,
+  zoomStep,
 } from "../src/renderer/src/components/grid/model";
 
 /*
@@ -118,5 +120,25 @@ describe("barColumns", () => {
     expect(barColumns(weekdays, "2026-10-20", "2026-10-27")).toEqual({ from: 0, to: 1 });
     expect(barColumns(weekdays, "2026-11-05", "2026-11-20")).toEqual({ from: 8, to: 9 });
     expect(barColumns(weekdays, "2026-11-09", "2026-11-10")).toBeUndefined();
+  });
+});
+
+describe("zoomStep", () => {
+  // Fit is ~36px an hour in a 1440×900 window.
+  const fit = 36;
+
+  test("steps up the ladder from fit, and stops at the top", () => {
+    expect(zoomStep(fit, fit, 1)).toBe(64);
+    expect(zoomStep(64, fit, 1)).toBe(96);
+    expect(zoomStep(128, fit, 1)).toBe(128);
+  });
+
+  test("steps down to fit, which is stored as 0", () => {
+    expect(zoomStep(96, fit, -1)).toBe(64);
+    expect(zoomStep(64, fit, -1)).toBe(0);
+  });
+
+  test("every step after fit is taller than a typical window's fit", () => {
+    expect(ZOOM_STEPS.filter((step) => step > 0 && step <= fit)).toEqual([]);
   });
 });

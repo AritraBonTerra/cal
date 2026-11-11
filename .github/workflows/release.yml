@@ -4,8 +4,9 @@ name: Release
 # installed app updates from (apps/desktop/src/main/updater.ts), and the iOS app to
 # TestFlight, which keeps installed iPhones current. Any other build (pull requests,
 # manual runs on other branches) is a nightly: built and signed the same way so a
-# broken pipeline shows before merge, never published, and left as run artifacts
-# (the .dmg and .ipa themselves, not zipped). Only main publishes.
+# broken pipeline shows before merge and never published. Every build, main included,
+# leaves the .dmg and .ipa as run artifacts (the files themselves, not zipped). Only
+# main publishes.
 #
 # Secrets: MAC_CERT_P12 (base64 Developer ID Application certificate + key) and
 # MAC_CERT_PASSWORD; IOS_DEV_CERT_P12 (base64 Apple Development certificate + key)
@@ -191,9 +192,10 @@ jobs:
           xcodebuild archive -workspace Cal.xcworkspace -scheme Cal -configuration Release \
             -destination generic/platform=iOS -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} CODE_SIGN_STYLE=Automatic $AUTH
-      # Exported for App Store Connect; on main the export uploads it to TestFlight,
-      # elsewhere the .ipa is kept as a run artifact (it installs only via TestFlight).
-      - name: Export${{ env.PUBLISH == 'true' && ' and upload to TestFlight' || '' }}
+      # Exported for App Store Connect as an .ipa, kept as a run artifact on every build
+      # (it installs only via TestFlight). On main a second export of the same archive
+      # uploads it to TestFlight: an upload export writes no .ipa, so it can't be both.
+      - name: Export
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
@@ -202,12 +204,18 @@ jobs:
           plutil -insert method -string app-store-connect "$plist"
           plutil -insert teamID -string ${{ secrets.APPLE_TEAM_ID }} "$plist"
           plutil -insert signingStyle -string automatic "$plist"
-          plutil -insert destination -string "$([ "$PUBLISH" = true ] && echo upload || echo export)" "$plist"
+          plutil -insert destination -string export "$plist"
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
             -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/export" $AUTH
-          if [ "$PUBLISH" != true ]; then mv "$RUNNER_TEMP"/export/*.ipa "$RUNNER_TEMP/Cal-$VERSION.ipa"; fi
+          mv "$RUNNER_TEMP"/export/*.ipa "$RUNNER_TEMP/Cal-$VERSION.ipa"
       - uses: actions/upload-artifact@v7
-        if: env.PUBLISH != 'true'
         with:
           path: ${{ runner.temp }}/Cal-${{ needs.version.outputs.version }}.ipa
           archive: false
+      - name: Upload to TestFlight
+        if: env.PUBLISH == 'true'
+        run: |
+          plist="$RUNNER_TEMP/export.plist"
+          plutil -replace destination -string upload "$plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
+            -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/upload" $AUTH

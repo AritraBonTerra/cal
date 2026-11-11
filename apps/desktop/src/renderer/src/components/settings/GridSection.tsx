@@ -5,7 +5,7 @@ import { Keycaps, Segmented, Select, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
 // The zoom levels by name, smallest first: fit, then one per step of ZOOM_STEPS.
-const ZOOM_LABELS = ["Fit day", "S", "M", "L", "XL"];
+const ZOOM_LABELS = ["Fit day", "S", "M", "L"];
 const ZOOMS = ZOOM_STEPS.map((height, index) => ({
   value: String(height),
   label: ZOOM_LABELS[index] ?? `${height}`,
@@ -45,9 +45,9 @@ export function GridSection() {
         </Row>
         <Row label="Zoom keys" note="Pinch or ⌥-scroll on the grid for anything in between">
           <span className="flex items-center gap-1 text-small text-ink-2">
-            <Keycaps binding="mod+shift+." /> in
-            <Keycaps binding="mod+shift+," className="ml-2" /> out
-            <Keycaps binding="mod+shift+0" className="ml-2" /> reset
+            <Keycaps binding="mod+plus" /> in
+            <Keycaps binding="mod+-" className="ml-2" /> out
+            <Keycaps binding="mod+0" className="ml-2" /> reset
           </span>
         </Row>
         <Row label="Half-hour lines">

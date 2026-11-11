@@ -701,20 +701,25 @@ check(
 await page.keyboard.press("Meta+\\");
 await page.waitForTimeout(350);
 
-// 19. zoom keys step the hour height and stop at fit; ⇧⌘0 resets. Starts from the
+// 19. zoom keys step the hour height and stop at fit; ⌘0 resets. Starts from the
 // default, which is on the zoom ladder; the fit floor is lower than it at 1440×900.
 await page.evaluate((hourHeight) => window.calTest?.seed({ device: { hourHeight } }), DEFAULT_HOUR);
 await page.waitForTimeout(300);
 const hourOf = async () => Number((await gridState()).hour);
 const startHour = await hourOf();
-await page.keyboard.press("Meta+Shift+.");
+await page.keyboard.press("Meta+Shift+Equal");
 await page.waitForTimeout(100);
 const zoomedIn = await hourOf();
-await page.keyboard.press("Meta+Shift+,");
+await page.keyboard.press("Meta+Minus");
 await page.waitForTimeout(100);
-check("⇧⌘. zooms in and ⇧⌘, back out", zoomedIn > startHour && (await hourOf()) === startHour);
+check("⌘+ zooms in and ⌘- back out", zoomedIn > startHour && (await hourOf()) === startHour);
+await page.keyboard.press("Meta+Equal");
+await page.waitForTimeout(100);
+check("⌘= zooms in too", (await hourOf()) === zoomedIn);
+await page.keyboard.press("Meta+Minus");
+await page.waitForTimeout(100);
 for (let i = 0; i < 8; i++) {
-  await page.keyboard.press("Meta+Shift+,");
+  await page.keyboard.press("Meta+Minus");
   await page.waitForTimeout(50);
 }
 let state = await gridState();
@@ -724,9 +729,9 @@ check(
     Number(state.fit) < startHour &&
     Math.abs(state.scrollHeight - state.clientHeight) <= 1,
 );
-await page.keyboard.press("Meta+Shift+0");
+await page.keyboard.press("Meta+0");
 await page.waitForTimeout(100);
-check("⇧⌘0 restores the default height", (await hourOf()) === DEFAULT_HOUR);
+check("⌘0 restores the default height", (await hourOf()) === DEFAULT_HOUR);
 // A pinch saves its height 200ms after the last tick; a reset in between must stand.
 await grid.evaluate((element) => {
   element.dispatchEvent(
@@ -739,9 +744,9 @@ await grid.evaluate((element) => {
     }),
   );
 });
-await page.keyboard.press("Meta+Shift+0");
+await page.keyboard.press("Meta+0");
 await page.waitForTimeout(400);
-check("⇧⌘0 right after a pinch keeps the default height", (await hourOf()) === DEFAULT_HOUR);
+check("⌘0 right after a pinch keeps the default height", (await hourOf()) === DEFAULT_HOUR);
 
 // 20. "fit" in a tall window: 24 hours exactly fill the body
 await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 0 } }));
@@ -762,13 +767,13 @@ await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 1400),
 );
 await page.waitForTimeout(400);
-await page.keyboard.press("Meta+Shift+0");
+await page.keyboard.press("Meta+0");
 await page.waitForTimeout(100);
 await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
 );
 await page.waitForTimeout(400);
-check("⇧⌘0 in a tall window keeps the default after it shrinks", (await hourOf()) === DEFAULT_HOUR);
+check("⌘0 in a tall window keeps the default after it shrinks", (await hourOf()) === DEFAULT_HOUR);
 await page.evaluate((hourHeight) => window.calTest?.seed({ device: { hourHeight } }), HOUR);
 await page.waitForTimeout(300);
 
@@ -1222,7 +1227,7 @@ await page.keyboard.press("w");
 await page.waitForTimeout(200);
 check(
   "a command its view isn't showing has no menu shortcut",
-  zoomInMonth === null && (await menuAccelerator("Zoom Hours In")) === "CmdOrCtrl+Shift+.",
+  zoomInMonth === null && (await menuAccelerator("Zoom Hours In")) === "CmdOrCtrl+Plus",
 );
 await page.keyboard.press("Meta+,");
 await page.click("[data-section=shortcuts]");
