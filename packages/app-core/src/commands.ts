@@ -175,6 +175,8 @@ const SYMBOLS: Record<string, string> = {
   end: "End",
   pageup: "PgUp",
   pagedown: "PgDn",
+  // A true minus sign, as wide as the "+" it sits beside.
+  "-": "−",
 };
 
 // Keycap labels for a binding, e.g. "mod+shift+k" → ["⌘", "⇧", "K"] on Mac.
@@ -339,6 +341,8 @@ const KEY_SYMBOLS: Record<string, string> = {
   "⌫": "backspace",
   "⌦": "delete",
   "⇥": "tab",
+  // The keycap shows ⌘− with a true minus; searching for it finds the "-" binding.
+  "−": "-",
 };
 const KEY_WORDS: Record<string, string> = {
   cmd: "mod",

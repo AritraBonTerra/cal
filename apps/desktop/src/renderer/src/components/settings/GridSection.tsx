@@ -5,7 +5,7 @@ import { Keycaps, Segmented, Select, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
 // The zoom levels by name, smallest first: fit, then one per step of ZOOM_STEPS.
-const ZOOM_LABELS = ["Fit day", "S", "M", "L", "XL"];
+const ZOOM_LABELS = ["Fit day", "S", "M", "L"];
 const ZOOMS = ZOOM_STEPS.map((height, index) => ({
   value: String(height),
   label: ZOOM_LABELS[index] ?? `${height}`,
@@ -26,10 +26,11 @@ const LENGTHS = [15, 30, 45, 60, 90].map((minutes) => ({
 export function GridSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const { start, end } = account.workingHours;
-  // A pinch or ⌥-scroll leaves a height between the steps; the control shows the nearest.
+  // A pinch or ⌥-scroll leaves a height between the steps; the control shows the nearest,
+  // the smaller on a tie (an old 32 draws at fit, so it shows Fit day).
   const nearest = ZOOM_STEPS.reduce<number>(
     (best, step) =>
-      Math.abs(step - device.hourHeight) <= Math.abs(best - device.hourHeight) ? step : best,
+      Math.abs(step - device.hourHeight) < Math.abs(best - device.hourHeight) ? step : best,
     0,
   );
   return (
@@ -45,9 +46,9 @@ export function GridSection() {
         </Row>
         <Row label="Zoom keys" note="Pinch or ⌥-scroll on the grid for anything in between">
           <span className="flex items-center gap-1 text-small text-ink-2">
-            <Keycaps binding="mod+shift+." /> in
-            <Keycaps binding="mod+shift+," className="ml-2" /> out
-            <Keycaps binding="mod+shift+0" className="ml-2" /> reset
+            <Keycaps binding="mod+plus" /> in
+            <Keycaps binding="mod+-" className="ml-2" /> out
+            <Keycaps binding="mod+0" className="ml-2" /> reset
           </span>
         </Row>
         <Row label="Half-hour lines">

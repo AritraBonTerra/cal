@@ -26,8 +26,9 @@ export const ZONE_COLUMN = 44;
 export const DAY_MINUTES = 24 * 60;
 
 // Hour heights the zoom keys and Settings > Grid step through; 0 is "fit the day to the
-// window". Pinch and ⌥-scroll reach the heights in between.
-export const ZOOM_STEPS = [0, 32, 64, 96, 128] as const;
+// window". Every step after fit sits above the fit height of a typical window, so each
+// one looks different. Pinch and ⌥-scroll reach the heights in between.
+export const ZOOM_STEPS = [0, 64, 96, 128] as const;
 export const MAX_HOUR = 128;
 
 export type Item =
