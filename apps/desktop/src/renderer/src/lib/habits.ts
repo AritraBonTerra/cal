@@ -1,22 +1,12 @@
-import {
-  addDays,
-  byPosition,
-  type DayKey,
-  daysInMonth,
-  type Habit,
-  type HabitEntry,
-  isDone,
-  startOfMonth,
-  startOfWeek,
-} from "@cal/domain";
+import { byPosition, type Habit } from "@cal/domain";
 import type { NewRow } from "@cal/sync";
 
 /*
- * The New Habit form's choices and the `habits` row they make, plus how a habit stands
- * on a day, which the day strip and the sidebar both read. The form keeps numbers as
- * typed text; `habitRow` checks them and maps the four schedule choices onto the row's
- * fields (PLAN §5.4): every day and specific weekdays are fixed RRULEs, "N times per
- * week or month" is a quota, and "every N days" an interval.
+ * The New Habit form's choices and the `habits` row they make. The form keeps numbers
+ * as typed text; `habitRow` checks them and maps the four schedule choices onto the
+ * row's fields (PLAN §5.4): every day and specific weekdays are fixed RRULEs, "N times
+ * per week or month" is a quota, and "every N days" an interval. How a habit stands on
+ * a day (habitDay, habitProgress) lives in @cal/domain, shared with the iOS app.
  */
 
 export type HabitSchedule = "daily" | "weekdays" | "quota" | "interval";
@@ -31,8 +21,12 @@ export interface HabitDraft {
   period: "week" | "month";
   // Days between, for "interval".
   every: string;
-  // Measured habits log an amount toward a target ("20 min"); others are done or not.
-  measured: boolean;
+  // What a day logs: done or not, a number of times ("twice a day"), or an amount
+  // toward a target ("20 min").
+  track: "check" | "times" | "amount";
+  // Times a day, for "times".
+  times: string;
+  // For "amount".
   target: string;
   unit: string;
 }
@@ -44,7 +38,8 @@ export const emptyHabit: HabitDraft = {
   count: "3",
   period: "week",
   every: "2",
-  measured: false,
+  track: "check",
+  times: "2",
   target: "",
   unit: "",
 };
@@ -92,14 +87,22 @@ function scheduleFields(draft: HabitDraft): ScheduleFields | undefined {
 
 /**
  * The row a draft makes, shown in the day strip, or null while it's incomplete: no
- * title, no weekday picked, or a count, interval or target that isn't a usable number.
+ * title, no weekday picked, or a count, interval, times or target that isn't a usable
+ * number.
  */
 export function habitRow(draft: HabitDraft): HabitRow | null {
   const title = draft.title.trim();
   const schedule = scheduleFields(draft);
   if (!title || !schedule) return null;
   const base = { title, display: "strip" as const, ...schedule };
-  if (!draft.measured) return { ...base, kind: "check" };
+  if (draft.track === "check") return { ...base, kind: "check" };
+  if (draft.track === "times") {
+    // Counted in whole times: a measure without a unit (see countsTimes). Once a day is
+    // plain done-or-not.
+    const times = whole(draft.times, 1, 20);
+    if (times === undefined) return null;
+    return times === 1 ? { ...base, kind: "check" } : { ...base, kind: "measure", target: times };
+  }
   const target = Number(draft.target.trim());
   if (!draft.target.trim() || !Number.isFinite(target) || target <= 0) return null;
   const unit = draft.unit.trim();
@@ -109,48 +112,3 @@ export function habitRow(draft: HabitDraft): HabitRow | null {
 // Habits that aren't archived, in `position` order.
 export const activeHabits = (habits: readonly Habit[]) =>
   habits.filter((habit) => habit.archived_at === undefined).sort(byPosition);
-
-/**
- * A habit on one day: the amount logged, its target (1 for done-or-not), whether it's
- * done, how full its ring is, and the value a click logs (the target, or 0 to uncheck).
- */
-export function habitDay(habit: Habit, entries: readonly HabitEntry[], day: DayKey) {
-  const value =
-    entries.find((entry) => entry.habit_uuid === habit.uuid && entry.date === day)?.value ?? 0;
-  const target = habit.kind === "measure" ? (habit.target ?? 1) : 1;
-  const done = isDone(habit, value);
-  return {
-    value,
-    target,
-    done,
-    fraction: done ? 1 : Math.min(1, value / target),
-    toggle: value ? 0 : target,
-  };
-}
-
-// Days a quota habit was done in the period holding `day`: its Monday-to-Sunday week or
-// its calendar month. Undefined for habits without a quota.
-export function quotaCount(habit: Habit, entries: readonly HabitEntry[], day: DayKey) {
-  if (habit.schedule !== "quota") return undefined;
-  const month = habit.quota_period === "month";
-  const first = month ? startOfMonth(day) : startOfWeek(day);
-  const last = addDays(first, month ? daysInMonth(day) - 1 : 6);
-  return entries.filter(
-    (entry) =>
-      entry.habit_uuid === habit.uuid &&
-      entry.date >= first &&
-      entry.date <= last &&
-      isDone(habit, entry.value),
-  ).length;
-}
-
-// Today's progress as the sidebar shows it: "15/20 min" for a measured habit, "2/3" for a
-// quota, or "" for a habit that's simply done or not.
-export function habitProgress(habit: Habit, entries: readonly HabitEntry[], today: DayKey) {
-  if (habit.kind === "measure") {
-    const { value, target } = habitDay(habit, entries, today);
-    return `${value}/${target}${habit.unit ? ` ${habit.unit}` : ""}`;
-  }
-  const count = quotaCount(habit, entries, today);
-  return count === undefined ? "" : `${count}/${habit.quota_count ?? 1}`;
-}

@@ -1,19 +1,32 @@
 import { useActions, useCal } from "@cal/app-core";
-import { type DayKey, type DayStatus, dayStatuses, type Habit, type HabitEntry } from "@cal/domain";
+import {
+  type DayKey,
+  type DayStatus,
+  dayStatuses,
+  type Habit,
+  type HabitEntry,
+  habitDay,
+  quotaCount,
+  startOfMonth,
+  startOfWeek,
+} from "@cal/domain";
 import { habitColors } from "@cal/theme";
 import { Plus } from "lucide-react";
 import { useApp } from "../../lib/app";
 import { hueFor } from "../../lib/data";
-import { activeHabits, habitDay, quotaCount } from "../../lib/habits";
-import { HabitRing } from "../habitRing";
+import { activeHabits } from "../../lib/habits";
+import { HabitRing, QuotaPips, RingStroke } from "../habitRing";
 import { ringLabels } from "./habitLabels";
 
 /*
  * Habit chips under the day headers (PLAN §5.4 "day strip"): a ring per habit per
- * day that fills as it's done; click toggles the day's entry. Narrow columns show rings
- * only, each in its habit's hue with the habit's initial inside (see ringLabels), and
- * the title on hover. Today's column (the first if today isn't shown) ends with a dashed
- * + for New Habit…; with no habits it holds an "Add a habit" pill instead.
+ * day that fills as it's done. A click logs the day: one more time for a times-a-day
+ * habit (its ring is split into that many arcs), done for the rest, and it clears a day
+ * that's already full; ⌥-click takes one time back. Days after today can't be logged.
+ * Narrow columns show rings only, each in its habit's hue with the habit's initial
+ * inside (see ringLabels), and the title and progress on hover. Today's chip shows a
+ * weekly quota as dots. Today's column (the first if today isn't shown) ends with a
+ * dashed + for New Habit…; with no habits it holds an "Add a habit" pill instead.
  */
 export function HabitStrip({
   days,
@@ -36,10 +49,19 @@ export function HabitStrip({
       {days.map((day) => (
         <div key={day} className="flex min-w-0 flex-1 flex-wrap gap-1 px-2 py-1">
           {habits.map((habit, index) => {
-            const { value, target, done, fraction, toggle } = habitDay(habit, data.entries, day);
+            const { value, done, fraction, segments, next, less } = habitDay(
+              habit,
+              data.entries,
+              day,
+            );
             const status = day > today ? "future" : (statuses[index]?.get(day) ?? "open");
             const colors = habitColors(hueFor(habit), mode);
-            const title = `${habit.title}${habit.kind === "measure" ? ` · ${value}/${target} ${habit.unit ?? ""}` : ""}`;
+            const title = tooltip(habit, day, data.entries, today);
+            // Today's chip shows a weekly quota as dots, one per time owed.
+            const weekly = habit.schedule === "quota" && habit.quota_period !== "month";
+            const pips = weekly && day === today ? (habit.quota_count ?? 1) : 0;
+            const log = (event: { altKey: boolean }) =>
+              void actions.logHabit(habit.uuid, day, event.altKey ? less : next);
             if (compact) {
               return (
                 <button
@@ -49,12 +71,14 @@ export function HabitStrip({
                   // The ring only has room for an initial; the name is the habit's.
                   aria-label={title}
                   aria-pressed={done}
-                  onClick={() => void actions.logHabit(habit.uuid, day, toggle)}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-hover"
+                  disabled={day > today}
+                  onClick={log}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full enabled:hover:bg-hover"
                 >
                   <InitialRing
                     letter={letters[index] ?? ""}
                     fraction={fraction}
+                    segments={segments}
                     status={status}
                     colors={colors}
                   />
@@ -67,16 +91,27 @@ export function HabitStrip({
                 key={habit.uuid}
                 title={title}
                 aria-pressed={done}
-                onClick={() => void actions.logHabit(habit.uuid, day, toggle)}
+                disabled={day > today}
+                onClick={log}
                 className={`flex h-5 shrink-0 items-center gap-1 rounded-full pr-2 pl-1 text-caption font-medium tnum ${
                   done ? "" : "bg-hover text-ink-2"
                 }`}
                 style={done ? { background: colors.fill, color: colors.label } : undefined}
               >
-                <HabitRing fraction={fraction} status={status} color={colors.ring} />
-                <span className="truncate">
-                  {label(habit, day, value, done, data.entries, today)}
-                </span>
+                <HabitRing
+                  fraction={fraction}
+                  status={status}
+                  color={colors.ring}
+                  segments={segments}
+                />
+                <span className="truncate">{label(habit, value, done)}</span>
+                {pips > 0 && (
+                  <QuotaPips
+                    count={quotaCount(habit, data.entries, day) ?? 0}
+                    total={pips}
+                    color={colors.ring}
+                  />
+                )}
               </button>
             );
           })}
@@ -121,41 +156,49 @@ function AddHabit({ pill }: { pill: boolean }) {
   );
 }
 
-// "Gym", "Read 15/20", or "Gym 2/3" for a weekly quota (on today's chip only).
-function label(
-  habit: Habit,
-  day: DayKey,
-  value: number,
-  done: boolean,
-  entries: readonly HabitEntry[],
-  today: DayKey,
-) {
-  if (habit.kind === "measure" && !done && value > 0)
-    return `${habit.title} ${value}/${habit.target ?? 1}`;
-  if (habit.schedule === "quota" && habit.quota_period !== "month" && day === today)
-    return `${habit.title} ${quotaCount(habit, entries, day)}/${habit.quota_count ?? 1}`;
-  return habit.title;
+// "Gym", or "Read 15/20" for a day that's part-way.
+const label = (habit: Habit, value: number, done: boolean) =>
+  habit.kind === "measure" && !done && value > 0
+    ? `${habit.title} ${value}/${habit.target ?? 1}`
+    : habit.title;
+
+// A chip's hover text: "Read · 15/20 min", "Gym · 2/5 this week", or both parts.
+function tooltip(habit: Habit, day: DayKey, entries: readonly HabitEntry[], today: DayKey) {
+  const parts = [habit.title];
+  if (habit.kind === "measure") {
+    const { value, target } = habitDay(habit, entries, day);
+    parts.push(`${value}/${target}${habit.unit ? ` ${habit.unit}` : ""}`);
+  }
+  const count = quotaCount(habit, entries, day);
+  if (count !== undefined) {
+    const month = habit.quota_period === "month";
+    const start = month ? startOfMonth : startOfWeek;
+    const which = start(day) === start(today) ? "this" : "that";
+    parts.push(`${count}/${habit.quota_count ?? 1} ${which} ${month ? "month" : "week"}`);
+  }
+  return parts.join(" · ");
 }
 
 /**
  * A compact ring: 16px with the habit's letter inside, always in the habit's hue. Done
- * fills it (white letter); a measured habit part-way shows its arc over a pale track;
- * today's open ring is solid; days covered by a quota (dashed), missed or not yet due
- * get the pale track and a lighter letter, the same states the 12px ring draws.
+ * fills it (white letter); a habit part-way shows its arc (or its lit arcs, for a
+ * times-a-day habit) over a pale track; today's open ring is solid; days covered by a
+ * quota (dashed), missed or not yet due get the pale track and a lighter letter, the
+ * same states the 12px ring draws.
  */
 function InitialRing({
   letter,
   fraction,
+  segments,
   status,
   colors,
 }: {
   letter: string;
   fraction: number;
+  segments: number;
   status: DayStatus | "future";
   colors: ReturnType<typeof habitColors>;
 }) {
-  const r = 7.25;
-  const c = 2 * Math.PI * r;
   const text = "relative text-[9px] leading-none font-semibold";
   if (fraction >= 1) {
     return (
@@ -174,28 +217,15 @@ function InitialRing({
       style={{ color: quiet ? colors.initial : colors.label }}
     >
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden className="absolute inset-0">
-        <circle
-          cx="8"
-          cy="8"
-          r={r}
-          fill="none"
-          stroke={quiet || fraction > 0 ? colors.track : colors.ring}
-          strokeWidth="1.5"
-          strokeDasharray={status === "covered" ? "2.5 2" : undefined}
+        <RingStroke
+          size={16}
+          r={7.25}
+          fraction={fraction}
+          segments={segments}
+          lit={colors.ring}
+          unlit={quiet || fraction > 0 ? colors.track : colors.ring}
+          dashed={status === "covered"}
         />
-        {fraction > 0 && (
-          <circle
-            cx="8"
-            cy="8"
-            r={r}
-            fill="none"
-            stroke={colors.ring}
-            strokeWidth="1.5"
-            strokeDasharray={`${c * fraction} ${c}`}
-            strokeLinecap="round"
-            transform="rotate(-90 8 8)"
-          />
-        )}
       </svg>
       <span className={text}>{letter}</span>
     </span>

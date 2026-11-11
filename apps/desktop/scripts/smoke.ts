@@ -2,6 +2,7 @@
  * Drives the fixture app through the grid's pointer and keyboard interactions and
  * prints PASS/FAIL per check. Usage: `bun run smoke` (after `bun run build`).
  */
+import { grid as gridTokens } from "@cal/theme";
 import { _electron as electron } from "playwright";
 
 const { ELECTRON_RUN_AS_NODE, ...env } = process.env;
@@ -15,6 +16,12 @@ await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
 );
 await page.waitForSelector("[data-ready]", { timeout: 15_000 });
+// The script's own hour height, whatever the default is: its pointer moves assume that
+// the afternoon and evening are on screen at 1440×900.
+const HOUR = 48;
+const DEFAULT_HOUR = gridTokens.hourHeight;
+await page.evaluate((hourHeight) => window.calTest?.seed({ device: { hourHeight } }), HOUR);
+await page.waitForTimeout(300);
 page.on("console", (m) => {
   if (m.type() === "error") console.log("console error:", m.text());
 });
@@ -44,8 +51,6 @@ const body = await page
     if (!parent) throw new Error("no grid body");
     return { top: parent.getBoundingClientRect().top, scrollTop: parent.scrollTop };
   });
-// The default hour height; the fit floor is lower than it at 1440×900.
-const HOUR = 48;
 const y = (minute: number) => body.top + (minute / 60) * HOUR - body.scrollTop;
 await page.mouse.move(c.x + c.width / 2, y(15 * 60));
 await page.mouse.down();
@@ -70,8 +75,8 @@ check("created block shows 3–4 PM", (await created.textContent())?.includes("3
 let box = await boxOf(created);
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 48, { steps: 5 });
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 96, { steps: 5 });
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + HOUR, { steps: 5 });
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 2 * HOUR, { steps: 5 });
 await page.mouse.up();
 await page.waitForTimeout(300);
 check("move block to 5–6 PM", (await created.textContent())?.includes("5–6 PM") ?? false);
@@ -80,7 +85,7 @@ check("move block to 5–6 PM", (await created.textContent())?.includes("5–6 P
 box = await boxOf(created);
 await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2);
 await page.mouse.down();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height + 24, { steps: 5 });
+await page.mouse.move(box.x + box.width / 2, box.y + box.height + HOUR / 2, { steps: 5 });
 await page.mouse.up();
 await page.waitForTimeout(300);
 check("resize block to 5–6:30 PM", (await created.textContent())?.includes("5–6:30 PM") ?? false);
@@ -89,7 +94,7 @@ check("resize block to 5–6:30 PM", (await created.textContent())?.includes("5�
 box = await boxOf(created);
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 48, { steps: 5 });
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + HOUR, { steps: 5 });
 await page.keyboard.press("Escape");
 await page.mouse.up();
 await page.waitForTimeout(300);
@@ -296,7 +301,7 @@ const retro = page.locator("[data-item^='event:'] > div", { hasText: "Retro" });
 box = await boxOf(retro);
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 48, { steps: 8 });
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + HOUR, { steps: 8 });
 await page.mouse.up();
 await page.waitForTimeout(400);
 check("device event moves", (await retro.textContent())?.includes("4–5 PM") ?? false);
@@ -696,7 +701,10 @@ check(
 await page.keyboard.press("Meta+\\");
 await page.waitForTimeout(350);
 
-// 19. zoom keys step the hour height and stop at fit; ⇧⌘0 resets
+// 19. zoom keys step the hour height and stop at fit; ⇧⌘0 resets. Starts from the
+// default, which is on the zoom ladder; the fit floor is lower than it at 1440×900.
+await page.evaluate((hourHeight) => window.calTest?.seed({ device: { hourHeight } }), DEFAULT_HOUR);
+await page.waitForTimeout(300);
 const hourOf = async () => Number((await gridState()).hour);
 const startHour = await hourOf();
 await page.keyboard.press("Meta+Shift+.");
@@ -718,7 +726,7 @@ check(
 );
 await page.keyboard.press("Meta+Shift+0");
 await page.waitForTimeout(100);
-check("⇧⌘0 restores the default height", (await hourOf()) === 48);
+check("⇧⌘0 restores the default height", (await hourOf()) === DEFAULT_HOUR);
 // A pinch saves its height 200ms after the last tick; a reset in between must stand.
 await grid.evaluate((element) => {
   element.dispatchEvent(
@@ -733,7 +741,7 @@ await grid.evaluate((element) => {
 });
 await page.keyboard.press("Meta+Shift+0");
 await page.waitForTimeout(400);
-check("⇧⌘0 right after a pinch keeps the default height", (await hourOf()) === 48);
+check("⇧⌘0 right after a pinch keeps the default height", (await hourOf()) === DEFAULT_HOUR);
 
 // 20. "fit" in a tall window: 24 hours exactly fill the body
 await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 0 } }));
@@ -760,8 +768,8 @@ await app.evaluate(({ BrowserWindow }) =>
   BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
 );
 await page.waitForTimeout(400);
-check("⇧⌘0 in a tall window keeps the default after it shrinks", (await hourOf()) === 48);
-await page.evaluate(() => window.calTest?.seed({ device: { hourHeight: 48 } }));
+check("⇧⌘0 in a tall window keeps the default after it shrinks", (await hourOf()) === DEFAULT_HOUR);
+await page.evaluate((hourHeight) => window.calTest?.seed({ device: { hourHeight } }), HOUR);
 await page.waitForTimeout(300);
 
 // 21. settings take effect live: hidden weekends, 24-hour labels, a hidden calendar

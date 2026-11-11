@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { type Habit, type HabitEntry, scheduledWeekdays } from "@cal/domain";
 import {
-  activeHabits,
-  emptyHabit,
+  type Habit,
+  type HabitEntry,
   habitDay,
   habitProgress,
-  habitRow,
   quotaCount,
-} from "../src/renderer/src/lib/habits";
+  scheduledWeekdays,
+} from "@cal/domain";
+import { activeHabits, emptyHabit, habitRow } from "../src/renderer/src/lib/habits";
 import { areaForNewProject } from "../src/renderer/src/lib/lists";
 
 describe("habitRow", () => {
@@ -66,8 +66,18 @@ describe("habitRow", () => {
     ).toBeNull();
   });
 
+  test("times a day is a measure counted in whole times, with no unit", () => {
+    const brush = { ...emptyHabit, title: "Brush teeth", track: "times" as const };
+    expect(habitRow(brush)).toMatchObject({ kind: "measure", target: 2 });
+    expect(habitRow(brush)).not.toHaveProperty("unit");
+    // Once a day is plain done-or-not.
+    expect(habitRow({ ...brush, times: "1" })).toMatchObject({ kind: "check" });
+    expect(habitRow({ ...brush, times: "0" })).toBeNull();
+    expect(habitRow({ ...brush, times: "2.5" })).toBeNull();
+  });
+
   test("a measured habit needs a positive target; the unit is optional", () => {
-    const read = { ...emptyHabit, title: "Read", measured: true };
+    const read = { ...emptyHabit, title: "Read", track: "amount" as const };
     expect(habitRow(read)).toBeNull();
     expect(habitRow({ ...read, target: "20", unit: "min" })).toMatchObject({
       kind: "measure",
@@ -122,16 +132,37 @@ describe("habit progress", () => {
   const gym = habit({ uuid: "gym", schedule: "quota", quota_count: 3, quota_period: "week" });
   const swim = habit({ uuid: "swim", schedule: "quota", quota_count: 8, quota_period: "month" });
 
-  test("a day's value, ring and toggle", () => {
+  const brush = habit({ uuid: "brush", kind: "measure", target: 2 });
+
+  test("a day's value, ring and what a click logs", () => {
     const entries = [entry("read", "2026-10-28", 15)];
     expect(habitDay(read, entries, "2026-10-28")).toEqual({
       value: 15,
       target: 20,
       done: false,
       fraction: 0.75,
-      toggle: 0,
+      segments: 1,
+      next: 20,
+      less: 0,
     });
-    expect(habitDay(gym, entries, "2026-10-28")).toMatchObject({ done: false, toggle: 1 });
+    // A measure with a unit logs its whole target at once, then a click clears the day.
+    expect(habitDay(read, [], "2026-10-28")).toMatchObject({ next: 20 });
+    expect(habitDay(read, [entry("read", "2026-10-28", 20)], "2026-10-28").next).toBe(0);
+    expect(habitDay(gym, entries, "2026-10-28")).toMatchObject({ done: false, next: 1 });
+  });
+
+  test("a times-a-day habit goes up one per click, then clears", () => {
+    const on = (value: number) =>
+      habitDay(brush, value ? [entry("brush", "2026-10-28", value)] : [], "2026-10-28");
+    expect(on(0)).toMatchObject({ fraction: 0, segments: 2, next: 1, less: 0 });
+    expect(on(1)).toMatchObject({ done: false, fraction: 0.5, next: 2, less: 0 });
+    expect(on(2)).toMatchObject({ done: true, fraction: 1, next: 0, less: 1 });
+    // Too many times for a split ring: one continuous arc.
+    const sips = habit({ uuid: "sips", kind: "measure", target: 12 });
+    expect(habitDay(sips, [], "2026-10-28")).toMatchObject({ segments: 1, next: 1 });
+    // A target that isn't a whole number can't be split into arcs either.
+    const half = habit({ uuid: "half", kind: "measure", target: 2.5 });
+    expect(habitDay(half, [], "2026-10-28")).toMatchObject({ segments: 1, next: 1 });
   });
 
   test("quotas count done days in their Monday week or calendar month", () => {
@@ -149,12 +180,20 @@ describe("habit progress", () => {
     expect(quotaCount(read, entries, "2026-10-28")).toBeUndefined();
   });
 
-  test("the sidebar's status: amount for a measure, count for a quota, else nothing", () => {
-    const entries = [entry("read", "2026-10-28", 15), entry("gym", "2026-10-27")];
+  test("progress names its period: an amount, times today, a quota's week or month", () => {
+    const entries = [
+      entry("read", "2026-10-28", 15),
+      entry("gym", "2026-10-27"),
+      entry("brush", "2026-10-28", 1),
+    ];
     expect(habitProgress(read, entries, "2026-10-28")).toBe("15/20 min");
-    expect(habitProgress({ ...read, unit: undefined }, entries, "2026-10-28")).toBe("15/20");
-    expect(habitProgress(gym, entries, "2026-10-28")).toBe("1/3");
+    expect(habitProgress(brush, entries, "2026-10-28")).toBe("1/2 today");
+    expect(habitProgress(gym, entries, "2026-10-28")).toBe("1/3 this week");
+    expect(habitProgress(swim, entries, "2026-10-28")).toBe("0/8 this month");
     expect(habitProgress(habit({ uuid: "meditate" }), entries, "2026-10-28")).toBe("");
+    // Twice a day, five days a week: both, shortened.
+    const both = { ...brush, schedule: "quota" as const, quota_count: 5 };
+    expect(habitProgress(both, entries, "2026-10-28")).toBe("1/2 day · 0/5 wk");
   });
 
   test("archived habits drop out; the rest keep their order", () => {

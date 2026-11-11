@@ -25,9 +25,10 @@ export const GUTTER = grid.gutterWidth;
 export const ZONE_COLUMN = 44;
 export const DAY_MINUTES = 24 * 60;
 
-// Hour heights the zoom keys step through; 0 is "fit the day to the window".
-export const ZOOM_STEPS = [0, 32, 40, 48, 56, 64, 80, 96] as const;
-export const MAX_HOUR = 96;
+// Hour heights the zoom keys and Settings > Grid step through; 0 is "fit the day to the
+// window". Pinch and ⌥-scroll reach the heights in between.
+export const ZOOM_STEPS = [0, 32, 64, 96, 128] as const;
+export const MAX_HOUR = 128;
 
 export type Item =
   | { kind: "event"; id: string; event: ExternalEvent; start: Date; end: Date }

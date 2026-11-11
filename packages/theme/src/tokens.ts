@@ -73,9 +73,10 @@ export const typeMobile = {
 
 export const radius = { xs: 3, sm: 4, md: 6, lg: 10, xl: 14 } as const;
 
-// Grid geometry: an hour is 48px, so a 15-minute snap is 12px.
+// Grid geometry: an hour is 64px by default (the grid's Medium zoom), so a 15-minute
+// snap is 16px.
 export const grid = {
-  hourHeight: 48,
+  hourHeight: 64,
   snapMinutes: 15,
   gutterWidth: 52,
   dayHeaderHeight: 44,

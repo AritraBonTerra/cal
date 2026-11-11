@@ -33,6 +33,16 @@ export interface Scene {
   steps?: Step[];
 }
 
+// Makes "Floss", twice a day, with New Habit… and logs it once on today's chip (the
+// third of the week; the sidebar is hidden in a narrow window).
+const TWICE_A_DAY: Step[] = [
+  { click: "[data-add-habit]" },
+  { type: "Floss" },
+  { click: "[role=radio]:has-text('Times a day')" },
+  { click: "button:text-is('Create')" },
+  { click: "button[title^='Floss'] >> nth=2" },
+];
+
 // Archives every fixture habit from the sidebar's Habits, for the no-habits state.
 const NO_HABITS: Step[] = ["Gym", "Read", "Meditate"].flatMap((title) => [
   { context: `[data-habit-list] li:has-text('${title}') button` },
@@ -237,6 +247,10 @@ export const scenes: Scene[] = [
       { click: "[role=radio]:has-text('An amount')" },
     ],
   },
+  // A twice-a-day habit logged once: its split ring half lit in the strip and the
+  // sidebar ("1/2 today"), beside Gym's weekly dots and "this week" count.
+  { name: "habit-times", dark: true, steps: TWICE_A_DAY },
+  { name: "habit-times-narrow", width: 860, height: 700, steps: TWICE_A_DAY },
   // Habits in the sidebar (today's ring, progress) and the strip's "habits" caption and +.
   { name: "habits", keys: ["3"] },
   { name: "habits-dark", dark: true },

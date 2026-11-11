@@ -1,18 +1,15 @@
 import { useSettings } from "@cal/app-core";
 import { formatHour } from "../../lib/time";
+import { ZOOM_STEPS } from "../grid/model";
 import { Keycaps, Segmented, Select, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
-const HOUR_HEIGHTS = [
-  { value: 0, label: "Fit day" },
-  { value: 32, label: "32 px" },
-  { value: 40, label: "40 px" },
-  { value: 48, label: "48 px" },
-  { value: 56, label: "56 px" },
-  { value: 64, label: "64 px" },
-  { value: 80, label: "80 px" },
-  { value: 96, label: "96 px" },
-];
+// The zoom levels by name, smallest first: fit, then one per step of ZOOM_STEPS.
+const ZOOM_LABELS = ["Fit day", "S", "M", "L", "XL"];
+const ZOOMS = ZOOM_STEPS.map((height, index) => ({
+  value: String(height),
+  label: ZOOM_LABELS[index] ?? `${height}`,
+}));
 
 const HOURS = Array.from({ length: 25 }, (_, hour) => ({
   value: hour * 60,
@@ -24,30 +21,29 @@ const LENGTHS = [15, 30, 45, 60, 90].map((minutes) => ({
   label: minutes < 60 ? `${minutes}m` : minutes === 60 ? "1h" : "1h30",
 }));
 
-// Grid: hour height, half-hour lines, working hours and the workload row, the length of
-// a click-made block.
+// Grid: zoom (the height of an hour), half-hour lines, working hours and the workload
+// row, the length of a click-made block.
 export function GridSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const { start, end } = account.workingHours;
-  // A pinch or ⌥-scroll leaves a height between the steps; the menu shows the nearest.
-  const nearest = HOUR_HEIGHTS.reduce((best, option) =>
-    Math.abs(option.value - device.hourHeight) < Math.abs(best.value - device.hourHeight)
-      ? option
-      : best,
+  // A pinch or ⌥-scroll leaves a height between the steps; the control shows the nearest.
+  const nearest = ZOOM_STEPS.reduce<number>(
+    (best, step) =>
+      Math.abs(step - device.hourHeight) <= Math.abs(best - device.hourHeight) ? step : best,
+    0,
   );
   return (
     <>
       <Group title="Hours">
-        <Row label="Hour height" note="Never shorter than what fits the window">
-          <Select
-            value={nearest.value}
-            options={HOUR_HEIGHTS}
-            onChange={(value) => setDevice("hourHeight", value)}
-            label="Hour height"
-            width={112}
+        <Row label="Zoom" note="How tall an hour is. Fit day shows all 24 hours at once">
+          <Segmented
+            value={String(nearest)}
+            options={ZOOMS}
+            onChange={(value) => setDevice("hourHeight", Number(value))}
+            label="Zoom"
           />
         </Row>
-        <Row label="Zoom" note="Pinch or ⌥-scroll on the grid zooms around the pointer">
+        <Row label="Zoom keys" note="Pinch or ⌥-scroll on the grid for anything in between">
           <span className="flex items-center gap-1 text-small text-ink-2">
             <Keycaps binding="mod+shift+." /> in
             <Keycaps binding="mod+shift+," className="ml-2" /> out
