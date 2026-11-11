@@ -1,0 +1,40 @@
+name: TestFlight
+
+# Sends a build that's already in App Store Connect to the public TestFlight group and
+# Beta App Review (apps/mobile/scripts/testflight.ts). Release does this after every
+# upload from main; run this by hand to retry it or to send an older build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, e.g. 0.1.15
+        required: true
+      build:
+        description: Build number, e.g. 19
+        required: true
+      whats_new:
+        description: What to Test
+        required: false
+
+jobs:
+  testflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Send to TestFlight testers
+        env:
+          ASC_KEY: ${{ secrets.ASC_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BETA_CONTACT: ${{ secrets.BETA_CONTACT }}
+          CAL_VERSION: ${{ inputs.version }}
+          CAL_BUILD: ${{ inputs.build }}
+          WHATS_NEW: ${{ inputs.whats_new }}
+        run: |
+          printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
+          ASC_KEY_PATH="$RUNNER_TEMP/asc.p8" bun apps/mobile/scripts/testflight.ts

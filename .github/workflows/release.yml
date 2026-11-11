@@ -219,3 +219,17 @@ jobs:
           plutil -replace destination -string upload "$plist"
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cal.xcarchive" \
             -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/upload" $AUTH
+      # Puts the build in the public TestFlight group and submits it to Beta App Review.
+      # testflight.yml reruns just this step for a build that's already uploaded.
+      - name: Send to TestFlight testers
+        if: env.PUBLISH == 'true'
+        timeout-minutes: 75
+        env:
+          ASC_KEY_PATH: ${{ runner.temp }}/asc.p8
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BETA_CONTACT: ${{ secrets.BETA_CONTACT }}
+          CAL_VERSION: ${{ needs.version.outputs.release }}
+          CAL_BUILD: ${{ github.run_number }}
+          WHATS_NEW: ${{ github.event.head_commit.message }}
+        run: bun apps/mobile/scripts/testflight.ts
