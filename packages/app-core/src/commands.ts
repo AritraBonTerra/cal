@@ -341,6 +341,8 @@ const KEY_SYMBOLS: Record<string, string> = {
   "⌫": "backspace",
   "⌦": "delete",
   "⇥": "tab",
+  // The keycap shows ⌘− with a true minus; searching for it finds the "-" binding.
+  "−": "-",
 };
 const KEY_WORDS: Record<string, string> = {
   cmd: "mod",
