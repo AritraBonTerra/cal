@@ -12,6 +12,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCalendarsFullAccessUsageDescription": "Cal shows and edits the events in your calendars."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -20,9 +23,13 @@
       "expo-secure-store",
       [
         "expo-calendar",
-        { "calendarPermission": "Cal shows and edits the events in your calendars." }
+        {
+          "calendarPermission": "Cal shows and edits the events in your calendars."
+        }
       ]
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
