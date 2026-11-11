@@ -175,6 +175,8 @@ const SYMBOLS: Record<string, string> = {
   end: "End",
   pageup: "PgUp",
   pagedown: "PgDn",
+  // A true minus sign, as wide as the "+" it sits beside.
+  "-": "−",
 };
 
 // Keycap labels for a binding, e.g. "mod+shift+k" → ["⌘", "⇧", "K"] on Mac.

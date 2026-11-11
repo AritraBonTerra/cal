@@ -213,8 +213,8 @@ export const scenes: Scene[] = [
   },
   // The grid fills a tall window: no blank space under 11 PM.
   { name: "tall-fit", width: 1440, height: 1200, settings: { device: { hourHeight: 0 } } },
-  { name: "zoomed-in", keys: ["Meta+Shift+.", "Meta+Shift+."] },
-  { name: "zoomed-in-dark", dark: true, keys: ["Meta+Shift+.", "Meta+Shift+."] },
+  { name: "zoomed-in", keys: ["Meta+Equal", "Meta+Equal"] },
+  { name: "zoomed-in-dark", dark: true, keys: ["Meta+Equal", "Meta+Equal"] },
   { name: "sidebar-collapsed", keys: ["Meta+\\"] },
   // Both panes hidden: the title clears the traffic lights and the pane toggles.
   { name: "panes-collapsed", keys: ["Meta+\\", "Meta+/"] },

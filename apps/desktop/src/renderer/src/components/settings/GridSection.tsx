@@ -26,10 +26,11 @@ const LENGTHS = [15, 30, 45, 60, 90].map((minutes) => ({
 export function GridSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const { start, end } = account.workingHours;
-  // A pinch or ⌥-scroll leaves a height between the steps; the control shows the nearest.
+  // A pinch or ⌥-scroll leaves a height between the steps; the control shows the nearest,
+  // the smaller on a tie (an old 32 draws at fit, so it shows Fit day).
   const nearest = ZOOM_STEPS.reduce<number>(
     (best, step) =>
-      Math.abs(step - device.hourHeight) <= Math.abs(best - device.hourHeight) ? step : best,
+      Math.abs(step - device.hourHeight) < Math.abs(best - device.hourHeight) ? step : best,
     0,
   );
   return (
