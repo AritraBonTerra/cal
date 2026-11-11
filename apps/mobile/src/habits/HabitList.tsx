@@ -1,5 +1,12 @@
 import { useActions } from "@cal/app-core";
-import { dayRange, dayStatuses, habitStats, isDone, startOfWeek } from "@cal/domain";
+import {
+  dayRange,
+  dayStatuses,
+  habitDay,
+  habitProgress,
+  habitStats,
+  startOfWeek,
+} from "@cal/domain";
 import { habitColors } from "@cal/theme";
 import { LegendList } from "@legendapp/list/react-native";
 import { Flame, Repeat } from "lucide-react-native";
@@ -11,8 +18,10 @@ import { useColors } from "../lib/theme";
 import { Ring } from "../ui/controls";
 
 /*
- * Today's habits (PLAN §5.4): a large check ring per habit that logs today, the
- * streak and Loop's habit strength underneath, and this week's days as small rings.
+ * Today's habits (PLAN §5.4): a large ring per habit that logs today (one more time
+ * per tap for a times-a-day habit; a long press takes one back), its schedule and
+ * progress with the period named, the streak and Loop's habit strength, and this
+ * week's days as small rings.
  */
 export function HabitList({
   topInset = 0,
@@ -59,9 +68,7 @@ export function HabitList({
       }
       renderItem={({ item: habit }) => {
         const own = data.entries.filter((entry) => entry.habit_uuid === habit.uuid);
-        const value = own.find((entry) => entry.date === today)?.value ?? 0;
-        const target = habit.kind === "measure" ? (habit.target ?? 1) : 1;
-        const done = isDone(habit, value);
+        const { done, fraction, segments, next, less } = habitDay(habit, own, today);
         const stats = habitStats(habit, data.entries, today);
         const statuses = dayStatuses(habit, own, week[0] ?? today, today);
         const palette = habitColors(hueFor(habit), mode);
@@ -71,8 +78,7 @@ export function HabitList({
             : habit.schedule === "interval"
               ? `Every ${habit.interval_days ?? 1} days`
               : "Daily";
-        const measure =
-          habit.kind === "measure" ? ` · ${value}/${target} ${habit.unit ?? ""}`.trimEnd() : "";
+        const progress = habitProgress(habit, own, today);
         return (
           <View className="mx-4 mb-3 rounded-lg bg-canvas px-4 py-3">
             <View className="flex-row items-center gap-3">
@@ -80,15 +86,12 @@ export function HabitList({
                 accessibilityRole="button"
                 accessibilityState={{ checked: done }}
                 accessibilityLabel={`${habit.title}, ${done ? "done" : "not done"} today`}
-                onPress={() => void actions.logHabit(habit.uuid, today, value ? 0 : target)}
+                onPress={() => void actions.logHabit(habit.uuid, today, next)}
+                onLongPress={() => void actions.logHabit(habit.uuid, today, less)}
                 hitSlop={6}
                 className="h-11 w-11 items-center justify-center"
               >
-                <Ring
-                  fraction={done ? 1 : Math.min(1, value / target)}
-                  color={palette.ring}
-                  size={36}
-                />
+                <Ring fraction={fraction} color={palette.ring} size={36} segments={segments} />
               </Pressable>
               <View className="min-w-0 flex-1">
                 <Text className="text-body font-medium text-ink" numberOfLines={1}>
@@ -100,7 +103,7 @@ export function HabitList({
                   numberOfLines={1}
                 >
                   {schedule}
-                  {measure}
+                  {progress && ` · ${progress}`}
                 </Text>
               </View>
               <View className="items-end">
@@ -125,23 +128,24 @@ export function HabitList({
             </View>
             <View className="mt-3 flex-row justify-between pl-1 pr-1">
               {week.map((day) => {
-                const dayValue = own.find((entry) => entry.date === day)?.value ?? 0;
+                const each = habitDay(habit, own, day);
                 const status = day > today ? "future" : (statuses.get(day) ?? "open");
-                const dayDone = isDone(habit, dayValue);
                 return (
                   <Pressable
                     key={day}
                     accessibilityRole="button"
                     accessibilityLabel={day}
                     disabled={day > today}
-                    onPress={() => void actions.logHabit(habit.uuid, day, dayValue ? 0 : target)}
+                    onPress={() => void actions.logHabit(habit.uuid, day, each.next)}
+                    onLongPress={() => void actions.logHabit(habit.uuid, day, each.less)}
                     className="h-11 w-9 items-center justify-center gap-1.5"
                   >
                     <Ring
-                      fraction={dayDone ? 1 : Math.min(1, dayValue / target)}
+                      fraction={each.fraction}
                       status={status}
                       color={palette.ring}
                       size={18}
+                      segments={each.segments}
                     />
                     <Text
                       className={`text-caption ${day === today ? "font-semibold text-now" : "text-ink-3"}`}

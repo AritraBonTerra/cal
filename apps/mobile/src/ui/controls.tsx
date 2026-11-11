@@ -45,10 +45,12 @@ interface RingProps {
   // Covered days get a dashed ring, future and missed days a quiet one.
   status?: "open" | "done" | "covered" | "off" | "missed" | "future";
   size?: number;
+  // Splits the ring into one arc per time, for a times-a-day habit (see habitDay).
+  segments?: number;
 }
 
 // A progress ring for habits (12pt in the strip, larger in the Habits list).
-export function Ring({ fraction, color, status = "open", size = 14 }: RingProps) {
+export function Ring({ fraction, color, status = "open", size = 14, segments = 1 }: RingProps) {
   const colors = useColors();
   const stroke = size >= 24 ? 2.5 : 1.5;
   const r = size / 2 - stroke / 2 - 0.25;
@@ -64,6 +66,32 @@ export function Ring({ fraction, color, status = "open", size = 14 }: RingProps)
     );
   }
   const quiet = status === "covered" || status === "future" || status === "missed";
+  // Part-way, the rest of the ring steps back so the progress reads.
+  const unlit = quiet || fraction > 0 ? colors["edge-strong"] : color;
+  if (segments > 1) {
+    const gap = stroke + 0.5;
+    const arc = c / segments - gap;
+    const done = Math.round(fraction * segments);
+    return (
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {Array.from({ length: segments }, (_, index) => (
+          <Circle
+            // biome-ignore lint/suspicious/noArrayIndexKey: the arcs are their positions.
+            key={index}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={index < done ? color : unlit}
+            strokeWidth={stroke}
+            strokeDasharray={`${arc} ${c - arc}`}
+            strokeDashoffset={-(index * (c / segments) + gap / 2)}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        ))}
+      </Svg>
+    );
+  }
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <Circle
@@ -71,7 +99,7 @@ export function Ring({ fraction, color, status = "open", size = 14 }: RingProps)
         cy={size / 2}
         r={r}
         fill="none"
-        stroke={quiet ? colors["edge-strong"] : color}
+        stroke={unlit}
         strokeWidth={stroke}
         strokeDasharray={status === "covered" ? "2 2" : undefined}
       />

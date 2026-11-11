@@ -1,21 +1,21 @@
 import { useActions, useCal } from "@cal/app-core";
-import { dayStatuses } from "@cal/domain";
+import { dayStatuses, habitDay, habitProgress } from "@cal/domain";
 import { habitColors } from "@cal/theme";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useApp } from "../lib/app";
 import { now } from "../lib/clock";
 import { hueFor } from "../lib/data";
-import { activeHabits, habitDay, habitProgress } from "../lib/habits";
+import { activeHabits } from "../lib/habits";
 import { HabitRing } from "./habitRing";
 import { ROW } from "./Sidebar";
 import { ContextMenu } from "./ui";
 
 /*
  * The sidebar's Habits: a header whose + runs New Habit…, then one row per habit that
- * isn't archived with today's ring, the title and today's progress ("15/20 min", "2/3").
- * Click a row to toggle today, as today's chip in the day strip does; right-click it to
- * archive. With no habits it says so, so there's always a labelled place to add one.
+ * isn't archived with today's ring, the title and its progress with the period named
+ * ("15/20 min", "1/2 today", "2/5 this week"). Click a row to log today, as today's chip
+ * in the day strip does (⌥-click takes one time back); right-click it to archive. With no habits it says so, so there's always a labelled place to add one.
  */
 export function HabitList() {
   const { data, today, mode } = useApp();
@@ -42,7 +42,7 @@ export function HabitList() {
       ) : (
         <ul>
           {habits.map((habit) => {
-            const { done, fraction, toggle } = habitDay(habit, data.entries, today);
+            const { done, fraction, segments, next, less } = habitDay(habit, data.entries, today);
             const status = dayStatuses(habit, data.entries, today, today).get(today) ?? "open";
             const progress = habitProgress(habit, data.entries, today);
             return (
@@ -50,7 +50,9 @@ export function HabitList() {
                 <button
                   type="button"
                   aria-pressed={done}
-                  onClick={() => void actions.logHabit(habit.uuid, today, toggle)}
+                  onClick={(event) =>
+                    void actions.logHabit(habit.uuid, today, event.altKey ? less : next)
+                  }
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setMenu({ x: event.clientX, y: event.clientY, uuid: habit.uuid });
@@ -62,6 +64,7 @@ export function HabitList() {
                       fraction={fraction}
                       status={status}
                       color={habitColors(hueFor(habit), mode).ring}
+                      segments={segments}
                     />
                   </span>
                   <span className="flex-1 truncate">{habit.title}</span>

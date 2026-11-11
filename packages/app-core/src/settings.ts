@@ -46,7 +46,7 @@ export const accountDefaults = {
 export const deviceDefaults = {
   theme: "system" as "system" | "light" | "dark",
   // Pixels per hour; 0 fits the whole day in the window. The grid never goes below fit.
-  hourHeight: 48,
+  hourHeight: 64,
   halfHourLines: false,
   // The workload row under each day's date: meetings and planned work against working hours.
   workloadBar: true,

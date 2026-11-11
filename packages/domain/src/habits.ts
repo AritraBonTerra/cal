@@ -1,4 +1,13 @@
-import { addDays, type DayKey, daysBetween, toDayKey, weekday } from "./dates";
+import {
+  addDays,
+  type DayKey,
+  daysBetween,
+  daysInMonth,
+  startOfMonth,
+  startOfWeek,
+  toDayKey,
+  weekday,
+} from "./dates";
 import type { Habit, HabitEntry } from "./tasks";
 
 /*
@@ -45,6 +54,77 @@ export function latestEntries(entries: readonly HabitEntry[]) {
 // Whether a logged value counts as done: any check, or reaching a measure's target.
 export const isDone = (habit: Habit, value: number) =>
   habit.kind === "check" ? value > 0 : value >= (habit.target ?? 1);
+
+/**
+ * Whether a habit is counted in whole times a day ("brush teeth twice"): a measure
+ * with no unit. Each click logs one more, where a measure with a unit ("20 min") logs
+ * its whole target at once.
+ */
+export const countsTimes = (habit: Habit) => habit.kind === "measure" && !habit.unit;
+
+// The most parts a ring is split into; a larger count draws one continuous arc.
+const MAX_SEGMENTS = 6;
+
+/**
+ * A habit on one day, as its ring and its click need it:
+ * - `value` logged against `target` (1 for done-or-not), `done`, and how full the ring is;
+ * - `segments`, the parts the ring is split into (one per time, for a times-a-day habit
+ *   with a small whole target);
+ * - `next`, the value a click logs: one more for a times-a-day habit, the whole target
+ *   otherwise (also from part-way), and 0 (clear the day) once the day is done;
+ * - `less`, the value an ⌥-click or long press logs: one time fewer, or 0.
+ * `entries` holds one entry per habit and day (see latestEntries).
+ */
+export function habitDay(habit: Habit, entries: readonly HabitEntry[], day: DayKey) {
+  const value =
+    entries.find((entry) => entry.habit_uuid === habit.uuid && entry.date === day)?.value ?? 0;
+  const target = habit.kind === "measure" ? (habit.target ?? 1) : 1;
+  const done = isDone(habit, value);
+  const times = countsTimes(habit);
+  return {
+    value,
+    target,
+    done,
+    fraction: done ? 1 : Math.min(1, value / target),
+    segments:
+      times && Number.isInteger(target) && target >= 2 && target <= MAX_SEGMENTS ? target : 1,
+    next: done ? 0 : times ? Math.min(target, Math.floor(value) + 1) : target,
+    less: times ? Math.max(0, Math.ceil(value) - 1) : 0,
+  };
+}
+
+// Days a quota habit was done in the period holding `day`: its Monday-to-Sunday week or
+// its calendar month. Undefined for habits without a quota.
+export function quotaCount(habit: Habit, entries: readonly HabitEntry[], day: DayKey) {
+  if (habit.schedule !== "quota") return undefined;
+  const month = habit.quota_period === "month";
+  const first = month ? startOfMonth(day) : startOfWeek(day);
+  const last = addDays(first, month ? daysInMonth(day) - 1 : 6);
+  return entries.filter(
+    (entry) =>
+      entry.habit_uuid === habit.uuid &&
+      entry.date >= first &&
+      entry.date <= last &&
+      isDone(habit, entry.value),
+  ).length;
+}
+
+/**
+ * A habit's progress in words, always naming its period so a count per day never reads
+ * like a count per week: "1/2 today", "15/20 min", "2/5 this week". A habit with both
+ * shows both, shortened ("1/2 day · 2/5 wk"). "" for a habit that's simply done or not.
+ */
+export function habitProgress(habit: Habit, entries: readonly HabitEntry[], today: DayKey) {
+  const count = quotaCount(habit, entries, today);
+  const quota = count === undefined ? undefined : `${count}/${habit.quota_count ?? 1}`;
+  const month = habit.quota_period === "month";
+  if (habit.kind !== "measure") return quota ? `${quota} this ${month ? "month" : "week"}` : "";
+  const { value, target } = habitDay(habit, entries, today);
+  const amount = `${value}/${target}`;
+  const unit = habit.unit ? ` ${habit.unit}` : "";
+  if (quota) return `${amount}${unit || " day"} · ${quota} ${month ? "mo" : "wk"}`;
+  return `${amount}${unit || " today"}`;
+}
 
 /*
  * Expected completions per scored day, for Loop's score multiplier. Fixed habits are

@@ -8,7 +8,8 @@ import { Keycaps, Overlay, Segmented } from "./ui";
 /*
  * New Habit… (⌘K, the dashed + in the habit strip, or the + in the sidebar's Habits): a
  * title, how often (every day, specific weekdays, N times per week or month, or every N
- * days) and whether it's done or measured toward a target. Enter creates it in the day strip; Escape cancels.
+ * days) and what a day logs: done or not, a number of times, or an amount toward a
+ * target. Enter creates it in the day strip; Escape cancels.
  */
 
 const SCHEDULES: readonly { value: HabitSchedule; label: string }[] = [
@@ -125,16 +126,27 @@ export function NewHabit() {
           )}
           <Field label="Track">
             <Segmented
-              value={draft.measured ? "measure" : "check"}
+              value={draft.track}
               options={[
                 { value: "check", label: "Done or not" },
-                { value: "measure", label: "An amount" },
+                { value: "times", label: "Times a day" },
+                { value: "amount", label: "An amount" },
               ]}
-              onChange={(kind) => set({ measured: kind === "measure" })}
+              onChange={(track) => set({ track })}
               label="Track"
             />
           </Field>
-          {draft.measured && (
+          {draft.track === "times" && (
+            <Field label="">
+              <NumberInput
+                value={draft.times}
+                onChange={(times) => set({ times })}
+                label="Times a day"
+              />
+              <span className="text-small text-ink-2">times a day, one per click</span>
+            </Field>
+          )}
+          {draft.track === "amount" && (
             <Field label="">
               <span className="text-small text-ink-2">Target</span>
               <NumberInput
