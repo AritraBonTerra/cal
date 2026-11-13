@@ -1323,5 +1323,60 @@ check(
 );
 await page.keyboard.press("Escape");
 
+// Quick Entry from any app: the panel window takes the text, saves on Enter, hides, and
+// the main window shows what it made. Fixture launches skip the global key, so this
+// opens the panel the way the key does.
+const panelState = () =>
+  app.evaluate(({ BrowserWindow }) => {
+    const panel = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes("surface=capture"),
+    );
+    return { visible: panel?.isVisible() ?? false, size: panel?.getContentSize() ?? [] };
+  });
+await app.evaluate(() => globalThis.calCapture?.show());
+const capture = await app.waitForEvent("window", {
+  predicate: (window) => window.url().includes("surface=capture"),
+  timeout: 10_000,
+});
+await capture.waitForSelector("[role=dialog][aria-label='Quick Entry'] input");
+await page.waitForTimeout(300);
+check("the capture panel shows", (await panelState()).visible);
+check(
+  "the panel focuses its text field",
+  await capture.evaluate(() => document.activeElement?.tagName === "INPUT"),
+);
+await capture.keyboard.type("Smoke capture tomorrow 3pm");
+await capture.keyboard.press("Enter");
+await page.waitForTimeout(600);
+check("Enter hides the panel", !(await panelState()).visible);
+check(
+  "the captured to-do reaches the main window",
+  (await page.locator("text=Smoke capture").count()) > 0,
+);
+check(
+  "the panel starts empty next time",
+  (await capture.evaluate(() => document.querySelector("input")?.value)) === "",
+);
+await app.evaluate(() => globalThis.calCapture?.show());
+await page.waitForTimeout(200);
+await capture.keyboard.press("Escape");
+await page.waitForTimeout(200);
+check("Escape hides the panel", !(await panelState()).visible);
+
+// Interface size zooms the window and keeps the traffic lights on the top band's centre.
+await page.evaluate(() => window.calTest?.seed({ device: { uiScale: 125 } }));
+await page.waitForTimeout(300);
+const lights = await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()
+    .find((window) => !window.webContents.getURL().includes("surface=capture"))
+    ?.getWindowButtonPosition(),
+);
+check(
+  "125% zooms the window",
+  Math.abs((await page.evaluate(() => window.innerWidth)) - 1440 / 1.25) < 2,
+);
+check("125% moves the traffic lights down", lights?.y === 25);
+await page.evaluate(() => window.calTest?.seed({ device: { uiScale: 100 } }));
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

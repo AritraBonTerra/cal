@@ -8,15 +8,19 @@ import { LocalStore, Session } from "@cal/sync";
 import {
   app,
   BrowserWindow,
+  globalShortcut,
   type IpcMainEvent,
+  type IpcMainInvokeEvent,
   ipcMain,
   Menu,
   type MenuItemConstructorOptions,
   nativeTheme,
   shell,
+  type WebContents,
 } from "electron";
 import {
   type AuthCall,
+  CAPTURE_COMMAND,
   type CalendarCall,
   channels,
   type DataCall,
@@ -26,6 +30,7 @@ import {
 import { menuAccelerator } from "./accelerator";
 import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
+import { createCapture } from "./capture";
 import { openDatabase } from "./db";
 import { encryptedFile } from "./session";
 import { checkNow, startUpdates } from "./updater";
@@ -117,9 +122,17 @@ function isAppUrl(url: string) {
 
 // Registers an IPC handler that refuses calls from any page other than Cal's own.
 function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R) {
+  handleFrom(channel, (_event, ...args: A) => fn(...args));
+}
+
+// `handle` for handlers that need to know which window called.
+function handleFrom<A extends unknown[], R>(
+  channel: string,
+  fn: (event: IpcMainInvokeEvent, ...args: A) => R,
+) {
   ipcMain.handle(channel, (event, ...args) => {
     if (!isAppUrl(event.senderFrame?.url ?? "")) throw new Error("Untrusted sender");
-    return fn(...(args as A));
+    return fn(event, ...(args as A));
   });
 }
 
@@ -160,7 +173,17 @@ handle(channels.auth, (call: AuthCall) => {
 
 handle(channels.syncStatus, () => session.status());
 
-handle(channels.calendar, (call: CalendarCall) => {
+// A write from one window (the capture panel, say) tells the others to reload events;
+// the writer refreshes itself, and fixture calendars never report changes on their own.
+async function written<T>(event: IpcMainInvokeEvent, write: Promise<T>) {
+  const result = await write;
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.webContents !== event.sender) window.webContents.send(channels.calendarChanged);
+  }
+  return result;
+}
+
+handleFrom(channels.calendar, (event, call: CalendarCall) => {
   switch (call.method) {
     case "access":
       return calendar.access();
@@ -171,11 +194,11 @@ handle(channels.calendar, (call: CalendarCall) => {
     case "events":
       return calendar.events(...call.args);
     case "createEvent":
-      return calendar.createEvent(...call.args);
+      return written(event, calendar.createEvent(...call.args));
     case "updateEvent":
-      return calendar.updateEvent(...call.args);
+      return written(event, calendar.updateEvent(...call.args));
     case "deleteEvent":
-      return calendar.deleteEvent(...call.args);
+      return written(event, calendar.deleteEvent(...call.args));
   }
 });
 
@@ -183,6 +206,41 @@ handle(channels.calendar, (call: CalendarCall) => {
 handle(channels.theme, (theme: Theme) => {
   nativeTheme.themeSource = theme;
 });
+
+// Interface size: the window zooms itself (preload); main keeps the traffic lights
+// centred on its top band, 52px tall at 100%, as `trafficLightPosition` does at launch.
+handleFrom(channels.scale, (event, percent: number) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || capture?.owns(event.sender)) return;
+  if (typeof percent !== "number" || !(percent >= 50 && percent <= 300)) return;
+  window.setWindowButtonPosition({ x: 16, y: Math.round(26 * (percent / 100) - 8) });
+});
+
+// Open at login: reads macOS's Login Items, and with `open` changes it first. A
+// development build would register the bare Electron binary, so only the installed app
+// can be a login item.
+handle(channels.openAtLogin, (open?: boolean) => {
+  if (!app.isPackaged || fixture) return false;
+  if (typeof open === "boolean") app.setLoginItemSettings({ openAtLogin: open });
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+// Quick Entry from any app; made once the app is ready (see createCapture).
+let capture: ReturnType<typeof createCapture> | undefined;
+
+handle(channels.captureOpen, () => capture?.show());
+handle(channels.captureHide, () => capture?.hide());
+handleFrom(channels.captureSize, (event, width: number, height: number) => {
+  if (capture?.owns(event.sender)) capture.setSize(width, height);
+});
+
+// Registers the capture command's keys system-wide. Fixture launches leave the key to
+// the real app; scripts open the panel through `calCapture` instead.
+function bindCaptureKey(keys: readonly string[] | null, reporter?: WebContents) {
+  if (fixture || !capture) return;
+  const taken = capture.bind(keys);
+  if (taken) reporter?.send(channels.globalKeyTaken, taken);
+}
 
 // How long a closing window may take to save before it's closed anyway.
 const CLOSE_WAIT_MS = 1500;
@@ -192,11 +250,13 @@ let quitting = false;
 /**
  * Makes `window` wait before closing: it's told it is closing, and closes once it
  * answers that what was open in it (a to-do card's text) has been saved. A page that
- * doesn't answer in time, or has crashed, is closed anyway.
+ * doesn't answer in time, or has crashed, is closed anyway. A close another handler has
+ * already turned down (the capture panel hides instead) is left alone.
  */
 function holdClose(window: BrowserWindow) {
   let state: "open" | "waiting" | "ready" = "open";
   window.on("close", (event) => {
+    if (state === "open" && event.defaultPrevented) return;
     if (state === "ready" || window.webContents.isCrashed()) return;
     event.preventDefault();
     if (state === "waiting") return;
@@ -254,10 +314,20 @@ function createWindow() {
   };
   window.webContents.on("will-navigate", stayInApp);
   window.webContents.on("will-redirect", stayInApp);
-  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void window.loadFile(rendererFile);
+  loadRenderer(window);
   return window;
 }
+
+// Loads the window's page; `surface` picks another root (the capture panel's).
+function loadRenderer(window: BrowserWindow, surface?: string) {
+  const dev = process.env.ELECTRON_RENDERER_URL;
+  if (dev) void window.loadURL(surface ? `${dev}?surface=${surface}` : dev);
+  else void window.loadFile(rendererFile, surface ? { query: { surface } } : undefined);
+}
+
+// Every window but the capture panel.
+const mainWindows = () =>
+  BrowserWindow.getAllWindows().filter((window) => !capture?.owns(window.webContents));
 
 // The keys in effect for each command, as the window last reported them. A command the
 // report leaves out (one its view isn't showing) has no menu shortcut until it's back.
@@ -265,16 +335,21 @@ let menuKeys = new Map<string, readonly string[]>();
 
 // A null report means the window is recording a shortcut: until its next report every
 // menu shortcut is ignored, Close and Quit included, so the keys pressed run nothing.
-handle(channels.menuKeys, (keys: MenuKeys | null) => {
+// The global Quick Entry key is paused the same way.
+handleFrom(channels.menuKeys, (event, keys: MenuKeys | null) => {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.setIgnoreMenuShortcuts(keys === null);
   }
-  if (keys === null) return;
+  if (keys === null) {
+    bindCaptureKey(null);
+    return;
+  }
   menuKeys = new Map(
     Object.entries(keys).filter(
       ([, list]) => Array.isArray(list) && list.every((each) => typeof each === "string"),
     ),
   );
+  bindCaptureKey(menuKeys.get(CAPTURE_COMMAND) ?? [], event.sender);
   buildMenu();
 });
 
@@ -314,6 +389,7 @@ function buildMenu() {
       submenu: [
         command("New To-Do", "task.new"),
         command("Quick Entry", "task.quickEntry"),
+        command("Quick Entry from Any App", CAPTURE_COMMAND),
         command("New Project", "project.new"),
         command("New Area", "area.new"),
         command("New Habit…", "habit.new"),
@@ -360,10 +436,21 @@ function buildMenu() {
 app.whenReady().then(() => {
   if (!fixture) session.init();
   buildMenu();
-  createWindow();
+  const window = createWindow();
+  capture = createCapture({
+    load: (panel) => loadRenderer(panel, "capture"),
+    preload: join(import.meta.dirname, "../preload/index.cjs"),
+    quitting: () => quitting,
+    // A quit waits for the panel's save under way, as it does for the main window's.
+    hold: holdClose,
+  });
+  // Ready before the first press. Fixture launches make it only when a script opens it
+  // (`calCapture`), so the scripts' window 0 stays the main window.
+  if (fixture) Object.assign(globalThis, { calCapture: capture });
+  else window.once("ready-to-show", () => capture?.warm());
   startUpdates();
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (mainWindows().length === 0) createWindow();
   });
 });
 
@@ -376,8 +463,14 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   if (quitting) return;
   quitting = true;
-  calkit.stop();
   void session.close();
+});
+
+// Every window has closed, so their saves are done: an event written just before ⌘Q
+// still has calkit to reach EventKit through.
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+  calkit.stop();
 });
 
 app.on("quit", () => {

@@ -58,7 +58,8 @@ export const deviceDefaults = {
   freeCalendars: [] as string[],
   // Where new events go; the system default calendar when unset.
   defaultCalendar: null as string | null,
-  launchAtLogin: false,
+  // How big the whole window draws, in percent: text, panes and the grid together.
+  uiScale: 100,
   // Zones picked lately, newest first, so the picker can offer them before the search.
   recentZones: [] as string[],
   // Widths of the Mac's sidebar and to-do list in px, set by dragging their edges. The
@@ -69,6 +70,9 @@ export const deviceDefaults = {
   showMiniMonth: true,
   showCalendarList: true,
 };
+
+// The range and step of `uiScale`, for the setting's check and its slider.
+export const UI_SCALE = { min: 80, max: 150, step: 5 } as const;
 
 export type AccountSettings = typeof accountDefaults;
 export type DeviceSettings = typeof deviceDefaults;
@@ -158,7 +162,8 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
   freeCalendars: arrayOf(isString, 1000),
   defaultCalendar: nullable(isString),
-  launchAtLogin: isBool,
+  uiScale: (value) =>
+    isInt(UI_SCALE.min, UI_SCALE.max)(value) && Number(value) % UI_SCALE.step === 0,
   recentZones: arrayOf(isZone, 20),
   sidebarWidth: isInt(0, 2000),
   tasksWidth: isInt(0, 2000),
@@ -237,6 +242,12 @@ export class Settings {
   setDevice<K extends keyof DeviceSettings>(key: K, value: DeviceSettings[K]) {
     this.store.setItem(`cal.${key}`, JSON.stringify(value));
     this.deviceSnapshot = { ...this.deviceSnapshot, [key]: value };
+    for (const listener of this.listeners) listener();
+  }
+
+  // Re-reads device settings after another window of this device saved them.
+  reload() {
+    this.deviceSnapshot = readDeviceSettings(this.store);
     for (const listener of this.listeners) listener();
   }
 

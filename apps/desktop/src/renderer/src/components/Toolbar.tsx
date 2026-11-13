@@ -16,7 +16,7 @@ import {
   useUi,
 } from "../lib/ui";
 import { zoneCity } from "../lib/zones";
-import { PANE_TOGGLES_END } from "./PaneToggles";
+import { paneTogglesEnd } from "./PaneToggles";
 import { IconButton, Keycaps } from "./ui";
 
 // The toolbar's own left padding (`pl-4`), and the gap it leaves after the pane toggles.
@@ -29,10 +29,10 @@ const GAP = 12;
  * the title clear of the traffic lights and the pane toggles beside them.
  */
 export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
-  const { today, account } = useApp();
+  const { today, account, device } = useApp();
   const sidebar = useUi((state) => state.sidebar);
   const tasks = useUi((state) => state.tasks);
-  const spacer = sidebar || tasks ? 0 : PANE_TOGGLES_END + GAP - PADDING;
+  const spacer = sidebar || tasks ? 0 : paneTogglesEnd(device.uiScale) + GAP - PADDING;
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
   const travelZone = useUi((state) => state.travelZone);

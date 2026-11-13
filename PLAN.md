@@ -286,7 +286,9 @@ v1.2 (Mac, after a usability pass against Notion Calendar, Things 3 and TickTick
 
 v1.3 (Mac, from using v1.2): keyboard shortcuts you can change (Settings > Shortcuts, synced with the account; the menu bar, tooltips and the `?` sheet follow them) and a Settings > About page; a year view on `Y`; pane toggles that take clicks, animate between open and closed and share a centre line with the traffic lights; a named habit row with an add button in the grid and a Habits section in the sidebar; a new to-do's card reads its title as Quick Entry text; the Event / To-do switch shows its keys inside each choice. Clerk was looked at again and Better Auth stays.
 
-Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, global Quick Entry hotkey, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
+v1.4 (Mac): Quick Entry from any app: ⌃⌘N (rebindable in Settings > Shortcuts) shows a floating panel over whatever app or full-screen Space has focus, and Enter saves the to-do or event without bringing Cal forward; an interface size setting (80–150%) that scales the whole window, not just the hour height.
+
+Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
 
 ## 8. Not in v1
 

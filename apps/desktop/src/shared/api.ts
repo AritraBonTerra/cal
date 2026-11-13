@@ -55,7 +55,39 @@ export interface CalBridge {
   // Runs `listener` when the window is about to close or the app to quit. The window
   // stays open until every listener's promise settles, so unsaved text can be written.
   onClosing(listener: () => Promise<void>): () => void;
+  // Draws the window at `percent` of its normal size (Settings > Interface size). Applied
+  // before it returns, so calling it ahead of the first render avoids a resize flash.
+  setScale(percent: number): void;
+  // Main couldn't make a command's key work in every app (another app holds it); the
+  // payload is the binding.
+  onGlobalKeyTaken(listener: (binding: string) => void): () => void;
+  capture: CaptureBridge;
+  // Whether macOS opens Cal at login (System Settings > Login Items is the record). Only
+  // the installed app can be a login item; elsewhere it stays false.
+  openAtLogin: {
+    get(): Promise<boolean>;
+    // Resolves with the state macOS reports after the change.
+    set(open: boolean): Promise<boolean>;
+  };
 }
+
+/*
+ * Quick Entry from any app: a floating panel that main shows on a global hotkey. The
+ * panel window is the renderer loaded with ?surface=capture.
+ */
+export interface CaptureBridge {
+  // Shows the panel (the main window's "Quick Entry from Any App" command).
+  open(): Promise<void>;
+  // Hides the panel; focus goes back to the app that had it.
+  hide(): Promise<void>;
+  // The panel's content size in window points, so main can fit the window to it.
+  setSize(width: number, height: number): Promise<void>;
+  // The panel was hidden: whatever it showed should start fresh next time.
+  onReset(listener: () => void): () => void;
+}
+
+// The command whose keys main registers system-wide to open the capture panel.
+export const CAPTURE_COMMAND = "task.captureAnywhere";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -78,6 +110,13 @@ export const channels = {
   closeReady: "cal:close-ready",
   menuKeys: "cal:menu-keys",
   checkForUpdates: "cal:check-for-updates",
+  scale: "cal:scale",
+  globalKeyTaken: "cal:global-key-taken",
+  captureOpen: "cal:capture-open",
+  captureHide: "cal:capture-hide",
+  captureSize: "cal:capture-size",
+  captureReset: "cal:capture-reset",
+  openAtLogin: "cal:open-at-login",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.

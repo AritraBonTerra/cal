@@ -38,6 +38,7 @@ export {
   readAccountSettings,
   readDeviceSettings,
   Settings,
+  UI_SCALE,
   type ZoneColumn,
 } from "./settings";
 export { LiveTables } from "./tables";
