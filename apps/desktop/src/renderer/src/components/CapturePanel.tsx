@@ -1,6 +1,7 @@
 import { useSettings, useTable } from "@cal/app-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCalendars } from "../lib/calendars";
+import { editText } from "../lib/keyboard";
 import { setTimeFormat } from "../lib/time";
 import { deviceZone } from "../lib/zones";
 import { QuickEntryForm } from "./QuickEntry";
@@ -42,6 +43,9 @@ export function CapturePanel() {
     [],
   );
   useEffect(() => window.cal.setScale(device.uiScale), [device.uiScale]);
+  // ⌘Z and ⇧⌘Z come through the menu bar; in the panel they only edit the text. The
+  // window's other commands (the calendar's) don't apply here.
+  useEffect(() => window.cal.onCommand((id) => void editText(id)), []);
 
   // Tells main the panel's size in window points (CSS pixels times the zoom), so the
   // window grows when the chips wrap and follows the interface size.
