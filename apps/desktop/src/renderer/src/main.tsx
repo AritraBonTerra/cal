@@ -3,6 +3,7 @@ import { startOfWeek, toDayKey } from "@cal/domain";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { CapturePanel } from "./components/CapturePanel";
 import { ClockProvider, now } from "./lib/clock";
 import { ui } from "./lib/ui";
 import "./styles.css";
@@ -19,6 +20,17 @@ const cal = createCal(window.cal.data, now, window.cal.config.fixture ? undefine
 window.cal.auth.onChange(() => void cal.history.clear());
 // A closing window waits for the writes already under way (a field saved a moment ago).
 window.cal.onClosing(() => cal.history.settled());
+// Device settings are shared by this device's windows (the main window and the capture
+// panel); a change saved in one reaches the others as a storage event.
+window.addEventListener("storage", (event) => {
+  if (event.key?.startsWith("cal.")) cal.settings.reload();
+});
+// Before the first render, so the window never draws at the wrong size first.
+window.cal.setScale(cal.settings.device.uiScale);
+
+// The capture panel (Quick Entry over other apps) is this page with ?surface=capture.
+const capture = new URLSearchParams(window.location.search).get("surface") === "capture";
+if (capture) document.documentElement.style.overflow = "hidden";
 
 // Typed entries of a settings patch, so each key reaches the matching setter.
 const entries = <T extends object>(patch: T) => Object.entries(patch) as [keyof T, T[keyof T]][];
@@ -44,9 +56,7 @@ if (!root) throw new Error("No #root element");
 createRoot(root).render(
   <StrictMode>
     <CalProvider cal={cal}>
-      <ClockProvider>
-        <App />
-      </ClockProvider>
+      <ClockProvider>{capture ? <CapturePanel /> : <App />}</ClockProvider>
     </CalProvider>
   </StrictMode>,
 );

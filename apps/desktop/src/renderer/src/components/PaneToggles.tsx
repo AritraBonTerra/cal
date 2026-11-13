@@ -1,3 +1,4 @@
+import { useSettings } from "@cal/app-core";
 import type { ReactNode } from "react";
 import { useShortcut, withShortcut } from "../lib/shortcuts";
 import { togglePane, useUi } from "../lib/ui";
@@ -9,23 +10,32 @@ import { togglePane, useUi } from "../lib/ui";
  * open) and the plain shape (pane hidden, dimmed). Their 30px buttons centre on y = 26,
  * the middle of the 52px top band, where the traffic lights and toolbar also sit.
  * App.tsx renders them after every drag band, so Electron leaves their clicks alone.
- * `PANE_TOGGLES_END` is where they stop, for the toolbar to keep its title clear of them
+ * `paneTogglesEnd` is where they stop, for the toolbar to keep its title clear of them
  * once both panes are hidden.
+ *
+ * The traffic lights don't zoom with the interface size, so the toggles' left edge stays
+ * at the same screen distance from them: LEFT window points, fewer CSS pixels when the
+ * window draws larger. Main moves the lights down to the scaled band's centre.
  */
 // 12px after the green light's right edge: x ≈ 75 on macOS 26 and later, whose lights are
 // wider and further apart than before (x ≈ 70 there, so the gap is a little larger).
 const LEFT = 87;
 const SIZE = 30;
 const GAP = 4;
-export const PANE_TOGGLES_END = LEFT + SIZE * 2 + GAP;
+
+// The toggles' left edge in CSS pixels at interface size `scale` (percent).
+const leftAt = (scale: number) => (LEFT * 100) / scale;
+
+export const paneTogglesEnd = (scale: number) => leftAt(scale) + SIZE * 2 + GAP;
 
 export function PaneToggles() {
+  const { device } = useSettings();
   const sidebar = useUi((state) => state.sidebar);
   const tasks = useUi((state) => state.tasks);
   const sidebarKey = useShortcut("view.sidebar");
   const tasksKey = useShortcut("view.tasks");
   return (
-    <div className="fixed top-[11px] z-40 flex" style={{ left: LEFT, gap: GAP }}>
+    <div className="fixed top-[11px] z-40 flex" style={{ left: leftAt(device.uiScale), gap: GAP }}>
       <Toggle
         pane="sidebar"
         label="Sidebar"

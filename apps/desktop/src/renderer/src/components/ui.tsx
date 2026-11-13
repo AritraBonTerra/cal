@@ -1,9 +1,10 @@
 import { keyLabels } from "@cal/app-core";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, RotateCcw } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
   useState,
@@ -220,6 +221,126 @@ export function Switch({ checked, onChange, label }: SwitchProps) {
         style={{ left: checked ? 12 : 2 }}
       />
     </button>
+  );
+}
+
+interface SliderProps {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  label: string;
+  // The value's text in the readout, e.g. "110%".
+  format?: (value: number) => string;
+  // A tick under this value, and a reset button whenever the value isn't it.
+  reset?: number;
+  // Track width in px.
+  width?: number;
+}
+
+// A 140px slider with its value read out beside it. Dragging shows the pending value
+// and commits on release, so a setting that reflows the page (interface size) doesn't
+// move the thumb under the pointer. Arrow keys step and commit at once; Home/End
+// jump to the ends.
+export function Slider({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  label,
+  format = String,
+  reset,
+  width = 140,
+}: SliderProps) {
+  const [pending, setPending] = useState<number | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const shown = pending ?? value;
+  const fraction = (shown - min) / (max - min);
+  const snap = (raw: number) => Math.min(max, Math.max(min, Math.round(raw / step) * step));
+  const valueAt = (event: ReactPointerEvent) => {
+    const track = trackRef.current;
+    if (!track) return value;
+    const { left, width } = track.getBoundingClientRect();
+    return snap(min + ((event.clientX - left) / width) * (max - min));
+  };
+  const commit = (next: number) => {
+    if (next !== value) onChange(next);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const next = {
+      ArrowRight: value + step,
+      ArrowUp: value + step,
+      ArrowLeft: value - step,
+      ArrowDown: value - step,
+      Home: min,
+      End: max,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    commit(snap(next));
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={shown}
+        aria-valuetext={format(shown)}
+        onKeyDown={onKeyDown}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setPending(valueAt(event));
+        }}
+        onPointerMove={(event) => {
+          if (pending !== null) setPending(valueAt(event));
+        }}
+        onPointerUp={(event) => {
+          if (pending === null) return;
+          setPending(null);
+          commit(valueAt(event));
+        }}
+        onPointerCancel={() => setPending(null)}
+        className="relative flex h-6 shrink-0 cursor-default touch-none items-center rounded-md outline-offset-0"
+        style={{ width }}
+      >
+        <div ref={trackRef} className="relative h-1 w-full rounded-full bg-edge-strong">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-accent-solid"
+            style={{ width: `${fraction * 100}%` }}
+          />
+          {reset !== undefined && (
+            <span
+              aria-hidden
+              className="absolute top-full mt-[3px] h-1 w-px -translate-x-1/2 bg-edge-strong"
+              style={{ left: `${((reset - min) / (max - min)) * 100}%` }}
+            />
+          )}
+          <span
+            aria-hidden
+            className={`absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_0.5px_var(--cal-edge-strong),0_1px_2px_oklch(0_0_0/0.2)] ${
+              pending === null ? "transition-[left] duration-100" : ""
+            }`}
+            style={{ left: `${fraction * 100}%` }}
+          />
+        </div>
+      </div>
+      <span className="w-9 text-right text-small text-ink-2 tnum">{format(shown)}</span>
+      {reset !== undefined && (
+        <IconButton
+          label={`Reset to ${format(reset)}`}
+          onClick={() => commit(reset)}
+          className={`h-5! w-5! text-ink-3 ${value === reset ? "invisible" : ""}`}
+        >
+          <RotateCcw size={12} strokeWidth={1.5} absoluteStrokeWidth />
+        </IconButton>
+      )}
+    </div>
   );
 }
 

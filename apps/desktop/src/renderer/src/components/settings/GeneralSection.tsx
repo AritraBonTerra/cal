@@ -1,6 +1,8 @@
-import { useSettings } from "@cal/app-core";
+import { UI_SCALE, useSettings } from "@cal/app-core";
+import { useEffect, useState } from "react";
+import { CAPTURE_COMMAND } from "../../../../shared/api";
 import { shortcutText, useShortcut } from "../../lib/shortcuts";
-import { Segmented, Select, Switch } from "../ui";
+import { Segmented, Select, Slider, Switch } from "../ui";
 import { Group, Row } from "./controls";
 
 const WEEK_STARTS = [
@@ -9,12 +11,31 @@ const WEEK_STARTS = [
   { value: 6, label: "Saturday" },
 ];
 
-// General: what the calendar shows, navigation, time format, theme and maps.
+// Whether macOS opens Cal at login, read from and written to Login Items.
+function useOpenAtLogin() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void window.cal.openAtLogin.get().then((value) => active && setOpen(value));
+    return () => {
+      active = false;
+    };
+  }, []);
+  const change = (value: boolean) => {
+    setOpen(value);
+    void window.cal.openAtLogin.set(value).then(setOpen);
+  };
+  return [open, change] as const;
+}
+
+// General: what the calendar shows, navigation, time format, theme, maps and startup.
 export function GeneralSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const weekendsKey = useShortcut("view.weekends");
   const todayKey = useShortcut("nav.today");
   const todayLeftKey = useShortcut("nav.todayLeft");
+  const captureKey = useShortcut(CAPTURE_COMMAND);
+  const [openAtLogin, setOpenAtLogin] = useOpenAtLogin();
   // "Press T to", or "Today command" once T is unbound.
   const todayLabel = todayKey ? `Press ${shortcutText(todayKey)} to` : "Today command";
   return (
@@ -71,6 +92,18 @@ export function GeneralSection() {
         </Row>
       </Group>
       <Group title="Appearance">
+        <Row label="Interface size" note="Text, panes and the calendar grow together">
+          <Slider
+            value={device.uiScale}
+            min={UI_SCALE.min}
+            max={UI_SCALE.max}
+            step={UI_SCALE.step}
+            onChange={(value) => setDevice("uiScale", value)}
+            label="Interface size"
+            format={(value) => `${value}%`}
+            reset={100}
+          />
+        </Row>
         <Row label="Time format">
           <Segmented
             value={account.timeFormat}
@@ -105,6 +138,18 @@ export function GeneralSection() {
             onChange={(value) => void setAccount("maps", value)}
             label="Open locations in"
           />
+        </Row>
+      </Group>
+      <Group title="Startup">
+        <Row
+          label="Open at login"
+          note={
+            captureKey
+              ? `So ${shortcutText(captureKey)} adds to Cal from any app as soon as you log in`
+              : "Cal starts when you log in to the Mac"
+          }
+        >
+          <Switch checked={openAtLogin} onChange={setOpenAtLogin} label="Open at login" />
         </Row>
       </Group>
     </>

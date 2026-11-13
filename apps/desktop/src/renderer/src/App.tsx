@@ -40,8 +40,9 @@ import { useKeyboard } from "./lib/keyboard";
 import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
 import { useMode } from "./lib/scheme";
-import { useKeybindings } from "./lib/shortcuts";
+import { shortcutText, useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
+import { showToast } from "./lib/toast";
 import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
 import { yearDays } from "./lib/year";
 import { deviceZone, zonedDayKey } from "./lib/zones";
@@ -95,13 +96,27 @@ function useListFallback(projects: readonly Project[], areas: readonly Area[]) {
   }, [list, projects, areas]);
 }
 
-// Settings that live outside React: the week start the view helpers read, and the
-// window theme, which Electron applies to `prefers-color-scheme`.
+// Settings that live outside React: the week start the view helpers read, the window
+// theme, which Electron applies to `prefers-color-scheme`, and the interface size.
 function useSettingsEffects(account: AccountSettings, device: DeviceSettings, today: DayKey) {
   useEffect(() => setWeekStart(account.weekStart, today), [account.weekStart, today]);
   useEffect(() => {
     void window.cal.setTheme(device.theme);
   }, [device.theme]);
+  useEffect(() => window.cal.setScale(device.uiScale), [device.uiScale]);
+}
+
+// Says so when another app already holds the key for Quick Entry from any app.
+function useGlobalKeyNotice() {
+  useEffect(
+    () =>
+      window.cal.onGlobalKeyTaken((binding) =>
+        showToast(
+          `Another app is using ${shortcutText(binding)}. Pick another key for Quick Entry from Any App in Settings > Shortcuts.`,
+        ),
+      ),
+    [],
+  );
 }
 
 const isWeekend = (day: string) => weekday(day) === 0 || weekday(day) === 6;
@@ -135,6 +150,7 @@ export function App() {
   // Before anything below formats a time, so one render never mixes clocks.
   setTimeFormat(account.timeFormat);
   useSettingsEffects(account, device, today);
+  useGlobalKeyNotice();
   const calendars = useCalendars();
   const palette = useChipPalette(calendars, mode, device.calendarColors);
   const { auth, sync } = useAccount();

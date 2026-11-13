@@ -76,12 +76,20 @@ export function useKeyboard(cal: Cal) {
   useEffect(
     () =>
       window.cal.onCommand((id) => {
-        if ((id === "edit.undo" || id === "edit.redo") && inTextField(document.activeElement)) {
-          document.execCommand(id === "edit.undo" ? "undo" : "redo");
-          return;
-        }
-        cal.commands.run(id);
+        if (!editText(id)) cal.commands.run(id);
       }),
     [cal],
   );
+}
+
+/**
+ * Runs the menu's Undo or Redo (`id`) on the focused text field, which keeps its own
+ * typing history. Returns whether it did; the menu's other commands are the window's.
+ */
+export function editText(id: string) {
+  if ((id !== "edit.undo" && id !== "edit.redo") || !inTextField(document.activeElement)) {
+    return false;
+  }
+  document.execCommand(id === "edit.undo" ? "undo" : "redo");
+  return true;
 }

@@ -151,4 +151,26 @@ describe("settings", () => {
     });
     expect(read).toMatchObject({ showMiniMonth: false, showCalendarList: true });
   });
+
+  test("interface size keeps to its range and steps, and reload picks up another window's save", () => {
+    const { values, settings } = setup();
+    expect(settings.device.uiScale).toBe(100);
+    const read = (raw: string) => {
+      values.set("cal.uiScale", raw);
+      return readDeviceSettings({ getItem: (key) => values.get(key) ?? null, setItem: () => {} })
+        .uiScale;
+    };
+    expect(read("125")).toBe(125);
+    expect(read("123")).toBe(100);
+    expect(read("200")).toBe(100);
+    expect(read("75")).toBe(100);
+    // The capture panel saw nothing until told the main window saved.
+    values.set("cal.uiScale", "110");
+    expect(settings.device.uiScale).toBe(100);
+    let heard = 0;
+    settings.subscribeDevice(() => heard++);
+    settings.reload();
+    expect(settings.device.uiScale).toBe(110);
+    expect(heard).toBe(1);
+  });
 });

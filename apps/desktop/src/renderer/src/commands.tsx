@@ -1,7 +1,7 @@
 import { type Command, useActions, useCommands, useHistory, useSettings } from "@cal/app-core";
 import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain";
 import { useRef } from "react";
-import type { AuthState } from "../../shared/api";
+import { type AuthState, CAPTURE_COMMAND } from "../../shared/api";
 import type { AppState } from "./lib/app";
 import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
@@ -394,6 +394,16 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         keys: ["mod+shift+n"],
         aliases: ["natural language"],
         run: () => toggleOverlay("quickEntry"),
+      },
+      {
+        // Main registers its keys system-wide (main/capture.ts).
+        id: CAPTURE_COMMAND,
+        title: "Quick Entry from Any App",
+        group: "To-Do",
+        when: "Works in every app",
+        keys: ["mod+ctrl+n"],
+        aliases: ["global", "capture", "anywhere", "hotkey"],
+        run: () => void window.cal.capture.open(),
       },
       {
         id: "task.complete",

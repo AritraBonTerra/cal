@@ -1,6 +1,6 @@
 import type { DataSource } from "@cal/app-core";
 import type { CalendarSource } from "@cal/calendar-source";
-import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
+import { contextBridge, type IpcRendererEvent, ipcRenderer, webFrame } from "electron";
 import {
   type AuthCall,
   type AuthState,
@@ -85,6 +85,22 @@ const bridge: CalBridge = {
     return () => {
       closing.delete(listener);
     };
+  },
+  setScale: (percent) => {
+    webFrame.setZoomFactor(percent / 100);
+    // Main moves the traffic lights to stay centred on the scaled top band.
+    void ipcRenderer.invoke(channels.scale, percent);
+  },
+  onGlobalKeyTaken: (listener) => listen<string>(channels.globalKeyTaken, listener),
+  openAtLogin: {
+    get: () => ipcRenderer.invoke(channels.openAtLogin),
+    set: (open) => ipcRenderer.invoke(channels.openAtLogin, open),
+  },
+  capture: {
+    open: () => ipcRenderer.invoke(channels.captureOpen),
+    hide: () => ipcRenderer.invoke(channels.captureHide),
+    setSize: (width, height) => ipcRenderer.invoke(channels.captureSize, width, height),
+    onReset: (listener) => listen<null>(channels.captureReset, () => listener()),
   },
 };
 
