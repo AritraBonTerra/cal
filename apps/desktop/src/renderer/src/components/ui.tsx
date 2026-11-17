@@ -118,7 +118,7 @@ export function Overlay({
         aria-label={label}
         onKeyDown={onKeyDown}
         tabIndex={onKeyDown ? -1 : undefined}
-        className={`h-fit max-h-[76vh] overflow-hidden bg-raised text-ink shadow-float outline-none ${
+        className={`relative h-fit max-h-[76vh] overflow-hidden bg-raised text-ink shadow-float outline-none ${
           kind === "sheet" ? "sheet-in rounded-b-xl" : "pop-in rounded-xl"
         }`}
         style={{ width, height }}

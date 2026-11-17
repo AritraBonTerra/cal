@@ -101,6 +101,57 @@
   }
 }
 
+/*
+ * The Welcome walkthrough's drag picture: a to-do lifts off its list row, travels to the
+ * grid slot (--welcome-dx/dy, set by the picture) and fades as the block appears there,
+ * on a 5s loop. Under reduced motion nothing moves: the block is simply in place.
+ */
+@keyframes welcome-drag {
+  0%,
+  10% {
+    opacity: 0;
+    transform: none;
+  }
+  16%,
+  28% {
+    opacity: 1;
+    transform: none;
+  }
+  60% {
+    opacity: 1;
+    transform: translate(var(--welcome-dx), var(--welcome-dy));
+  }
+  66%,
+  100% {
+    opacity: 0;
+    transform: translate(var(--welcome-dx), var(--welcome-dy));
+  }
+}
+@keyframes welcome-drop {
+  0%,
+  60% {
+    opacity: 0;
+  }
+  66%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@utility welcome-drag {
+  opacity: 0;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: welcome-drag 5s var(--ease-in-out) infinite;
+  }
+}
+@utility welcome-drop {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: welcome-drop 5s var(--ease-in-out) infinite;
+  }
+}
+
 /* Side panes slide by width; under reduced motion they snap. */
 @utility pane-slide {
   @media (prefers-reduced-motion: no-preference) {

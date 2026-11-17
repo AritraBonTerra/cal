@@ -799,6 +799,13 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         run: () => toggleOverlay("shortcuts"),
       },
       {
+        id: "help.welcome",
+        title: "Welcome to Cal",
+        group: "General",
+        aliases: ["tour", "walkthrough", "getting started", "onboarding", "guide", "help"],
+        run: () => toggleOverlay("welcome"),
+      },
+      {
         id: "settings.open",
         title: "Settings…",
         group: "General",

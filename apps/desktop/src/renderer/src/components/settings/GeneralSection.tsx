@@ -2,8 +2,9 @@ import { UI_SCALE, useSettings } from "@cal/app-core";
 import { useEffect, useState } from "react";
 import { CAPTURE_COMMAND } from "../../../../shared/api";
 import { shortcutText, useShortcut } from "../../lib/shortcuts";
+import { ui } from "../../lib/ui";
 import { Segmented, Select, Slider, Switch } from "../ui";
-import { Group, Row } from "./controls";
+import { Group, Row, RowButton } from "./controls";
 
 const WEEK_STARTS = [
   { value: 0, label: "Sunday" },
@@ -28,7 +29,8 @@ function useOpenAtLogin() {
   return [open, change] as const;
 }
 
-// General: what the calendar shows, navigation, time format, theme, maps and startup.
+// General: what the calendar shows, navigation, time format, theme, maps, startup, and
+// the way back to the Welcome walkthrough.
 export function GeneralSection() {
   const { account, device, setAccount, setDevice } = useSettings();
   const weekendsKey = useShortcut("view.weekends");
@@ -150,6 +152,11 @@ export function GeneralSection() {
           }
         >
           <Switch checked={openAtLogin} onChange={setOpenAtLogin} label="Open at login" />
+        </Row>
+      </Group>
+      <Group title="Help">
+        <Row label="Welcome walkthrough" note="Calendars, to-dos, habits and shortcuts in 6 steps">
+          <RowButton onClick={() => ui.set({ overlay: "welcome" })}>Show again</RowButton>
         </Row>
       </Group>
     </>

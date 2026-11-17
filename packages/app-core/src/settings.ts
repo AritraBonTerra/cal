@@ -69,6 +69,8 @@ export const deviceDefaults = {
   // Whether the sidebar's mini month and calendar list are expanded.
   showMiniMonth: true,
   showCalendarList: true,
+  // Whether this device has shown the Welcome walkthrough, which opens once by itself.
+  welcomed: false,
 };
 
 // The range and step of `uiScale`, for the setting's check and its slider.
@@ -169,6 +171,7 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   tasksWidth: isInt(0, 2000),
   showMiniMonth: isBool,
   showCalendarList: isBool,
+  welcomed: isBool,
 };
 
 // `json` parsed, if it passes `check`.

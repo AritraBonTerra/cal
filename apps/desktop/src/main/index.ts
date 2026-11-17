@@ -429,6 +429,13 @@ function buildMenu() {
       ],
     },
     { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [
+        command("Welcome to Cal", "help.welcome"),
+        command("Keyboard Shortcuts", "help.shortcuts"),
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

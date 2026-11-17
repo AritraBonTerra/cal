@@ -36,7 +36,8 @@ export type Overlay =
   | "move"
   | "newHabit"
   | "settings"
-  | "zonePicker";
+  | "zonePicker"
+  | "welcome";
 
 export type SettingsSection =
   | "general"

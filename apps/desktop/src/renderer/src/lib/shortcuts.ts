@@ -19,13 +19,16 @@ import { isMac } from "./keyboard";
  * The binding in effect for command `id`: `prefer` when it's still one of its keys
  * (Week shows W rather than 0), else its first; null when it has none.
  */
-export function useShortcut(id: string, prefer?: string) {
+export const useShortcut = (id: string, prefer?: string) => useShortcuts([[id, prefer]])[0] ?? null;
+
+// useShortcut for several commands at once, each as [id, prefer], in the order given.
+export function useShortcuts(ids: readonly (readonly [id: string, prefer?: string])[]) {
   const { commands } = useCal();
   useSyncExternalStore(
     (listener) => commands.subscribe(listener),
     () => commands.version,
   );
-  return pick(commands.keysFor(id) ?? [], prefer);
+  return ids.map(([id, prefer]) => pick(commands.keysFor(id) ?? [], prefer));
 }
 
 function pick(keys: readonly string[], prefer?: string) {
