@@ -43,7 +43,15 @@ import { useMode } from "./lib/scheme";
 import { shortcutText, useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
 import { showToast } from "./lib/toast";
-import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
+import {
+  COMPACT_WIDTH,
+  followToday,
+  type ListId,
+  setWeekStart,
+  TIGHT_WIDTH,
+  ui,
+  useUi,
+} from "./lib/ui";
 import { yearDays } from "./lib/year";
 import { deviceZone, zonedDayKey } from "./lib/zones";
 
@@ -119,6 +127,16 @@ function useGlobalKeyNotice() {
   );
 }
 
+// When the grid's today changes while the window is open, lets the view follow it.
+function useFollowToday(today: DayKey, days: readonly DayKey[]) {
+  const previous = useRef(today);
+  useEffect(() => {
+    if (previous.current === today) return;
+    followToday(previous.current, today, days);
+    previous.current = today;
+  }, [today, days]);
+}
+
 const isWeekend = (day: string) => weekday(day) === 0 || weekday(day) === 6;
 
 /**
@@ -178,6 +196,7 @@ export function App() {
           : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
     [view, anchor, account.showWeekends, account.weekStart],
   );
+  useFollowToday(gridToday, days);
   const first = days[0] ?? today;
   const last = days[days.length - 1] ?? today;
   // Another zone's day overlaps two of the Mac's, so the fetch widens by one each side.
