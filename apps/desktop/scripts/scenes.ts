@@ -108,6 +108,36 @@ export const scenes: Scene[] = [
   { name: "year-tight", width: 760, height: 520, keys: ["y"] },
   { name: "year-tight-sidebar-dark", dark: true, width: 760, height: 520, keys: ["y", "Meta+\\"] },
   { name: "palette", keys: ["Meta+k"] },
+  // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
+  ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(
+    (step, index): Scene => ({
+      name: `welcome-${step}`,
+      keys: ["Meta+k"],
+      text: "welcome",
+      after: ["Enter", ...Array.from({ length: index }, () => "ArrowRight")],
+    }),
+  ),
+  {
+    name: "welcome-plan-dark",
+    dark: true,
+    keys: ["Meta+k"],
+    text: "welcome",
+    after: ["Enter", "ArrowRight", "ArrowRight"],
+  },
+  {
+    name: "welcome-short",
+    width: 760,
+    height: 520,
+    keys: ["Meta+k"],
+    text: "welcome",
+    after: ["Enter"],
+  },
+  // Settings > General scrolled to its last group: Show again reopens the walkthrough.
+  {
+    name: "settings-welcome",
+    keys: ["Meta+,"],
+    steps: [{ reveal: "section:has-text('Welcome walkthrough')" }],
+  },
   { name: "shortcuts", keys: ["?"] },
   {
     name: "quick-entry",

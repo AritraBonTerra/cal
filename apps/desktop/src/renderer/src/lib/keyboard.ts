@@ -1,5 +1,6 @@
 import type { Cal, KeyInput } from "@cal/app-core";
 import { useEffect } from "react";
+import { ui } from "./ui";
 
 export const isMac = window.cal.platform === "darwin";
 
@@ -51,6 +52,9 @@ export function keyInput(event: KeyboardEvent): KeyInput {
   };
 }
 
+// Menu commands that still run over the Welcome walkthrough: each swaps or closes it.
+const OVER_WELCOME = new Set(["help.welcome", "help.shortcuts", "palette.open", "settings.open"]);
+
 /**
  * Routes window key presses to the command registry. Inside a text field only ⌘
  * shortcuts run, so typing "t" never jumps to today. Overlays and inputs that handle a
@@ -73,9 +77,13 @@ export function useKeyboard(cal: Cal) {
   }, [cal]);
 
   // Menu items arrive as command ids. Undo inside a text field stays with the field.
+  // The Welcome walkthrough covers the window like a sheet: while it's open only the
+  // menu commands that put another panel in its place run, so ⌘N or ⌘Z can't change
+  // what's behind it.
   useEffect(
     () =>
       window.cal.onCommand((id) => {
+        if (ui.get().overlay === "welcome" && !OVER_WELCOME.has(id)) return;
         if (!editText(id)) cal.commands.run(id);
       }),
     [cal],

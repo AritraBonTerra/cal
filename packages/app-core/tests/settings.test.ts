@@ -152,6 +152,19 @@ describe("settings", () => {
     expect(read).toMatchObject({ showMiniMonth: false, showCalendarList: true });
   });
 
+  test("the Welcome walkthrough is unseen at first and stays seen across launches", () => {
+    const { settings, values } = setup();
+    expect(settings.device.welcomed).toBe(false);
+    settings.setDevice("welcomed", true);
+    // A later launch (or an updated app) reads the same store.
+    expect(
+      readDeviceSettings({ getItem: (key) => values.get(key) ?? null, setItem() {} }),
+    ).toMatchObject({ welcomed: true });
+    values.set("cal.welcomed", '"yes"');
+    settings.reload();
+    expect(settings.device.welcomed).toBe(false);
+  });
+
   test("interface size keeps to its range and steps, and reload picks up another window's save", () => {
     const { values, settings } = setup();
     expect(settings.device.uiScale).toBe(100);

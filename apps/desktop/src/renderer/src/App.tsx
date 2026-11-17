@@ -1,4 +1,10 @@
-import { type AccountSettings, type DeviceSettings, useCal, useSettings } from "@cal/app-core";
+import {
+  type AccountSettings,
+  type DeviceSettings,
+  type Settings,
+  useCal,
+  useSettings,
+} from "@cal/app-core";
 import {
   type Area,
   addDays,
@@ -30,6 +36,7 @@ import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { TaskPane } from "./components/TaskPane";
 import { Toast } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
+import { Welcome } from "./components/Welcome";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
 import { AppContext, type AppState } from "./lib/app";
@@ -139,6 +146,19 @@ function useFollowToday(today: DayKey, zone: string, days: readonly DayKey[]) {
   }, [today, zone, days]);
 }
 
+/**
+ * Opens the Welcome walkthrough the first time Cal runs on this Mac, and records that it
+ * has, so it never opens by itself again (Help > Welcome to Cal brings it back). Fixture
+ * launches skip it: every one starts from the defaults, and scenes expect a bare window.
+ */
+function useFirstRun(welcomed: boolean, settings: Settings) {
+  useEffect(() => {
+    if (welcomed || window.cal.config.fixture) return;
+    settings.setDevice("welcomed", true);
+    ui.set((state) => (state.overlay === null ? { overlay: "welcome" } : {}));
+  }, [welcomed, settings]);
+}
+
 const isWeekend = (day: string) => weekday(day) === 0 || weekday(day) === 6;
 
 /**
@@ -166,6 +186,7 @@ export function App() {
   const now = useNow();
   const mode = useMode();
   const { account, device } = useSettings();
+  useFirstRun(device.welcomed, cal.settings);
   useKeybindings(account.keybindings);
   // Before anything below formats a time, so one render never mixes clocks.
   setTimeFormat(account.timeFormat);
@@ -287,6 +308,9 @@ export function App() {
         {overlay === "newHabit" && <NewHabit />}
         {overlay === "settings" && <SettingsPanel auth={auth} sync={sync} />}
         {overlay === "zonePicker" && <ZonePicker />}
+        {overlay === "welcome" && (
+          <Welcome auth={auth} access={access} requestAccess={requestAccess} />
+        )}
       </div>
     </AppContext.Provider>
   );
