@@ -200,10 +200,10 @@ export function goToday(today: DayKey, leftAlign = false) {
 }
 
 /**
- * Keeps a numbered view on today when the date changes under it: at midnight, or when a
- * zone change moves the grid's today. A view whose days (`shown`) held the old today
- * now starts on the new one. A view paged away from today stays put, and so do the week,
- * month and year views, which keep their own alignment.
+ * Keeps a numbered view on today when the date rolls over (midnight, or waking from
+ * sleep days later). A view whose days (`shown`) held the old today now starts on the
+ * new one. A view paged away from today stays put, and so do the week, month and year
+ * views, which keep their own alignment.
  */
 export function followToday(previous: DayKey, today: DayKey, shown: readonly DayKey[]) {
   const { view } = ui.get();

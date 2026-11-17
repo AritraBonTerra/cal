@@ -152,20 +152,16 @@ describe("followToday", () => {
     // Left open overnight, the 3-day view kept Wed–Fri and put today second.
     followToday(TODAY, NEXT, shown());
     expect(ui.get().anchor).toBe(NEXT);
+    // The day view, waking from sleep days later.
     ui.set({ view: { kind: "days", count: 1 }, anchor: TODAY });
-    followToday(TODAY, NEXT, shown());
-    expect(ui.get().anchor).toBe(NEXT);
+    followToday(TODAY, "2026-11-02", shown());
+    expect(ui.get().anchor).toBe("2026-11-02");
   });
 
   test("today anywhere in the view counts, as after a mini month click", () => {
     ui.set({ anchor: "2026-10-27" });
     followToday(TODAY, NEXT, shown());
     expect(ui.get().anchor).toBe(NEXT);
-  });
-
-  test("after a long sleep, lands on the new today", () => {
-    followToday(TODAY, "2026-11-02", shown());
-    expect(ui.get().anchor).toBe("2026-11-02");
   });
 
   test("a view paged away from today stays put", () => {
