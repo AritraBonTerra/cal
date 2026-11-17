@@ -43,7 +43,15 @@ import { useMode } from "./lib/scheme";
 import { shortcutText, useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
 import { showToast } from "./lib/toast";
-import { COMPACT_WIDTH, type ListId, setWeekStart, TIGHT_WIDTH, ui, useUi } from "./lib/ui";
+import {
+  COMPACT_WIDTH,
+  followToday,
+  type ListId,
+  setWeekStart,
+  TIGHT_WIDTH,
+  ui,
+  useUi,
+} from "./lib/ui";
 import { yearDays } from "./lib/year";
 import { deviceZone, zonedDayKey } from "./lib/zones";
 
@@ -119,6 +127,18 @@ function useGlobalKeyNotice() {
   );
 }
 
+// When the date rolls over while the window is open, lets the view follow today. A zone
+// change also moves the grid's today, but leaves the view where it is.
+function useFollowToday(today: DayKey, zone: string, days: readonly DayKey[]) {
+  const previous = useRef({ today, zone });
+  useEffect(() => {
+    const last = previous.current;
+    if (last.today === today && last.zone === zone) return;
+    if (last.zone === zone) followToday(last.today, today, days);
+    previous.current = { today, zone };
+  }, [today, zone, days]);
+}
+
 const isWeekend = (day: string) => weekday(day) === 0 || weekday(day) === 6;
 
 /**
@@ -178,6 +198,7 @@ export function App() {
           : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
     [view, anchor, account.showWeekends, account.weekStart],
   );
+  useFollowToday(gridToday, zone, days);
   const first = days[0] ?? today;
   const last = days[days.length - 1] ?? today;
   // Another zone's day overlaps two of the Mac's, so the fetch widens by one each side.

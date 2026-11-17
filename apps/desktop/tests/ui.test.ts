@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { dayRange } from "@cal/domain";
 import {
+  followToday,
   goToday,
   jumpTo,
   moveView,
@@ -131,5 +133,49 @@ describe("year view", () => {
     ui.set({ view: { kind: "year" }, anchor: TODAY });
     jumpTo("2026-03-14", TODAY, true);
     expect(ui.get()).toMatchObject({ view: { kind: "days", count: 1 }, anchor: "2026-03-14" });
+  });
+});
+
+/*
+ * The date changing while the window is open. Today rolls from Wed 28 to Thu 29 Oct 2026.
+ */
+describe("followToday", () => {
+  const NEXT = "2026-10-29";
+  const shown = () => {
+    const { view, anchor } = ui.get();
+    return view.kind === "days" ? dayRange(anchor, view.count) : [];
+  };
+
+  beforeEach(() => ui.set({ view: { kind: "days", count: 3 }, anchor: TODAY, weekStart: 1 }));
+
+  test("a numbered view on today moves so the new today comes first", () => {
+    // Left open overnight, the 3-day view kept Wed–Fri and put today second.
+    followToday(TODAY, NEXT, shown());
+    expect(ui.get().anchor).toBe(NEXT);
+    // The day view, waking from sleep days later.
+    ui.set({ view: { kind: "days", count: 1 }, anchor: TODAY });
+    followToday(TODAY, "2026-11-02", shown());
+    expect(ui.get().anchor).toBe("2026-11-02");
+  });
+
+  test("today anywhere in the view counts, as after a mini month click", () => {
+    ui.set({ anchor: "2026-10-27" });
+    followToday(TODAY, NEXT, shown());
+    expect(ui.get().anchor).toBe(NEXT);
+  });
+
+  test("a view paged away from today stays put", () => {
+    ui.set({ anchor: "2026-11-04" });
+    followToday(TODAY, NEXT, shown());
+    expect(ui.get().anchor).toBe("2026-11-04");
+  });
+
+  test("week, month and year views keep their alignment", () => {
+    ui.set({ view: { kind: "days", count: 7 }, anchor: "2026-10-26" });
+    followToday(TODAY, NEXT, shown());
+    expect(ui.get().anchor).toBe("2026-10-26");
+    ui.set({ view: { kind: "month" }, anchor: TODAY });
+    followToday(TODAY, NEXT, [TODAY]);
+    expect(ui.get().anchor).toBe(TODAY);
   });
 });

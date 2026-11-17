@@ -200,6 +200,18 @@ export function goToday(today: DayKey, leftAlign = false) {
 }
 
 /**
+ * Keeps a numbered view on today when the date rolls over (midnight, or waking from
+ * sleep days later). A view whose days (`shown`) held the old today now starts on the
+ * new one. A view paged away from today stays put, and so do the week, month and year
+ * views, which keep their own alignment.
+ */
+export function followToday(previous: DayKey, today: DayKey, shown: readonly DayKey[]) {
+  const { view } = ui.get();
+  if (view.kind !== "days" || view.count === WEEK || !shown.includes(previous)) return;
+  ui.set({ anchor: today });
+}
+
+/**
  * Shows `day` in the calendar and flashes it: a click in the mini month or the year view.
  * The year view, and a week or month that hides `day` as a weekend (`hiddenWeekend`),
  * give way to a span that shows it: the week holding it, or the day alone.
