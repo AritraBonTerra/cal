@@ -13,7 +13,7 @@ export function AboutSection() {
         Version {window.cal.config.version}
       </div>
       <div className="mt-5 flex gap-2">
-        <RowButton onClick={() => void window.cal.checkForUpdates()}>Check for updates</RowButton>
+        <RowButton onClick={() => void window.cal.updates.check()}>Check for updates</RowButton>
         {/* The window opens web links in the browser. */}
         <RowButton onClick={() => window.open(RELEASES)}>Release notes</RowButton>
       </div>

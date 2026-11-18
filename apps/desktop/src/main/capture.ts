@@ -19,7 +19,8 @@ export interface CaptureOptions {
   // Loads the renderer into the panel with ?surface=capture.
   load(window: BrowserWindow): void;
   preload: string;
-  // Whether the app is quitting, when the panel may really close.
+  // Whether the app is quitting or installing an update: the panel may really close,
+  // and none may open.
   quitting(): boolean;
   // Makes a closing window wait for its page to finish saving; added after the panel's
   // own close handler, which turns down every close but a quit's.
@@ -70,6 +71,11 @@ export function createCapture({ load, preload, quitting, hold }: CaptureOptions)
       hide();
     });
     hold(window);
+    // Closed only by a quit or an update's install; if the app carries on (a failed
+    // install), the next use makes a fresh panel.
+    window.on("closed", () => {
+      if (panel === window) panel = undefined;
+    });
     load(window);
     return window;
   };
@@ -80,6 +86,8 @@ export function createCapture({ load, preload, quitting, hold }: CaptureOptions)
   };
 
   const show = () => {
+    // Not while the app quits or installs an update: a new panel would hold that up.
+    if (quitting()) return;
     const window = warm();
     // On the screen with the pointer, centred, near the top.
     const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());

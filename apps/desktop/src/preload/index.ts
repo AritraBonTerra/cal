@@ -12,6 +12,7 @@ import {
   type MenuKeys,
   type SyncStatus,
   type Theme,
+  type UpdateState,
 } from "../shared/api";
 
 // Subscribes to a main-process broadcast; returns an unsubscribe.
@@ -78,7 +79,13 @@ const bridge: CalBridge = {
   calendar,
   onCommand: (listener) => listen<string>("cal:command", listener),
   setMenuKeys: (keys: MenuKeys | null) => ipcRenderer.invoke(channels.menuKeys, keys),
-  checkForUpdates: () => ipcRenderer.invoke(channels.checkForUpdates),
+  updates: {
+    state: () => ipcRenderer.invoke(channels.updateState),
+    onChange: (listener) => listen<UpdateState>(channels.updateChanged, listener),
+    check: () => ipcRenderer.invoke(channels.updateCheck),
+    install: () => ipcRenderer.invoke(channels.updateInstall),
+    dismiss: () => ipcRenderer.invoke(channels.updateDismiss),
+  },
   setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
   onClosing: (listener) => {
     closing.add(listener);

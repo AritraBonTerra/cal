@@ -36,6 +36,7 @@ import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { TaskPane } from "./components/TaskPane";
 import { Toast } from "./components/Toast";
 import { Toolbar } from "./components/Toolbar";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Welcome } from "./components/Welcome";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
@@ -311,6 +312,8 @@ export function App() {
         {overlay === "welcome" && (
           <Welcome auth={auth} access={access} requestAccess={requestAccess} />
         )}
+        {/* Last, so it floats over an open panel (Settings > About asks for a check). */}
+        <UpdatePrompt />
       </div>
     </AppContext.Provider>
   );
