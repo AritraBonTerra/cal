@@ -47,8 +47,7 @@ export interface CalBridge {
   // Gives the menu bar the commands' keys, replacing what it had; null makes the window
   // ignore every menu shortcut until the next report (while a shortcut is being recorded).
   setMenuKeys(keys: MenuKeys | null): Promise<void>;
-  // Checks for an update now and says what it found, like the app menu's item.
-  checkForUpdates(): Promise<void>;
+  updates: UpdatesBridge;
   // Switches the window (and its `prefers-color-scheme`) between following the Mac,
   // light and dark.
   setTheme(theme: Theme): Promise<void>;
@@ -70,6 +69,36 @@ export interface CalBridge {
     set(open: boolean): Promise<boolean>;
   };
 }
+
+/*
+ * App updates from GitHub Releases (main/updater.ts). Main owns the state and
+ * broadcasts every change; the window shows it and answers the prompt.
+ */
+export interface UpdatesBridge {
+  state(): Promise<UpdateState>;
+  onChange(listener: (state: UpdateState) => void): () => void;
+  // Checks now and shows what it found, like the app menu's "Check for Updates…".
+  check(): Promise<void>;
+  // Downloads the available update, then quits and relaunches into it.
+  install(): Promise<void>;
+  // Closes the prompt; a background check won't offer the same version again this run.
+  dismiss(): Promise<void>;
+}
+
+/**
+ * Where an update stands. `idle` shows nothing. `checking` and `current` only follow
+ * a check the user asked for; a background check goes straight from idle to
+ * `available`, or stays quiet. A `failed` with a version failed while downloading or
+ * installing it, so retrying installs; without one, the check itself failed.
+ */
+export type UpdateState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "current"; version: string }
+  | { status: "available"; version: string; current: string }
+  | { status: "downloading"; version: string; percent: number }
+  | { status: "installing"; version: string }
+  | { status: "failed"; message: string; version?: string };
 
 /*
  * Quick Entry from any app: a floating panel that main shows on a global hotkey. The
@@ -109,7 +138,11 @@ export const channels = {
   closing: "cal:closing",
   closeReady: "cal:close-ready",
   menuKeys: "cal:menu-keys",
-  checkForUpdates: "cal:check-for-updates",
+  updateState: "cal:update-state",
+  updateChanged: "cal:update-changed",
+  updateCheck: "cal:update-check",
+  updateInstall: "cal:update-install",
+  updateDismiss: "cal:update-dismiss",
   scale: "cal:scale",
   globalKeyTaken: "cal:global-key-taken",
   captureOpen: "cal:capture-open",

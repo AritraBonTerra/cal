@@ -33,7 +33,7 @@ import { Calkit } from "./calkit";
 import { createCapture } from "./capture";
 import { openDatabase } from "./db";
 import { encryptedFile } from "./session";
-import { checkNow, startUpdates } from "./updater";
+import { createUpdates } from "./updater";
 
 // The dev deployment's public client URL; a build can point elsewhere with MAIN_VITE_CONVEX_URL.
 const CONVEX_URL =
@@ -246,6 +246,15 @@ function bindCaptureKey(keys: readonly string[] | null, reporter?: WebContents) 
 const CLOSE_WAIT_MS = 1500;
 // Set once the app has been asked to quit, so a window that held its close resumes the quit.
 let quitting = false;
+// Set while windows close for an update's install (closeForUpdate). A held close then
+// finishes by closing its own window rather than asking for an ordinary quit, which
+// would skip the install, and nothing may open a new window.
+let installingUpdate = false;
+// Set while closeForUpdate waits on the windows. An ordinary quit then would stop sync
+// while the windows are mid-save, and the app might yet carry on if the install fails.
+let closingForUpdate = false;
+// How long the windows get to close for an update before it's called off.
+const UPDATE_CLOSE_MS = 10_000;
 
 /**
  * Makes `window` wait before closing: it's told it is closing, and closes once it
@@ -266,7 +275,7 @@ function holdClose(window: BrowserWindow) {
       state = "ready";
       clearTimeout(timer);
       ipcMain.off(channels.closeReady, onReady);
-      if (quitting) app.quit();
+      if (quitting && !installingUpdate) app.quit();
       else window.close();
     };
     const onReady = (reply: IpcMainEvent) => {
@@ -353,7 +362,70 @@ handleFrom(channels.menuKeys, (event, keys: MenuKeys | null) => {
   buildMenu();
 });
 
-handle(channels.checkForUpdates, () => checkNow());
+// Brings up the main window, making one if every window was closed.
+function revealMain() {
+  // An update's shutdown closes every window; a new one would hold it up.
+  if (installingUpdate) return;
+  const window = mainWindows()[0] ?? createWindow();
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+/**
+ * Closes every window for an update's install. Each saves first (holdClose), and none
+ * can open meanwhile (revealMain, the Dock, Quick Entry). Resolves a turn after the
+ * last `closed`, once Electron has dropped it from its window list, so quitAndInstall
+ * finds the list empty. Rejects if a window is still open after UPDATE_CLOSE_MS.
+ */
+function closeForUpdate() {
+  installingUpdate = true;
+  closingForUpdate = true;
+  const open = BrowserWindow.getAllWindows();
+  return new Promise<void>((resolve, reject) => {
+    let left = open.length;
+    const done = (error?: unknown) => {
+      clearTimeout(timer);
+      closingForUpdate = false;
+      for (const window of open) if (!window.isDestroyed()) window.off("closed", onClosed);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onClosed = () => {
+      left--;
+      if (left === 0) setImmediate(done);
+    };
+    const timer = setTimeout(
+      () => done(new Error("A window didn't close for the update.")),
+      UPDATE_CLOSE_MS,
+    );
+    if (left === 0) return done();
+    for (const window of open) {
+      window.once("closed", onClosed);
+      try {
+        window.close();
+      } catch {
+        // That window stays open, so the deadline reports it, after the others' closes
+        // under way have finished and the failure can show in a fresh window.
+      }
+    }
+  });
+}
+
+const updates = createUpdates({
+  publish: (state) => broadcast(channels.updateChanged, state),
+  reveal: revealMain,
+  closeWindows: closeForUpdate,
+  installFailed: () => {
+    installingUpdate = false;
+    // Every window closed for the install; bring one back to say what went wrong.
+    revealMain();
+  },
+});
+handle(channels.updateState, () => updates.state());
+handle(channels.updateCheck, () => updates.check());
+handle(channels.updateInstall, () => updates.install());
+handle(channels.updateDismiss, () => updates.dismiss());
 
 // Menu items that run a window command (see the renderer's command registry), with the
 // command's first ⌘ or ⌃ binding as the accelerator.
@@ -371,7 +443,7 @@ function buildMenu() {
       role: "appMenu",
       submenu: [
         { role: "about" },
-        { label: "Check for Updates…", click: () => void checkNow() },
+        { label: "Check for Updates…", click: () => void updates.check() },
         { type: "separator" },
         command("Settings…", "settings.open"),
         { type: "separator" },
@@ -447,7 +519,7 @@ app.whenReady().then(() => {
   capture = createCapture({
     load: (panel) => loadRenderer(panel, "capture"),
     preload: join(import.meta.dirname, "../preload/index.cjs"),
-    quitting: () => quitting,
+    quitting: () => quitting || installingUpdate,
     // A quit waits for the panel's save under way, as it does for the main window's.
     hold: holdClose,
   });
@@ -455,9 +527,9 @@ app.whenReady().then(() => {
   // (`calCapture`), so the scripts' window 0 stays the main window.
   if (fixture) Object.assign(globalThis, { calCapture: capture });
   else window.once("ready-to-show", () => capture?.warm());
-  startUpdates();
+  updates.start();
   app.on("activate", () => {
-    if (mainWindows().length === 0) createWindow();
+    if (mainWindows().length === 0 && !installingUpdate) createWindow();
   });
 });
 
@@ -467,7 +539,12 @@ app.on("window-all-closed", () => {
 
 // A window that is still saving cancels the quit and asks again when it's done, so this
 // runs twice then; the helpers stop once.
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  // The update's own quit comes once the windows have closed.
+  if (closingForUpdate) {
+    event.preventDefault();
+    return;
+  }
   if (quitting) return;
   quitting = true;
   void session.close();
