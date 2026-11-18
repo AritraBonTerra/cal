@@ -1,6 +1,6 @@
 import { inList, isOpen } from "@cal/domain";
 import { router } from "expo-router";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, Settings } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { syncLabel, useAccount } from "../lib/account";
@@ -12,7 +12,7 @@ import { LIST_ICONS } from "./TaskList";
 
 /*
  * The iPhone "Lists" tab: Things' sidebar as a grouped list. Smart lists with counts,
- * then each area and its projects, then the account row.
+ * then each area and its projects, then the account row. The gear opens Settings.
  */
 export function ListsHub() {
   const { data, today } = useApp();
@@ -26,7 +26,17 @@ export function ListsHub() {
       className="flex-1 bg-sidebar"
       contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 32 }}
     >
-      <Text className="px-5 pb-3 text-title-1 font-bold text-ink">Lists</Text>
+      <View className="flex-row items-center justify-between pb-1 pl-5 pr-2.5">
+        <Text className="text-title-1 font-bold text-ink">Lists</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          onPress={() => router.push("/settings")}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-hover"
+        >
+          <Settings size={20} color={colors["ink-2"]} strokeWidth={1.5} absoluteStrokeWidth />
+        </Pressable>
+      </View>
       <View className="mx-4 overflow-hidden rounded-lg bg-canvas">
         {SMART_LISTS.map((list, index) => {
           const Icon = LIST_ICONS[list];

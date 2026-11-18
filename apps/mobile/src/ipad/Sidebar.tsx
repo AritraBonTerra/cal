@@ -1,6 +1,6 @@
 import { inList, isOpen } from "@cal/domain";
 import { router } from "expo-router";
-import { CalendarDays, Repeat } from "lucide-react-native";
+import { CalendarDays, Repeat, Settings } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,7 +13,7 @@ import { LIST_ICONS } from "../tasks/TaskList";
 
 /*
  * The iPad sidebar, like the Mac's: smart lists with counts, Habits, then areas and
- * their projects, then calendar access and the account row.
+ * their projects, then calendar access and a footer with the account row and Settings.
  */
 export type Pane = { kind: "list"; list: ListId } | { kind: "habits" };
 
@@ -109,40 +109,51 @@ export function Sidebar({ pane, onSelect }: { pane: Pane; onSelect: (pane: Pane)
         </View>
       )}
 
-      {auth.status === "signedOut" ? (
+      <View
+        className="mx-3 flex-row items-center gap-1"
+        style={{ marginBottom: insets.bottom + 8 }}
+      >
+        {auth.status === "signedOut" ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/sign-in")}
+            className="h-11 min-w-0 flex-1 flex-row items-center gap-2 rounded-md px-2 active:bg-hover"
+          >
+            <View className="h-2.5 w-2.5 rounded-full border-[1.5px] border-edge-strong" />
+            <Text className="text-small text-ink-3">Sign in to sync</Text>
+          </Pressable>
+        ) : (
+          // An expired session can only be fixed by signing in again, so the row opens it.
+          <Pressable
+            accessibilityRole={sync.needsSignIn ? "button" : undefined}
+            disabled={!sync.needsSignIn}
+            onPress={() => router.push("/sign-in")}
+            className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2 rounded-md px-2 active:bg-hover"
+          >
+            <View
+              className={`h-2.5 w-2.5 rounded-full ${
+                sync.connected && !sync.needsSignIn ? "bg-success" : "bg-warning"
+              }`}
+            />
+            <View className="min-w-0 flex-1">
+              <Text className="text-small text-ink" numberOfLines={1}>
+                {auth.email}
+              </Text>
+              <Text className="text-caption text-ink-3" style={{ fontVariant: ["tabular-nums"] }}>
+                {syncLabel(sync)}
+              </Text>
+            </View>
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push("/sign-in")}
-          className="mx-3 h-11 flex-row items-center gap-2 rounded-md px-2 active:bg-hover"
-          style={{ marginBottom: insets.bottom + 8 }}
+          accessibilityLabel="Settings"
+          onPress={() => router.push("/settings")}
+          className="h-11 w-11 items-center justify-center rounded-md active:bg-hover"
         >
-          <View className="h-2.5 w-2.5 rounded-full border-[1.5px] border-edge-strong" />
-          <Text className="text-small text-ink-3">Sign in to sync</Text>
+          <Settings size={18} color={colors["ink-2"]} strokeWidth={1.5} absoluteStrokeWidth />
         </Pressable>
-      ) : (
-        // An expired session can only be fixed by signing in again, so the row opens it.
-        <Pressable
-          accessibilityRole={sync.needsSignIn ? "button" : undefined}
-          disabled={!sync.needsSignIn}
-          onPress={() => router.push("/sign-in")}
-          className="mx-3 min-h-11 flex-row items-center gap-2 rounded-md px-2 active:bg-hover"
-          style={{ marginBottom: insets.bottom + 8 }}
-        >
-          <View
-            className={`h-2.5 w-2.5 rounded-full ${
-              sync.connected && !sync.needsSignIn ? "bg-success" : "bg-warning"
-            }`}
-          />
-          <View className="min-w-0 flex-1">
-            <Text className="text-small text-ink" numberOfLines={1}>
-              {auth.email}
-            </Text>
-            <Text className="text-caption text-ink-3" style={{ fontVariant: ["tabular-nums"] }}>
-              {syncLabel(sync)}
-            </Text>
-          </View>
-        </Pressable>
-      )}
+      </View>
     </View>
   );
 }

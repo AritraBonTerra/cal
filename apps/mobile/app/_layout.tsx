@@ -9,6 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { cal } from "../src/data/cal";
 import { AppProvider } from "../src/lib/app";
 import { ClockProvider, now } from "../src/lib/clock";
+import { IS_PAD } from "../src/lib/device";
 import { useColors } from "../src/lib/theme";
 import { view } from "../src/lib/view";
 import "../global.css";
@@ -20,7 +21,7 @@ export const unstable_settings = { anchor: "(tabs)" };
 view.set({ anchor: toDayKey(now()) });
 
 // iPhone is portrait only, like Things; iPad turns freely for the split view.
-if (Platform.OS === "ios" && !Platform.isPad) void lockAsync(OrientationLock.PORTRAIT_UP);
+if (Platform.OS === "ios" && !IS_PAD) void lockAsync(OrientationLock.PORTRAIT_UP);
 
 const sheet = {
   presentation: "formSheet",
@@ -29,6 +30,12 @@ const sheet = {
   sheetCornerRadius: 14,
   headerShown: false,
 } as const;
+
+/*
+ * Sign-in hugs its content on iPhone. On iPad a fit-to-contents sheet is pinned to the
+ * bottom edge at full width, so there it is a plain form sheet: a centered card.
+ */
+const signInSheet = IS_PAD ? { ...sheet, sheetAllowedDetents: [1] } : sheet;
 
 export default function RootLayout() {
   return (
@@ -60,11 +67,12 @@ function Routes() {
       <Stack.Screen name="(tabs)" />
       {/* A page sheet, not a form sheet: form sheets misplace ScrollViews on Fabric. */}
       <Stack.Screen name="task/[id]" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="settings" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="block/[id]" options={sheet} />
       <Stack.Screen name="event/[id]" options={sheet} />
       <Stack.Screen name="new-block" options={sheet} />
       <Stack.Screen name="quick-entry" options={sheet} />
-      <Stack.Screen name="sign-in" options={sheet} />
+      <Stack.Screen name="sign-in" options={signInSheet} />
     </Stack>
   );
 }

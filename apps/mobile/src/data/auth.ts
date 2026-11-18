@@ -18,6 +18,9 @@ export function createMobileAuth(siteUrl: string) {
     ],
   });
 
+  // The stored session token (Better Auth's `….session_token` cookie), if any.
+  const sessionToken = () => client.getCookie().match(/(?:^|; )[^=]*session_token=([^;]+)/)?.[1];
+
   const adapter: AuthAdapter = {
     token: async () => {
       try {
@@ -35,10 +38,18 @@ export function createMobileAuth(siteUrl: string) {
 
   return {
     adapter,
-    // Runs the whole Google flow in a browser sheet; resolves once it's done or dismissed.
+    /*
+     * Runs the whole Google flow in a browser sheet. Resolves true once a new session
+     * token arrived, false when the sheet was closed first (the client returns quietly
+     * then, though it has already stored an OAuth state cookie, so only the session
+     * token tells the two apart).
+     */
     signInWithGoogle: async () => {
+      const before = sessionToken();
       const { error } = await client.signIn.social({ provider: "google", callbackURL: "/" });
       if (error) throw new Error(error.message ?? "Couldn't sign in with Google.");
+      const after = sessionToken();
+      return after !== undefined && after !== before;
     },
   };
 }

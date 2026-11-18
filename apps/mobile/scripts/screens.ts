@@ -33,12 +33,16 @@ const scenes: { name: string; path: string; dark?: boolean; device?: Device }[] 
   { name: "habits", path: "/habits" },
   { name: "habits-dark", path: "/habits", dark: true },
   { name: "sign-in", path: "/sign-in" },
+  { name: "sign-in-dark", path: "/sign-in", dark: true },
+  { name: "settings", path: "/settings" },
   // Workspace reads `?sidebar=1|0` on any route; portrait hides the sidebar by default.
   { name: "ipad", path: "/?days=7&sidebar=0", device: "iPad" },
   { name: "ipad-dark", path: "/?days=7&sidebar=0", device: "iPad", dark: true },
   { name: "ipad-sidebar", path: "/?days=7&sidebar=1", device: "iPad" },
   { name: "ipad-3day", path: "/?days=3&sidebar=1", device: "iPad" },
   { name: "ipad-habits", path: "/habits?sidebar=1", device: "iPad" },
+  { name: "ipad-settings", path: "/settings", device: "iPad" },
+  { name: "ipad-sign-in", path: "/sign-in", device: "iPad" },
 ];
 
 const root = join(import.meta.dir, "..");

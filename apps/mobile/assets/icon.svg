@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>Cal</title>
+  <!-- Source of assets/icon.png (1024px, rendered with resvg); iOS rounds the corners. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFF7EB"/>
+    </linearGradient>
+    <clipPath id="sheet"><rect x="212" y="250" width="600" height="560" rx="112"/></clipPath>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#7C2D12" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <rect x="212" y="250" width="600" height="560" rx="112" fill="url(#page)"/>
+  </g>
+  <g clip-path="url(#sheet)">
+    <rect x="212" y="250" width="600" height="150" fill="#1F2937"/>
+  </g>
+  <rect x="352" y="206" width="48" height="112" rx="24" fill="#FFFFFF"/>
+  <rect x="624" y="206" width="48" height="112" rx="24" fill="#FFFFFF"/>
+  <path d="M 384 600 L 472 688 L 652 508" fill="none" stroke="#D97706" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
