@@ -1,4 +1,4 @@
-import { useWindowDimensions } from "react-native";
+import { Platform, useWindowDimensions } from "react-native";
 
 /*
  * iPad-class windows get the split view; narrower ones (iPhone in either orientation,
@@ -11,3 +11,7 @@ export function useIsWide() {
   const { width, height } = useWindowDimensions();
   return Math.min(width, height) >= SPLIT_MIN_SIDE;
 }
+
+// True on an iPad whatever its window size. For choices made once, such as how a sheet
+// is presented; layout that follows the window uses `useIsWide`.
+export const IS_PAD = Platform.OS === "ios" && Platform.isPad;

@@ -28,8 +28,11 @@ export function syncLabel(sync: SyncStatus) {
 // Calendar permission, with a way to ask for it.
 export function useCalendarAccess() {
   const [access, setAccess] = useState<CalendarAccess>("fullAccess");
+  // Re-read on return to the app, where the user may have changed it in iOS Settings.
   useEffect(() => {
-    void calendar.access().then(setAccess);
+    const load = () => void calendar.access().then(setAccess);
+    load();
+    return calendar.onChange(load);
   }, []);
   const request = () => calendar.requestAccess().then(setAccess);
   return { access, request };

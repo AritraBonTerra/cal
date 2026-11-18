@@ -1,11 +1,13 @@
+import { useSettings } from "@cal/app-core";
 import type { DeviceCalendar } from "@cal/calendar-source";
 import type { DayKey } from "@cal/domain";
 import type { ChipColors, Mode } from "@cal/theme";
-import { createContext, type ReactNode, useContext } from "react";
+import { createContext, type ReactNode, useContext, useEffect } from "react";
 import { useCalendars, useChipPalette } from "./calendars";
 import { useToday } from "./clock";
 import { useData } from "./data";
 import { useMode } from "./theme";
+import { setWeekStart } from "./view";
 
 /*
  * Everything the screens share: the live tables, device calendars with their chip
@@ -27,6 +29,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const mode = useMode();
   const palette = useChipPalette(calendars, mode);
   const today = useToday();
+  const { weekStart } = useSettings().account;
+  // A new day re-runs this too, which leaves the page where it is.
+  useEffect(() => setWeekStart(weekStart, today), [weekStart, today]);
   return (
     <AppContext.Provider value={{ data, calendars, palette, mode, today }}>
       {children}
