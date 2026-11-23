@@ -134,6 +134,8 @@ Key decisions (details are in the research docs):
 | `0` / `W`          | Week                                                                         |
 | `M`                | Month                                                                        |
 | `Y`                | Year: twelve months with a dot on busy days; click a day to open its week    |
+| `A`                | Agenda: each day as a list of events, blocks, to-dos and habits              |
+| `⌘J`               | Join the selected event's call, else the one on now or next                  |
 | `⌘K` → "14"        | Show any count from 1 to 31 days                                             |
 | `←` `→`            | Move by the visible span. Hold to repeat.                                    |
 | `J` `K`            | Next / previous week                                                         |
@@ -145,7 +147,7 @@ Key decisions (details are in the research docs):
 | `⌘Z`               | Undo anything                                                                |
 - Drag behavior: drag on the grid to create, drag across days for multi-day, resize from either edge, `⌥`-drag to duplicate, `⇧` turns off 15-min snapping, `⇧`-drag to box-select, and hold `⌘` to skip the confirm step.
 - The visible day count persists between launches. After a big jump, the target day flashes.
-- Calendar sets (`⌃1–9`) switch which calendars are visible. `⌥`-click a calendar to show only that one.
+- Calendar sets (`⌃1–9`, `⌃0` for all) switch which calendars are visible, by hand or by each set's hours. `⌥`-click a calendar to show only that one.
 - Menu bar: next event with a countdown and join button, today's habits, quick add.
 - Week-level time zone columns, merging duplicate events across accounts, and reliable local alarms.
 
@@ -235,7 +237,7 @@ Robin Ebers said T3 Code was let down by "the fonts, the border radius, the icon
 - **Color:**
   - Defined in OKLCH and compiled to solid hex.
   - Warm neutrals with almost no color for the chrome. Saturated color is for calendar data only.
-  - One blue accent, and red only for "now".
+  - One blue accent, and red only for "now" and danger. A device can pick another of six light and six dark themes, which tint the neutrals, and another accent, which colors "now" too; danger stays red.
   - Secondary text is a solid mixed color, never opacity.
 - **Event chips:** a pale fill with a 3px saturated bar on the left and darker text in the same hue. Every color is worked out from one hue per calendar, and contrast is checked: about 9.5:1 for titles and 6:1 for times.
 - **Icons:** Lucide at 12/14/16/20 with a 1.5 stroke. On iPad, SF Symbols are used for native chrome only.
@@ -266,7 +268,7 @@ Each milestone produces something usable.
 | M4.5  | **iPhone and iPad**     | The Expo app reuses every package. A touch grid (1–3 days on iPhone, up to a week on iPad), Today, tasks, Quick Entry, hardware-keyboard shortcuts, device calendars through `expo-calendar`.                                                                                                                                                                                                       |
 | M5    | **Habits**              | Habit model, day strip, check-off from the menu bar and widget, score and streaks, heatmap and grid views.                                                                                                                                                                                                                                                                                          |
 | M6    | **Auto-scheduler v1**   | Time maps, the greedy engine with reasons, preview and diff, pins, at-risk bar, "Couldn't fit" tray, flexible habit blocks. Snapshot test suite.                                                                                                                                                                                                                                                    |
-| M7    | **Polish and reach**    | Direct Google API (invites, Meet links, colors), availability as text (`S`), calendar sets, ICS subscriptions, over-the-air updates.                                                                                                                                                                                                                                                                |
+| M7    | **Polish and reach**    | Direct Google API (invites, Meet links, colors), availability as text (`S`), ICS subscriptions, over-the-air updates.                                                                                                                                                                                                                                                                |
 | Later |                         | Better duration estimates from history, local search in the scheduler, Outlook through Graph, Apple Health auto-completion from the iPhone.                                                                                                                                                                                                                                                         |
 
 ### Status (2026-10-28)
@@ -288,7 +290,9 @@ v1.3 (Mac, from using v1.2): keyboard shortcuts you can change (Settings > Short
 
 v1.4 (Mac): Quick Entry from any app: ⌃⌘N (rebindable in Settings > Shortcuts) shows a floating panel over whatever app or full-screen Space has focus, and Enter saves the to-do or event without bringing Cal forward; an interface size setting (80–150%) that scales the whole window, not just the hour height.
 
-Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; menu bar item, launch at login and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
+v1.5 (after a look at Classycal): joining video calls from an event's link (`meetingOf` in `@cal/domain`), in Zoom's own app when it's installed; the agenda (`agendaDays` in app-core) on `A`; themes and accents (`packages/theme/src/themes.ts`) in Settings > Appearance; an envelope while invitations wait for an answer, which Apple Calendar gives; the menu bar item, a notification with Join as a call starts, the morning summary and the date on the Dock icon (`main/desk.ts`); calendar sets; adding events by dropping an .ics file. On iPhone and iPad: Join, the agenda with a week strip that pulls down to the month, and themes.
+
+Still to do: repeating tasks, headings and checklists (checklists need a table); firing reminders on to-dos (stored); Replan (`P`); the scheduler's "Plan my day" preview UI; `.` date jump, `F` hints, ⌥-drag duplicate, box select; today's habits in the menu bar, and widgets; habit heatmap; settings, time zones and event editing on iPhone/iPad; iPad hardware keyboard shortcuts (needs a native module); M7.
 
 ## 8. Not in v1
 
@@ -308,6 +312,8 @@ Still to do: repeating tasks, headings and checklists (checklists need a table);
 - 2026-10-28 (v1.1): Sign in with Google is the requirement; Better Auth chosen over Clerk (Clerk's free plan signs out weekly and its Electron SDK is beta). Pinned to Better Auth 1.6.33 until `@convex-dev/better-auth` supports 1.7.
 - 2026-11-10 (v1.3): Custom shortcuts are an account setting, so they follow you to another Mac. Only commands in the registry can be rebound; keys a field handles itself (Return and Esc in popovers, `⌘1`/`⌘2` in the Event / To-do switch) stay fixed.
 - 2026-11-10: Releases count up from the last `v*` tag, so only merges to main take a version. Every other build is a nightly (`0.1.13-nightly.<run>`), kept as a run artifact and never published; an installed nightly updates to the next release. CI publishes each release itself in one step, since electron-builder's parallel uploads made two releases per tag.
+- 2026-11-22 (v1.5): Themes, accents and calendar sets stay on the device (screens and calendar ids differ). Blue stays the default accent and keeps "now" red. No serif option: Chromium doesn't offer New York, only Times.
+- 2026-11-22: Widgets, weather, departure alerts and sets by place wait: each adds a capability to the Apple developer account. Invitations are answered in Apple Calendar, since EventKit can't reply.
 - 2026-10-28: PowerSync's Convex connector needs Convex's streaming export, which is Pro only ($25/month); the account is on Starter. Build our own sync engine (`@cal/sync`, §3.1) instead. PowerSync is dropped.
 - 2026-10-28: Speech input ("MIF 2") dropped. Not needed.
 
