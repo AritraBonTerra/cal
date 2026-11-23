@@ -6,6 +6,8 @@ declare global {
   var calCapture: { show(): void; hide(): void } | undefined;
   // What fixture mode would have opened outside Cal: calls joined (main/index.ts).
   var calOpened: string[] | undefined;
+  // What the menu bar item shows in fixture mode, which draws none (main/desk.ts).
+  var calDesk: { record: { title: string; items: string[]; notices: string[] } } | undefined;
   interface Window {
     calTest?: {
       device(): DeviceSettings;

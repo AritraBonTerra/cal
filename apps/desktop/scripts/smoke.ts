@@ -1522,5 +1522,27 @@ check(
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
 
+// Outside the window: the menu bar's text and menu, and a click on one of its rows.
+const desk = await app.evaluate(() => globalThis.calDesk?.record);
+check(
+  "the menu bar counts down to the next event",
+  /^Office hours in \dm$/.test(desk?.title ?? ""),
+);
+check(
+  "its menu offers the call first",
+  desk?.items[0] === "Join Office hours (Zoom)" && desk.items.includes("Quick Entry…"),
+);
+await page.keyboard.press("1");
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()
+    .find((window) => !window.webContents.getURL().includes("surface=capture"))
+    ?.webContents.send("cal:reveal", { day: "2026-10-29" }),
+);
+await page.waitForTimeout(300);
+check(
+  "a menu bar click shows its day",
+  (await page.locator("[data-column='2026-10-29']").count()) === 1,
+);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

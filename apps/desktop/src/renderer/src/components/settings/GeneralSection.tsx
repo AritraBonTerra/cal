@@ -2,6 +2,7 @@ import { useSettings } from "@cal/app-core";
 import { useEffect, useState } from "react";
 import { CAPTURE_COMMAND } from "../../../../shared/api";
 import { shortcutText, useShortcut } from "../../lib/shortcuts";
+import { formatMinutes } from "../../lib/time";
 import { ui } from "../../lib/ui";
 import { Segmented, Select, Switch } from "../ui";
 import { Group, Row, RowButton } from "./controls";
@@ -32,7 +33,15 @@ function useOpenAtLogin() {
 // General: what the calendar shows, navigation, time format, maps, startup, and
 // the way back to the Welcome walkthrough.
 export function GeneralSection() {
-  const { account, setAccount } = useSettings();
+  // Built at render, so the times follow the Time format setting.
+  const summaryTimes = [
+    { value: -1, label: "Off" },
+    ...[6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((hour) => ({
+      value: hour * 60,
+      label: formatMinutes(hour * 60),
+    })),
+  ];
+  const { account, device, setAccount, setDevice } = useSettings();
   const weekendsKey = useShortcut("view.weekends");
   const todayKey = useShortcut("nav.today");
   const todayLeftKey = useShortcut("nav.todayLeft");
@@ -115,6 +124,38 @@ export function GeneralSection() {
             ]}
             onChange={(value) => void setAccount("maps", value)}
             label="Open locations in"
+          />
+        </Row>
+      </Group>
+      <Group title="Outside the window">
+        <Row label="Menu bar" note="The next event, a button to join its call, and today">
+          <Switch
+            checked={device.menuBar}
+            onChange={(value) => setDevice("menuBar", value)}
+            label="Menu bar"
+          />
+        </Row>
+        <Row label="Notify when a call starts" note="With a Join button, a minute before">
+          <Switch
+            checked={device.callNotices}
+            onChange={(value) => setDevice("callNotices", value)}
+            label="Notify when a call starts"
+          />
+        </Row>
+        <Row label="Morning summary" note="A notification with the day's events, to-dos and habits">
+          <Select
+            value={device.morningSummary ?? -1}
+            options={summaryTimes}
+            onChange={(value) => setDevice("morningSummary", value < 0 ? null : value)}
+            label="Morning summary"
+            width={120}
+          />
+        </Row>
+        <Row label="Date on the Dock icon">
+          <Switch
+            checked={device.dockDate}
+            onChange={(value) => setDevice("dockDate", value)}
+            label="Date on the Dock icon"
           />
         </Row>
       </Group>

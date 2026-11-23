@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { CapturePanel } from "./components/CapturePanel";
 import { ClockProvider, now } from "./lib/clock";
+import { DockDate } from "./lib/desk";
 import { paintTheme, ThemePaint } from "./lib/scheme";
 import { ui } from "./lib/ui";
 import "./styles.css";
@@ -59,7 +60,10 @@ createRoot(root).render(
   <StrictMode>
     <CalProvider cal={cal}>
       <ThemePaint />
-      <ClockProvider>{capture ? <CapturePanel /> : <App />}</ClockProvider>
+      <ClockProvider>
+        <DockDate />
+        {capture ? <CapturePanel /> : <App />}
+      </ClockProvider>
     </CalProvider>
   </StrictMode>,
 );

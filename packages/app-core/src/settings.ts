@@ -74,6 +74,13 @@ export const deviceDefaults = {
   // Whether the sidebar's mini month and calendar list are expanded.
   showMiniMonth: true,
   showCalendarList: true,
+  // The Mac's menu bar item (the next event and Join) and today's date on the Dock icon.
+  menuBar: true,
+  dockDate: true,
+  // A notification with Join as a call starts.
+  callNotices: true,
+  // When the morning summary comes, in minutes after midnight; null for none.
+  morningSummary: null as number | null,
   // Whether this device has shown the Welcome walkthrough, which opens once by itself.
   welcomed: false,
 };
@@ -179,6 +186,10 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   tasksWidth: isInt(0, 2000),
   showMiniMonth: isBool,
   showCalendarList: isBool,
+  menuBar: isBool,
+  dockDate: isBool,
+  callNotices: isBool,
+  morningSummary: nullable(isInt(0, 24 * 60 - 1)),
   welcomed: isBool,
 };
 

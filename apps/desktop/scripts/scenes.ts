@@ -157,6 +157,11 @@ export const scenes: Scene[] = [
   // The envelope's list, and the unanswered event's dashed chip behind it.
   { name: "invitations", click: "[data-invitations]" },
   { name: "invitations-dark", dark: true, click: "[data-invitations]" },
+  {
+    name: "settings-outside",
+    keys: ["Meta+,"],
+    steps: [{ reveal: "h3:has-text('Outside the window')" }],
+  },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

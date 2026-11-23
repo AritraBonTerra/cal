@@ -1,6 +1,7 @@
 import type { DataSource } from "@cal/app-core";
 import type { SyncedTable } from "@cal/backend/sync";
 import type { CalendarSource } from "@cal/calendar-source";
+import type { DayKey } from "@cal/domain";
 
 import type { AuthState, SyncStatus } from "@cal/sync";
 
@@ -58,6 +59,13 @@ export interface CalBridge {
   setTheme(theme: Theme): Promise<void>;
   // Gives this window `color` (opaque hex) as its background.
   setBackground(color: string): Promise<void>;
+  // Tells main what the menu bar and notifications should show (main/desk.ts).
+  setDesk(prefs: DeskPrefs): Promise<void>;
+  // Puts a PNG data URL on the Dock as Cal's icon, until Cal quits.
+  setDockIcon(dataUrl: string): Promise<void>;
+  // Runs `listener` when the menu bar or a notification asks the window for a day, and
+  // at once with one asked for before the window was there.
+  onReveal(listener: (target: RevealTarget) => void): () => void;
   // Runs `listener` when the window is about to close or the app to quit. The window
   // stays open until every listener's promise settles, so unsaved text can be written.
   onClosing(listener: () => Promise<void>): () => void;
@@ -75,6 +83,24 @@ export interface CalBridge {
     // Resolves with the state macOS reports after the change.
     set(open: boolean): Promise<boolean>;
   };
+}
+
+// What the menu bar item, call notifications and the morning summary follow.
+export interface DeskPrefs {
+  // Calendars not shown right now, by id.
+  hiddenCalendars: readonly string[];
+  showDeclined: boolean;
+  hour12: boolean;
+  menuBar: boolean;
+  callNotices: boolean;
+  // Minutes after midnight, or null for none.
+  morningSummary: number | null;
+}
+
+// A day to show, and the event on it to open.
+export interface RevealTarget {
+  day: DayKey;
+  eventId?: string;
 }
 
 /*
@@ -160,6 +186,11 @@ export const channels = {
   openAtLogin: "cal:open-at-login",
   joinMeeting: "cal:join-meeting",
   openInCalendar: "cal:open-in-calendar",
+  desk: "cal:desk",
+  dockIcon: "cal:dock-icon",
+  reveal: "cal:reveal",
+  // The window asks for a reveal made before it was listening.
+  revealTake: "cal:reveal-take",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.

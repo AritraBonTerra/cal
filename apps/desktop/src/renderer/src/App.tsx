@@ -45,6 +45,7 @@ import { AppContext, type AppState } from "./lib/app";
 import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
+import { useDeskPrefs, useReveal } from "./lib/desk";
 import { useKeyboard } from "./lib/keyboard";
 import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
@@ -254,6 +255,9 @@ export function App() {
     () => visibleEvents(ahead, device.hiddenCalendars, account.showDeclined),
     [ahead, device.hiddenCalendars, account.showDeclined],
   );
+
+  useDeskPrefs(account, device, device.hiddenCalendars);
+  useReveal(gridToday, account.showWeekends, zone);
 
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(

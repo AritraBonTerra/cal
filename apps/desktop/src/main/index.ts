@@ -14,6 +14,7 @@ import {
   ipcMain,
   Menu,
   type MenuItemConstructorOptions,
+  nativeImage,
   nativeTheme,
   shell,
   type WebContents,
@@ -24,7 +25,9 @@ import {
   type CalendarCall,
   channels,
   type DataCall,
+  type DeskPrefs,
   type MenuKeys,
+  type RevealTarget,
   type Theme,
 } from "../shared/api";
 import { menuAccelerator } from "./accelerator";
@@ -32,6 +35,7 @@ import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { createCapture } from "./capture";
 import { openDatabase } from "./db";
+import { createDesk } from "./desk";
 import { calendarUrl, createJoin } from "./meetings";
 import { encryptedFile } from "./session";
 import { createUpdates } from "./updater";
@@ -50,6 +54,7 @@ const profile = process.env.CAL_PROFILE;
 if (fixture) app.setPath("userData", mkdtempSync(join(tmpdir(), "cal-fixture-")));
 else if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
 
+const launchedAt = Date.now();
 const dataDir = app.getPath("userData");
 mkdirSync(dataDir, { recursive: true });
 const store = new LocalStore(openDatabase(join(dataDir, "cal.sqlite")));
@@ -190,6 +195,7 @@ handle(channels.syncStatus, () => session.status());
 // the writer refreshes itself, and fixture calendars never report changes on their own.
 async function written<T>(event: IpcMainInvokeEvent, write: Promise<T>) {
   const result = await write;
+  desk.changed();
   for (const window of BrowserWindow.getAllWindows()) {
     if (window.webContents !== event.sender) window.webContents.send(channels.calendarChanged);
   }
@@ -230,6 +236,47 @@ handle(channels.theme, (theme: Theme) => {
 handleFrom(channels.background, (event, color: string) => {
   if (!/^#[0-9a-f]{6}$/.test(color)) return;
   BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(color);
+});
+
+// The menu bar item and notifications, from the settings the main window reports.
+const desk = createDesk({
+  data,
+  calendar,
+  now: () => new Date(Date.now() + (fixture ? FIXTURE_NOW.getTime() - launchedAt : 0)),
+  join: joinMeeting,
+  reveal: (day, eventId) => reveal({ day, eventId }),
+  quickEntry: () => capture?.show(),
+  file: join(dataDir, "desk.json"),
+  // CAL_DESK=1 shows the real menu bar item in a fixture launch.
+  quiet: fixture && process.env.CAL_DESK !== "1",
+});
+if (fixture) Object.assign(globalThis, { calDesk: desk });
+
+handle(channels.desk, (prefs: DeskPrefs) => desk.setPrefs(prefs));
+
+handle(channels.dockIcon, (dataUrl: string) => {
+  if (fixture || typeof dataUrl !== "string") return;
+  const icon = nativeImage.createFromDataURL(dataUrl);
+  if (!icon.isEmpty()) app.dock?.setIcon(icon);
+});
+
+// A reveal asked for while no window was listening; the next window takes it.
+let pendingReveal: RevealTarget | undefined;
+
+// Brings up the main window on a day. A window still loading asks for it once it's ready.
+function reveal(target: RevealTarget) {
+  const open = mainWindows()[0];
+  const listening = open !== undefined && !open.webContents.isLoading();
+  if (!listening) pendingReveal = target;
+  revealMain();
+  if (listening) open.webContents.send(channels.reveal, target);
+}
+
+handleFrom(channels.revealTake, (event) => {
+  if (capture?.owns(event.sender)) return undefined;
+  const target = pendingReveal;
+  pendingReveal = undefined;
+  return target;
 });
 
 // Interface size: the window zooms itself (preload); main keeps the traffic lights
@@ -574,6 +621,7 @@ app.on("before-quit", (event) => {
   }
   if (quitting) return;
   quitting = true;
+  desk.stop();
   void session.close();
 });
 
