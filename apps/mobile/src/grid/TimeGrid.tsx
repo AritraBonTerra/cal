@@ -1,5 +1,5 @@
 import { useActions } from "@cal/app-core";
-import { addDays, type DayKey, toDayKey, weekday } from "@cal/domain";
+import { addDays, type DayKey, meetingOf, placeOf, toDayKey, weekday } from "@cal/domain";
 import { mix, colors as tokens } from "@cal/theme";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import Animated, {
 import { useApp } from "../lib/app";
 import { graphite } from "../lib/calendars";
 import { useNow } from "../lib/clock";
+import { openEvent } from "../lib/events";
 import { layoutColumn } from "../lib/layout";
 import { useColors } from "../lib/theme";
 import { formatHour, formatTime } from "../lib/time";
@@ -252,34 +253,19 @@ export function TimeGrid({
                   };
                   const past = item.end.getTime() < now.getTime();
                   if (item.kind === "event") {
-                    const calendar = calendars.find((each) => each.id === item.event.calendarId);
                     return (
                       <EventChip
                         key={item.id}
                         title={item.event.title}
-                        location={item.event.location}
+                        place={placeOf(item.event)}
+                        call={meetingOf(item.event) !== undefined}
                         start={item.start}
                         end={item.end}
                         colors={palette.get(item.event.calendarId) ?? graphite(mode)}
                         frame={frame}
                         past={past}
                         narrow={width * slot.width < 150}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/event/[id]",
-                            params: {
-                              id: item.event.id,
-                              title: item.event.title,
-                              start: item.event.start,
-                              end: item.event.end,
-                              allDay: item.event.allDay ? "1" : "0",
-                              location: item.event.location ?? "",
-                              notes: item.event.notes ?? "",
-                              calendar: calendar?.title ?? "",
-                              color: calendar?.color ?? "#888888",
-                            },
-                          })
-                        }
+                        onPress={() => openEvent(item.event, calendars)}
                       />
                     );
                   }

@@ -10,6 +10,7 @@ export default function EventRoute() {
     allDay?: string;
     location?: string;
     notes?: string;
+    url?: string;
     calendar?: string;
     color?: string;
   }>();
@@ -21,6 +22,7 @@ export default function EventRoute() {
       allDay={params.allDay === "1"}
       location={params.location || undefined}
       notes={params.notes || undefined}
+      url={params.url || undefined}
       calendar={params.calendar ?? ""}
       color={params.color || "#888888"}
     />

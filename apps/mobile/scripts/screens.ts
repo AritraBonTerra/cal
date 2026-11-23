@@ -27,6 +27,18 @@ const scenes: { name: string; path: string; dark?: boolean; device?: Device }[] 
     path: "/event/fixture-9?title=All%20Hands&start=2026-10-28T16:00:00-07:00&end=2026-10-28T17:00:00-07:00&allDay=0&location=Zoom&calendar=Work&color=3b82f6",
   },
   {
+    name: "event-call",
+    path: `/event/fixture-7?${new URLSearchParams({
+      title: "Office hours",
+      start: "2026-10-28T10:45:00-07:00",
+      end: "2026-10-28T11:15:00-07:00",
+      allDay: "0",
+      location: "https://us02web.zoom.us/j/81234567890?pwd=abc",
+      calendar: "Work",
+      color: "3b82f6",
+    })}`,
+  },
+  {
     name: "quick-entry",
     path: "/quick-entry?text=Call%20the%20movers%20tomorrow%203pm%20~30m%20!fri%20%2Flaunch",
   },

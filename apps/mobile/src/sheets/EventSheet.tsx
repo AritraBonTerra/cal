@@ -1,12 +1,13 @@
-import { toDayKey } from "@cal/domain";
+import { meetingOf, placeOf, toDayKey } from "@cal/domain";
 import { chipColorsFromHex } from "@cal/theme";
 import { router } from "expo-router";
-import { MapPin } from "lucide-react-native";
+import { MapPin, Video } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { useApp } from "../lib/app";
+import { joinMeeting } from "../lib/events";
 import { useColors } from "../lib/theme";
 import { formatRange, formatRelativeDay, formatWeekday } from "../lib/time";
-import { HeaderAction, SheetHeader } from "../ui/controls";
+import { Button, HeaderAction, SheetHeader } from "../ui/controls";
 
 interface EventSheetProps {
   title: string;
@@ -15,11 +16,13 @@ interface EventSheetProps {
   allDay: boolean;
   location?: string;
   notes?: string;
+  url?: string;
   calendar: string;
   color: string;
 }
 
-// A device event, read-only on the phone for now: when, where, which calendar, notes.
+// A device event, read-only on the phone for now: when, where, which calendar, notes,
+// and a button to join its call.
 export function EventSheet({
   title,
   start,
@@ -27,6 +30,7 @@ export function EventSheet({
   allDay,
   location,
   notes,
+  url,
   calendar,
   color,
 }: EventSheetProps) {
@@ -37,6 +41,9 @@ export function EventSheet({
   const from = new Date(start);
   const to = new Date(end);
   const day = toDayKey(from);
+  const meeting = meetingOf({ url, location, notes });
+  const place = placeOf({ url, location, notes });
+  const PlaceIcon = place && place === meeting?.service ? Video : MapPin;
   const when = allDay
     ? `${formatWeekday(day, true)}, ${formatRelativeDay(day, today)} · All day`
     : `${formatRelativeDay(day, today)} · ${formatRange(from, to)}`;
@@ -57,16 +64,26 @@ export function EventSheet({
             </Text>
           </View>
         </View>
+        {meeting && (
+          <View className="mt-5">
+            <Button
+              title={`Join ${meeting.service}`}
+              kind="primary"
+              icon={<Video size={18} color={colors.white} strokeWidth={1.5} absoluteStrokeWidth />}
+              onPress={() => joinMeeting(meeting)}
+            />
+          </View>
+        )}
         <View className="mt-5 overflow-hidden rounded-lg bg-canvas">
           <View className="h-12 flex-row items-center gap-3 px-4">
             <View className="h-3 w-3 rounded-full" style={{ backgroundColor: chip.bar }} />
             <Text className="flex-1 text-body text-ink">Calendar</Text>
             <Text className="text-body text-ink-2">{calendar}</Text>
           </View>
-          {location ? (
+          {place ? (
             <View className="min-h-12 flex-row items-center gap-3 border-t border-grid px-4 py-3">
-              <MapPin size={16} color={colors["ink-2"]} strokeWidth={1.5} absoluteStrokeWidth />
-              <Text className="flex-1 text-body text-ink">{location}</Text>
+              <PlaceIcon size={16} color={colors["ink-2"]} strokeWidth={1.5} absoluteStrokeWidth />
+              <Text className="flex-1 text-body text-ink">{place}</Text>
             </View>
           ) : null}
         </View>
