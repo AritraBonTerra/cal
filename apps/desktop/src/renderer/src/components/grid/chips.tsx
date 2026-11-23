@@ -41,14 +41,14 @@ function Handles() {
   );
 }
 
-// Marks an event with a call to join.
-const CallIcon = ({ className = "" }: { className?: string }) => (
+// Marks an event with a call to join, where a chip has a line for its title alone.
+const CallIcon = () => (
   <Video
     size={11}
     strokeWidth={1.5}
     absoluteStrokeWidth
     aria-label="Video call"
-    className={`shrink-0 ${className}`}
+    className="shrink-0"
   />
 );
 
@@ -115,7 +115,6 @@ export function EventChip({
           style={{ color: text, fontSize: height <= 12 ? 11 : undefined }}
         >
           <span className="truncate font-medium">{title}</span>
-          {call && <CallIcon className="self-center" />}
           {height >= 20 && (
             <span className="shrink-0 text-caption tnum" style={{ color: time }}>
               {formatMinutes(start)}
