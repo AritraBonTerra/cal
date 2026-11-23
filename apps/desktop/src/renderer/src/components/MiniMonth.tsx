@@ -37,7 +37,9 @@ export function MiniMonth() {
   const anchor = useUi((state) => state.anchor);
   // The month the calendar is in: the first visible day's, or the month or year view's
   // anchor.
-  const followed = startOfMonth(view.kind === "days" ? (days[0] ?? gridToday) : anchor);
+  const followed = startOfMonth(
+    view.kind === "days" || view.kind === "agenda" ? (days[0] ?? gridToday) : anchor,
+  );
   const [month, setMonth] = useState(followed);
   useEffect(() => setMonth(followed), [followed]);
 
@@ -64,11 +66,12 @@ export function MiniMonth() {
   const hiddenWeekend = (day: DayKey) =>
     !account.showWeekends && (weekday(day) === 0 || weekday(day) === 6);
   // In month view the band covers that month's shown days, not the neighboring days its
-  // grid also holds. The year view shows every day, so nothing is banded.
+  // grid also holds. The year view shows every day and the agenda runs on as it's
+  // scrolled, so neither is banded.
   const visible = new Set(
     view.kind === "month"
       ? days.filter((day) => day.slice(0, 7) === anchor.slice(0, 7) && !hiddenWeekend(day))
-      : view.kind === "year"
+      : view.kind === "year" || view.kind === "agenda"
         ? []
         : days,
   );

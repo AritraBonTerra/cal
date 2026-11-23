@@ -1,11 +1,11 @@
-import { useCommands } from "@cal/app-core";
+import { unscheduledByDay, useCommands } from "@cal/app-core";
 import type { DayKey } from "@cal/domain";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { now } from "../../lib/clock";
 import { geometry } from "../../lib/drag";
 import { AllDayRow } from "./AllDayRow";
-import { deadlinesByDay, unscheduledByDay, type Workload, workloadOn } from "./agenda";
+import { deadlinesByDay, type Workload, workloadOn } from "./agenda";
 import { DayHeaders } from "./DayHeaders";
 import { HabitStrip } from "./HabitStrip";
 import { GUTTER, type Item, withinDays, ZONE_COLUMN } from "./model";

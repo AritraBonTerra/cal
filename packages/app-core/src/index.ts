@@ -1,5 +1,13 @@
 export { type Actions, createActions, entryFields } from "./actions";
 export {
+  type AgendaDay,
+  type AgendaInput,
+  agendaDays,
+  isEmptyDay,
+  type TimedEntry,
+  unscheduledByDay,
+} from "./agenda";
+export {
   type BoundCommand,
   bindingFor,
   type Command,

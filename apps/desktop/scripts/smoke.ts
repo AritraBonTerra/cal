@@ -1406,5 +1406,63 @@ check(
   (await page.locator("[data-grid-body]").textContent())?.includes("https://") === false,
 );
 
+// The agenda (A): its rows, ↑/↓, Join, a checked to-do, growing on scroll.
+await page.keyboard.press("a");
+await page.waitForTimeout(300);
+check(
+  "A shows the agenda from today",
+  (await page.locator("[data-agenda-day]").first().getAttribute("data-agenda-day")) ===
+    "2026-10-28",
+);
+const agendaRow = (text: string) => page.locator("[data-row]", { hasText: text }).first();
+check(
+  "past events are faded and upcoming ones aren't",
+  (await agendaRow("Standup").getAttribute("data-past")) === "true" &&
+    (await agendaRow("All Hands").getAttribute("data-past")) === null,
+);
+// The panes may hold a selected to-do from earlier, which keeps the arrows.
+await page.keyboard.press("Escape");
+await page.keyboard.press("ArrowDown");
+await page.waitForTimeout(150);
+check(
+  "↓ starts at what's on now or next",
+  (await agendaRow("Office hours").getAttribute("data-selected")) === "true",
+);
+await page.keyboard.press("ArrowDown");
+await page.waitForTimeout(150);
+check(
+  "↓ moves on",
+  (await page.locator("[data-row][data-selected]").count()) === 1 &&
+    (await agendaRow("Office hours").getAttribute("data-selected")) === null,
+);
+await page.keyboard.press("ArrowUp");
+await page.waitForTimeout(150);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+check(
+  "Return opens the selected event",
+  (await page.locator("[data-editor='edit'] [aria-label='Title']").inputValue()) === "Office hours",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.click("[data-agenda-join]");
+await page.waitForTimeout(200);
+check("the agenda's Join joins", ZOOM_CALL.test((await openedCalls()).at(-1) ?? ""));
+const agendaDays = () =>
+  page
+    .locator("[data-agenda-day]")
+    .evaluateAll((days) => days.map((day) => day.getAttribute("data-agenda-day") ?? ""));
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(400);
+check(
+  "→ moves the agenda a week",
+  ((await agendaDays())[0] ?? "") >= "2026-11-04" || (await agendaDays()).length === 0,
+);
+await page.keyboard.press("t");
+await page.waitForTimeout(300);
+check("T brings the agenda back to today", (await agendaDays())[0] === "2026-10-28");
+await page.keyboard.press("w");
+await page.waitForTimeout(200);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

@@ -36,6 +36,7 @@ import {
   openSettings,
   openZonePicker,
   select,
+  showAgenda,
   showDays,
   showList,
   showMonth,
@@ -80,6 +81,9 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       if (selection?.kind !== "event") return undefined;
       return latest.current.events.find((event) => event.id === selection.id);
     };
+    // The agenda's own ↑ and ↓ walk its rows (AgendaView); a selected to-do keeps them.
+    const agendaArrows = () =>
+      ui.get().view.kind === "agenda" && ui.get().selection?.kind !== "task";
     const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
     const writer = () => eventWriter(history, latest.current.refreshEvents);
 
@@ -162,6 +166,14 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "View",
         keys: ["y"],
         run: () => showYear(latest.current.gridToday),
+      },
+      {
+        id: "view.agenda",
+        title: "Agenda",
+        group: "View",
+        keys: ["a"],
+        aliases: ["list", "schedule", "day by day"],
+        run: () => showAgenda(latest.current.gridToday),
       },
       ...Array.from({ length: 22 }, (_, index) => index + 10).map(
         (count): Command => ({
@@ -611,7 +623,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         when: "The to-do list is showing",
         keys: ["arrowup"],
-        enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
+        enabled: () => !hasBlock() && !agendaArrows() && !ui.get().editing && ui.get().tasks,
         run: () => step(-1),
       },
       {
@@ -620,7 +632,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         when: "The to-do list is showing",
         keys: ["arrowdown"],
-        enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
+        enabled: () => !hasBlock() && !agendaArrows() && !ui.get().editing && ui.get().tasks,
         run: () => step(1),
       },
     ];
@@ -744,7 +756,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Calendar",
         when: "A block is selected",
         keys: ["arrowup"],
-        enabled: hasBlock,
+        enabled: () => hasBlock() && !agendaArrows(),
         run: () => nudgeBlock(-NUDGE, false),
       },
       {
@@ -753,7 +765,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Calendar",
         when: "A block is selected",
         keys: ["arrowdown"],
-        enabled: hasBlock,
+        enabled: () => hasBlock() && !agendaArrows(),
         run: () => nudgeBlock(NUDGE, false),
       },
       {

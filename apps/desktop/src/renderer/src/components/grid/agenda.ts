@@ -5,11 +5,9 @@ import {
   type DayKey,
   inList,
   isOpen,
-  isThisEvening,
   type Project,
   remainingMinutes,
   type SmartList,
-  startDay,
   type Task,
   type TimeBlock,
   type WorkingHours,
@@ -21,61 +19,13 @@ import type { ListId } from "../../lib/ui";
 import { zonedInstant } from "../../lib/zones";
 
 /*
- * What the day headers of the days view report about each day (PLAN §5.3): the to-dos
- * set for it that have no time on the grid yet, the deadlines falling on it, and how
- * full its working hours are. Days are the grid's days: wall-clock days in `zone`, with
+ * What the day headers of the days view report about each day (PLAN §5.3): the deadlines
+ * falling on it and how full its working hours are. The to-dos without a block come from
+ * app-core's unscheduledByDay, which the agenda reads too. Days are the grid's days: wall-clock days in `zone`, with
  * `gridToday` as today, so travelling to another zone moves everything with the grid.
  */
 
 const MINUTE = 60_000;
-
-// The Today list's to-dos in its order, This Evening last.
-function todayRows(tasks: readonly Task[], gridToday: DayKey) {
-  const rows = rowsOf("today", tasks, gridToday);
-  const evening = rows.filter((task) => isThisEvening(task, gridToday));
-  return [...rows.filter((task) => !evening.includes(task)), ...evening];
-}
-
-/**
- * Open to-dos that belong on each of `days` and have no block that day, in list order.
- * Today's column holds the Today list (including to-dos whose date has passed); a later
- * day holds the to-dos dated for it that aren't already in Today. Past days hold none:
- * their to-dos have rolled into Today.
- */
-export function unscheduledByDay(
-  days: readonly DayKey[],
-  tasks: readonly Task[],
-  blocks: readonly TimeBlock[],
-  gridToday: DayKey,
-  zone: string,
-) {
-  const later = tasks
-    .filter((task) => isOpen(task) && !inList(task, "today", gridToday))
-    .sort(byPosition);
-  const byDay = new Map<DayKey, Task[]>();
-  for (const day of days) {
-    if (day < gridToday) {
-      byDay.set(day, []);
-      continue;
-    }
-    const from = zonedInstant(day, 0, zone).getTime();
-    const to = zonedInstant(addDays(day, 1), 0, zone).getTime();
-    const timed = new Set(
-      blocks
-        .filter((block) => Date.parse(block.end_at) > from && Date.parse(block.start_at) < to)
-        .map((block) => block.task_uuid),
-    );
-    const belong =
-      day === gridToday
-        ? todayRows(tasks, gridToday)
-        : later.filter((task) => startDay(task) === day);
-    byDay.set(
-      day,
-      belong.filter((task) => !timed.has(task.uuid)),
-    );
-  }
-  return byDay;
-}
 
 export interface Deadlines {
   tasks: Task[];

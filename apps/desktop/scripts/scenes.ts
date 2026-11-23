@@ -112,6 +112,11 @@ export const scenes: Scene[] = [
     name: "event-call",
     click: "[data-item^='event:'] > div:has-text('Office hours')",
   },
+  // The agenda: today from the top, the now line, Join on the call about to start.
+  { name: "agenda", keys: ["a"] },
+  { name: "agenda-dark", dark: true, keys: ["a"] },
+  { name: "agenda-event", keys: ["a", "ArrowDown", "Enter"] },
+  { name: "agenda-narrow", width: 760, height: 620, keys: ["a"] },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

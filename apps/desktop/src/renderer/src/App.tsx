@@ -19,6 +19,7 @@ import {
 } from "@cal/domain";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppCommands } from "./commands";
+import { AgendaView } from "./components/agenda/AgendaView";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
@@ -220,7 +221,9 @@ export function App() {
         ? visibleDays(anchor, view.count, account.showWeekends)
         : view.kind === "year"
           ? yearDays(anchor)
-          : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
+          : view.kind === "agenda"
+            ? dayRange(anchor, view.span)
+            : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
     [view, anchor, account.showWeekends, account.weekStart],
   );
   useFollowToday(gridToday, zone, days);
@@ -304,6 +307,8 @@ export function App() {
             <DaysView />
           ) : view.kind === "month" ? (
             <MonthView />
+          ) : view.kind === "agenda" ? (
+            <AgendaView />
           ) : (
             <YearView />
           )}

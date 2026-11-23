@@ -17,7 +17,12 @@ import { sameYear, startOfYear } from "./year";
  * `useUi`; commands and pointer handlers write it through the helpers below.
  */
 
-export type View = { kind: "days"; count: number } | { kind: "month" } | { kind: "year" };
+export type View =
+  | { kind: "days"; count: number }
+  | { kind: "month" }
+  | { kind: "year" }
+  // A list of `span` days from the anchor, which grows as it's scrolled.
+  | { kind: "agenda"; span: number };
 
 // A sidebar entry: a smart list, or one project or area.
 export type ListId = SmartList | `project:${string}` | `area:${string}`;
@@ -105,6 +110,7 @@ export const useUi = <R>(select: (state: UiState) => R) => useStore(ui, select);
 // Whether the view on screen holds `today`.
 function showsToday({ view, anchor }: UiState, today: DayKey) {
   if (view.kind === "days") return dayRange(anchor, view.count).includes(today);
+  if (view.kind === "agenda") return dayRange(anchor, view.span).includes(today);
   return view.kind === "month" ? anchor.slice(0, 7) === today.slice(0, 7) : sameYear(anchor, today);
 }
 
@@ -168,7 +174,26 @@ export function showYear(today: DayKey) {
   }));
 }
 
-// Moves by the visible span: N days, a month, or a year.
+// How many days the agenda starts with, adds when scrolled to its end, and stops at.
+const AGENDA = { step: 30, max: 366 };
+
+// Lists the days from today when it's in view, else from the anchor.
+export function showAgenda(today: DayKey) {
+  ui.set((state) => ({
+    view: { kind: "agenda", span: AGENDA.step },
+    anchor: showsToday(state, today) ? today : state.anchor,
+  }));
+}
+
+// Adds days to the end of the agenda; false once it's as long as it gets.
+export function extendAgenda() {
+  const { view } = ui.get();
+  if (view.kind !== "agenda" || view.span >= AGENDA.max) return false;
+  ui.set({ view: { kind: "agenda", span: Math.min(AGENDA.max, view.span + AGENDA.step) } });
+  return true;
+}
+
+// Moves by the visible span: N days, a month, or a year; a week in the agenda.
 export function moveView(direction: 1 | -1) {
   ui.set(({ view, anchor }) => ({
     anchor:
@@ -176,7 +201,7 @@ export function moveView(direction: 1 | -1) {
         ? addMonths(anchor, direction)
         : view.kind === "year"
           ? addMonths(anchor, direction * 12)
-          : addDays(anchor, direction * view.count),
+          : addDays(anchor, direction * (view.kind === "agenda" ? WEEK : view.count)),
   }));
 }
 
@@ -208,8 +233,12 @@ export function goToday(today: DayKey, leftAlign = false) {
  */
 export function followToday(previous: DayKey, today: DayKey, shown: readonly DayKey[]) {
   const { view } = ui.get();
-  if (view.kind !== "days" || view.count === WEEK || !shown.includes(previous)) return;
-  ui.set({ anchor: today });
+  // The agenda follows only while it starts on today; one paged back keeps its place.
+  const follows =
+    view.kind === "days"
+      ? view.count !== WEEK && shown.includes(previous)
+      : view.kind === "agenda" && shown[0] === previous;
+  if (follows) ui.set({ anchor: today });
 }
 
 /**
@@ -220,7 +249,10 @@ export function followToday(previous: DayKey, today: DayKey, shown: readonly Day
 export function jumpTo(day: DayKey, today: DayKey, hiddenWeekend: boolean) {
   const { view } = ui.get();
   if (view.kind === "year") showDays(hiddenWeekend ? 1 : WEEK, today, day);
-  else if (hiddenWeekend && (view.kind === "month" || view.count === WEEK)) {
+  else if (
+    hiddenWeekend &&
+    (view.kind === "month" || (view.kind === "days" && view.count === WEEK))
+  ) {
     showDays(1, today, day);
   }
   goToday(day);

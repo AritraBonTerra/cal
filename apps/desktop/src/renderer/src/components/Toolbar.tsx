@@ -8,6 +8,7 @@ import { formatMonthYear, formatSpan, weekNumber } from "../lib/time";
 import {
   goToday,
   moveView,
+  showAgenda,
   showDays,
   showMonth,
   showYear,
@@ -47,7 +48,9 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
       ? formatMonthYear(anchor)
       : view.kind === "year"
         ? anchor.slice(0, 4)
-        : formatSpan(first, last);
+        : view.kind === "agenda"
+          ? formatMonthYear(anchor)
+          : formatSpan(first, last);
   const weeks =
     view.kind === "days" && account.weekNumbers
       ? [weekNumber(first, account.weekStart), weekNumber(last, account.weekStart)]
@@ -57,11 +60,13 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
       ? "Month"
       : view.kind === "year"
         ? "Year"
-        : view.count === 1
-          ? "Day"
-          : view.count === 7
-            ? "Week"
-            : `${view.count} days`;
+        : view.kind === "agenda"
+          ? "Agenda"
+          : view.count === 1
+            ? "Day"
+            : view.count === 7
+              ? "Week"
+              : `${view.count} days`;
 
   return (
     <header className="drag-region flex h-13 shrink-0 items-center gap-1 pr-3 pl-4">
@@ -110,13 +115,14 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
   );
 }
 
-// `count` 0 is the month view and -1 the year view.
+// `count` 0 is the month view, -1 the year view and -2 the agenda.
 const CHOICES = [
   { label: "Day", keys: "1", count: 1 },
   { label: "3 days", keys: "3", count: 3 },
   { label: "Week", keys: "w", count: 7 },
   { label: "Month", keys: "m", count: 0 },
   { label: "Year", keys: "y", count: -1 },
+  { label: "Agenda", keys: "a", count: -2 },
 ];
 
 // A small popover with the common spans; any other count comes from ⌘K ("Show 14 days").
@@ -159,6 +165,7 @@ function ViewMenu({ label }: { label: string }) {
               onClick={() => {
                 setOpen(false);
                 if (choice.count === 0) showMonth(today);
+                else if (choice.count === -2) showAgenda(gridToday);
                 else if (choice.count < 0) showYear(gridToday);
                 else showDays(choice.count, today);
               }}

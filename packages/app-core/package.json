@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@cal/backend": "workspace:*",
+    "@cal/calendar-source": "workspace:*",
     "@cal/domain": "workspace:*",
     "@cal/nlp": "workspace:*",
     "@cal/sync": "workspace:*"
