@@ -5,6 +5,7 @@ import {
   daysBetween,
   fromDayKey,
   localTimeZone,
+  meetingFromUrl,
   startOfMonth,
   startOfWeek,
   toDayKey,
@@ -170,8 +171,8 @@ export function parseQuickEntry(text: string, context: ParseContext): QuickEntry
   let url: string | undefined;
   const extraLinks = new Set<Token>();
   for (const m of s.masked.matchAll(/https?:\/\/[^\s]+/gi)) {
-    const video = /(zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)/i.test(m[0]);
-    const token = s.claim("url", m.index, m.index + m[0].length, video ? "Video call" : "Link");
+    const label = meetingFromUrl(m[0]) ? "Video call" : "Link";
+    const token = s.claim("url", m.index, m.index + m[0].length, label);
     if (url === undefined) url = m[0];
     else {
       token.applied = false;

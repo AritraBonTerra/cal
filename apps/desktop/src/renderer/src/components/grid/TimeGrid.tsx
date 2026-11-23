@@ -1,5 +1,5 @@
 import { useActions, useCal } from "@cal/app-core";
-import { type DayKey, daysBetween, toOffsetIso, weekday } from "@cal/domain";
+import { type DayKey, daysBetween, meetingOf, placeOf, toOffsetIso, weekday } from "@cal/domain";
 import { blockColors, mix, colors as tokens } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -329,7 +329,13 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
         ...item,
         start: form.start,
         end: form.end,
-        event: { ...item.event, title: form.title || item.event.title, location: form.location },
+        event: {
+          ...item.event,
+          title: form.title || item.event.title,
+          location: form.location,
+          url: form.url,
+          notes: form.notes,
+        },
       };
     }
     return item;
@@ -500,7 +506,8 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
                   {item.kind === "event" ? (
                     <EventChip
                       title={item.event.title}
-                      location={item.event.location}
+                      place={placeOf(item.event)}
+                      call={meetingOf(item.event) !== undefined}
                       start={start}
                       end={end}
                       colors={palette.get(item.event.calendarId) ?? graphite(mode)}
@@ -628,7 +635,8 @@ function DraftChip({
       <div data-item="draft" className="contents">
         <EventChip
           title={form.title || "New event"}
-          location={form.location || undefined}
+          place={placeOf(form)}
+          call={meetingOf(form) !== undefined}
           start={start}
           end={end}
           colors={palette.get(form.calendarId) ?? graphite(mode)}

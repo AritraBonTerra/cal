@@ -77,6 +77,7 @@ const bridge: CalBridge = {
     onChange: (listener) => listen<SyncStatus>(channels.syncChanged, listener),
   },
   calendar,
+  joinMeeting: (url) => ipcRenderer.invoke(channels.joinMeeting, url),
   onCommand: (listener) => listen<string>("cal:command", listener),
   setMenuKeys: (keys: MenuKeys | null) => ipcRenderer.invoke(channels.menuKeys, keys),
   updates: {

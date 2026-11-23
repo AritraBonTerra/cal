@@ -66,6 +66,9 @@ import { deviceZone, zonedDayKey } from "./lib/zones";
 // Weeks shown by the month view: the one holding the 1st through the one holding the last day.
 const MONTH_ROWS = 6;
 
+// How many days ahead `upcoming` reaches.
+const UPCOMING_DAYS = 60;
+
 // Hides the to-do pane on narrow windows and the sidebar on very narrow ones, and
 // brings them back when the window grows; the user can still toggle either in between.
 function usePaneDefaults() {
@@ -238,6 +241,16 @@ export function App() {
     [fetched, device.hiddenCalendars, account.showDeclined],
   );
 
+  // What's ahead, whatever the view shows: the call ⌘J joins, and unanswered invitations.
+  const { events: ahead } = useEvents(
+    toOffsetIso(fromDayKey(today)),
+    toOffsetIso(fromDayKey(addDays(today, UPCOMING_DAYS))),
+  );
+  const upcoming = useMemo(
+    () => visibleEvents(ahead, device.hiddenCalendars, account.showDeclined),
+    [ahead, device.hiddenCalendars, account.showDeclined],
+  );
+
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(
     () => ({
@@ -245,6 +258,7 @@ export function App() {
       calendars,
       palette,
       events,
+      upcoming,
       refreshEvents: refresh,
       mode,
       today,
@@ -259,6 +273,7 @@ export function App() {
       calendars,
       palette,
       events,
+      upcoming,
       refresh,
       mode,
       today,

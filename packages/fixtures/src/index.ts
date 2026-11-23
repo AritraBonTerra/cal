@@ -84,6 +84,19 @@ const seeds: Seed[] = [
       myStatus: "accepted",
     },
   ],
+  // Five minutes away at the fixture's 10:40, so its Join shows. Free, so planning
+  // still finds the slot.
+  [
+    "work",
+    "Office hours",
+    at(day(2), 10, 45),
+    at(day(2), 11, 15),
+    {
+      busy: false,
+      location: "https://us02web.zoom.us/j/81234567890?pwd=abc",
+      notes: "Dial in by phone instead: https://us02web.zoom.us/u/kdXyZ",
+    },
+  ],
   ["work", "1:1 with Sam", at(day(2), 11, 30), at(day(2), 12)],
   ["work", "Prep for All Hands", at(day(2), 13), at(day(2), 13, 30)],
   ["work", "All Hands", at(day(2), 16), at(day(2), 17), { location: "Zoom" }],

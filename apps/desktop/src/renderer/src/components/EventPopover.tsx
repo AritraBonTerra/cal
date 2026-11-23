@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
 import type { Attendee } from "@cal/calendar-source";
-import { addDays, fromDayKey, toDayKey } from "@cal/domain";
+import { addDays, fromDayKey, meetingOf, toDayKey } from "@cal/domain";
 import { parseQuickEntry, type QuickEntry, type Token } from "@cal/nlp";
 import {
   AlignLeft,
@@ -15,6 +15,7 @@ import {
   MapPin,
   Trash2,
   Users,
+  Video,
   X,
 } from "lucide-react";
 import {
@@ -53,7 +54,9 @@ import {
 } from "../lib/events";
 import { inTextField } from "../lib/keyboard";
 import { mapsLabel, mapsUrl } from "../lib/maps";
+import { openMeeting } from "../lib/meetings";
 import { describeRule, repeatPresets } from "../lib/recurrence";
+import { shortcutText, useShortcut } from "../lib/shortcuts";
 import {
   formatDuration,
   formatMinutes,
@@ -170,6 +173,8 @@ function Popover({ editor }: { editor: EditorState }) {
   const title = useRef<HTMLInputElement>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [customRule, setCustomRule] = useState(false);
+  const joinKey = useShortcut("event.join");
+  const meeting = !creating && form.kind === "event" ? meetingOf(form) : undefined;
   const writable = calendars.filter((calendar) => calendar.writable);
   const calendar = calendars.find((each) => each.id === form.calendarId);
   const readOnly = !creating && !(calendar?.writable ?? false);
@@ -569,7 +574,7 @@ function Popover({ editor }: { editor: EditorState }) {
                   onChange={(location) => patchForm({ location })}
                   placeholder="Location"
                 />
-                {form.location.trim() && (
+                {form.location.trim() && !/^https?:/i.test(form.location.trim()) && (
                   // A link, not a button: it works on read-only events too, and the
                   // main process sends it to the Mac's browser or maps app.
                   <a
@@ -727,6 +732,22 @@ function Popover({ editor }: { editor: EditorState }) {
           </Section>
         )}
       </fieldset>
+
+      {meeting && (
+        // Outside the fieldset, so a read-only event's call can be joined too.
+        <div className="shrink-0 border-t border-grid p-2">
+          <button
+            type="button"
+            onClick={() => openMeeting(meeting.url)}
+            className="flex h-8 w-full items-center justify-center gap-2 rounded-md bg-accent-solid text-body font-medium text-white transition-opacity duration-100 hover:opacity-90"
+            data-join
+          >
+            <Video size={14} strokeWidth={1.5} absoluteStrokeWidth />
+            Join {meeting.service}
+            {joinKey && <span className="text-caption text-white/80">{shortcutText(joinKey)}</span>}
+          </button>
+        </div>
+      )}
 
       <footer className="flex h-8 shrink-0 items-center gap-3 border-t border-grid px-3 text-caption text-ink-3">
         {confirmDiscard ? (

@@ -107,6 +107,11 @@ export const scenes: Scene[] = [
   { name: "year-narrow-panes", width: 860, height: 700, keys: ["y", "Meta+\\", "Meta+/"] },
   { name: "year-tight", width: 760, height: 520, keys: ["y"] },
   { name: "year-tight-sidebar-dark", dark: true, width: 760, height: 520, keys: ["y", "Meta+\\"] },
+  // An event with a Zoom call: the chip's camera, the place by name, and Join.
+  {
+    name: "event-call",
+    click: "[data-item^='event:'] > div:has-text('Office hours')",
+  },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

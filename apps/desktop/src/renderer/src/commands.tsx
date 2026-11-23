@@ -24,6 +24,7 @@ import {
   SMART_TITLES,
   tasksIn,
 } from "./lib/lists";
+import { joinCall } from "./lib/meetings";
 import { PANES } from "./lib/panes";
 import { revealBlock } from "./lib/reveal";
 import {
@@ -679,6 +680,15 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           const event = selectedEvent();
           if (event) openEdit(event, latest.current.zone);
         },
+      },
+      {
+        id: "event.join",
+        title: "Join Call",
+        group: "Calendar",
+        when: "The selected event's call, or the next one",
+        keys: ["mod+j"],
+        aliases: ["zoom", "google meet", "teams", "video", "meeting"],
+        run: () => joinCall(selectedEvent(), latest.current.upcoming),
       },
       {
         id: "event.delete",

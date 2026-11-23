@@ -16,6 +16,8 @@ export interface AppState {
   palette: ReadonlyMap<string, ChipColors>;
   // Visible events, already without hidden calendars and declined invitations.
   events: readonly ExternalEvent[];
+  // Visible events from today on (two months' worth), whatever days the view shows.
+  upcoming: readonly ExternalEvent[];
   refreshEvents: () => Promise<void>;
   mode: Mode;
   // Today on this Mac: what to-dos and habits count as today.

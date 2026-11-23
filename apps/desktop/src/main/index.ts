@@ -32,6 +32,7 @@ import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { createCapture } from "./capture";
 import { openDatabase } from "./db";
+import { createJoin } from "./meetings";
 import { encryptedFile } from "./session";
 import { createUpdates } from "./updater";
 
@@ -101,6 +102,17 @@ app.on("open-url", (event, url) => {
 
 data.subscribe((tables) => broadcast(channels.dataChanged, tables));
 calendar.onChange(() => broadcast(channels.calendarChanged, null));
+
+// Fixture launches record what they would open, for the scripts to read.
+const opened: string[] = [];
+if (fixture) Object.assign(globalThis, { calOpened: opened });
+const joinMeeting = createJoin({
+  handlerFor: (url) => app.getApplicationNameForProtocol(url),
+  open: async (url) => {
+    if (fixture) opened.push(url);
+    else await shell.openExternal(url);
+  },
+});
 
 const rendererFile = join(import.meta.dirname, "../renderer/index.html");
 
@@ -201,6 +213,8 @@ handleFrom(channels.calendar, (event, call: CalendarCall) => {
       return written(event, calendar.deleteEvent(...call.args));
   }
 });
+
+handle(channels.joinMeeting, (url: string) => joinMeeting(url));
 
 // The window's theme setting. Electron re-evaluates `prefers-color-scheme` from this.
 handle(channels.theme, (theme: Theme) => {
@@ -462,6 +476,8 @@ function buildMenu() {
         command("New To-Do", "task.new"),
         command("Quick Entry", "task.quickEntry"),
         command("Quick Entry from Any App", CAPTURE_COMMAND),
+        command("Join Call", "event.join"),
+        { type: "separator" },
         command("New Project", "project.new"),
         command("New Area", "area.new"),
         command("New Habit…", "habit.new"),

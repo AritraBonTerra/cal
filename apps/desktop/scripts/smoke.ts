@@ -1259,7 +1259,7 @@ check(
   (await page.locator("[data-recording]").count()) === 0 && (await settingsOpen()) === 1,
 );
 await paletteKey.click();
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(300);
 check(
   "a recorded key saves without running anything",
@@ -1269,12 +1269,12 @@ check(
 );
 check(
   "the menu follows the new binding",
-  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+J",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+U",
 );
 await page.fill("[aria-label='Search shortcuts']", "new to-do");
 await page.hover("[data-command='task.new']");
 await page.click("[data-command='task.new'] [data-add]");
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(300);
 check(
   "a shared key warns but saves",
@@ -1283,7 +1283,7 @@ check(
   ) && (await page.locator("[data-command='task.new'] [data-key]").count()) === 2,
 );
 await page.hover("[data-command='task.new']");
-await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘J']");
+await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘U']");
 await page.waitForTimeout(300);
 check(
   "removing the extra key clears the change",
@@ -1295,7 +1295,7 @@ await page.click("[aria-label='Search shortcuts']");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(200);
 check("the new binding opens the command menu", (await paletteOpen()) === 1);
 await page.keyboard.press("Escape");
@@ -1377,6 +1377,34 @@ check(
 );
 check("125% moves the traffic lights down", lights?.y === 25);
 await page.evaluate(() => window.calTest?.seed({ device: { uiScale: 100 } }));
+
+// Calls: ⌘J joins the one coming up, a selected event's call, and the popover's Join.
+const ZOOM_CALL =
+  /^(zoommtg:|https:)\/\/us02web\.zoom\.us\/j(oin\?action=join&confno=|\/)81234567890[&?]pwd=abc$/;
+const openedCalls = () => app.evaluate(() => globalThis.calOpened ?? []);
+await page.keyboard.press("Escape");
+await page.keyboard.press("w");
+await page.keyboard.press("t");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check("⌘J joins the next call", ZOOM_CALL.test((await openedCalls()).at(-1) ?? ""));
+const review = page.locator("[data-item^='event:'] > div", { hasText: "Design review" });
+await review.click();
+await page.waitForTimeout(300);
+await page.click("[data-join]");
+await page.waitForTimeout(200);
+check(
+  "Join in the popover joins that event's call",
+  (await openedCalls()).at(-1) === "https://meet.google.com/abc-defg-hij",
+);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+check(
+  "a chip names the call instead of showing its URL",
+  (await page.locator("[data-grid-body]").textContent())?.includes("https://") === false,
+);
 
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

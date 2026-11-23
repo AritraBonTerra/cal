@@ -4,6 +4,8 @@ import type { AccountSettings, DeviceSettings } from "@cal/app-core";
 declare global {
   // Fixture mode's handle on the capture panel in the main process (main/capture.ts).
   var calCapture: { show(): void; hide(): void } | undefined;
+  // What fixture mode would have opened outside Cal: calls joined (main/index.ts).
+  var calOpened: string[] | undefined;
   interface Window {
     calTest?: {
       device(): DeviceSettings;

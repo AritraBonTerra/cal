@@ -42,6 +42,9 @@ export interface CalBridge {
     onChange(listener: (status: SyncStatus) => void): () => void;
   };
   calendar: CalendarSource;
+  // Opens the call at `url` in its app (Zoom), else in the browser. False when `url`
+  // isn't a call Cal knows.
+  joinMeeting(url: string): Promise<boolean>;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
   // Gives the menu bar the commands' keys, replacing what it had; null makes the window
@@ -150,6 +153,7 @@ export const channels = {
   captureSize: "cal:capture-size",
   captureReset: "cal:capture-reset",
   openAtLogin: "cal:open-at-login",
+  joinMeeting: "cal:join-meeting",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.
