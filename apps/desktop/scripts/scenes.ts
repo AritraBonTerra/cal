@@ -62,6 +62,17 @@ const SHORTCUT_CHANGES = {
 // A to-do in Today with notes, tags, a deadline and an estimate.
 const PRICING = "li:has-text('Update pricing page copy')";
 
+// A set with hours (in force at the fixture's Wednesday 10:40) and one without.
+const SETS = [
+  {
+    id: "set-work",
+    name: "Work",
+    calendars: ["work"],
+    hours: { days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 },
+  },
+  { id: "set-home", name: "Home", calendars: ["personal", "family"] },
+];
+
 export const scenes: Scene[] = [
   { name: "week-light" },
   { name: "week-dark", dark: true },
@@ -161,6 +172,18 @@ export const scenes: Scene[] = [
     name: "settings-outside",
     keys: ["Meta+,"],
     steps: [{ reveal: "h3:has-text('Outside the window')" }],
+  },
+  // Calendar sets: the menu beside Calendars, one in force, and the editor.
+  {
+    name: "calendar-sets",
+    settings: { device: { calendarSets: SETS } },
+    steps: [{ reveal: "[data-calendar-list]" }, { click: "[data-set-menu]" }],
+  },
+  {
+    name: "settings-calendar-sets",
+    settings: { device: { calendarSets: SETS } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section='calendars']" }, { reveal: "h3:has-text('Calendar sets')" }],
   },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.

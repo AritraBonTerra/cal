@@ -1,5 +1,6 @@
 import type { SyncedRow } from "@cal/backend/sync";
 import { type AccentId, accentIds, type ThemeId, themesFor } from "@cal/theme";
+import type { CalendarSet, SetChoice } from "./calendarSets";
 import type { Keybindings } from "./commands";
 import type { DataSource } from "./data";
 
@@ -57,6 +58,9 @@ export const deviceDefaults = {
   workloadBar: true,
   // Device calendars hidden from the grid, by calendar id.
   hiddenCalendars: [] as string[],
+  // Groups of calendars to switch between, and which one shows (see calendarSets.ts).
+  calendarSets: [] as CalendarSet[],
+  calendarSet: "auto" as SetChoice,
   // Color overrides by calendar id (hex), kept in Cal rather than written to the calendar.
   calendarColors: {} as Record<string, string>,
   // Calendars whose events don't count as busy for scheduling.
@@ -134,6 +138,18 @@ const isZone: Check = (value) => {
   }
 };
 
+const isCalendarSet: Check = (set) =>
+  isRecord(set) &&
+  isString(set.id) &&
+  typeof set.name === "string" &&
+  arrayOf(isString, 1000)(set.calendars) &&
+  (set.hours === undefined ||
+    (isRecord(set.hours) &&
+      arrayOf(isInt(0, 6), 7)(set.hours.days) &&
+      isInt(0, 24 * 60)(set.hours.start) &&
+      isInt(0, 24 * 60)(set.hours.end) &&
+      Number(set.hours.start) < Number(set.hours.end)));
+
 /*
  * A check per setting, so a value from another app version or a bad write is ignored
  * (the default stands) instead of reaching the UI with the wrong shape.
@@ -176,6 +192,8 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   halfHourLines: isBool,
   workloadBar: isBool,
   hiddenCalendars: arrayOf(isString, 1000),
+  calendarSets: arrayOf(isCalendarSet, 20),
+  calendarSet: isString,
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
   freeCalendars: arrayOf(isString, 1000),
   defaultCalendar: nullable(isString),

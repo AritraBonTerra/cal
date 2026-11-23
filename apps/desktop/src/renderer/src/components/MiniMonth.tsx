@@ -31,7 +31,7 @@ const fullDate = new Intl.DateTimeFormat(undefined, {
 const CHEVRON = { size: 14, strokeWidth: 1.5, absoluteStrokeWidth: true } as const;
 
 export function MiniMonth() {
-  const { days, gridToday, data, account, device, zone } = useApp();
+  const { days, gridToday, data, account, device, hidden, zone } = useApp();
   const { setDevice } = useSettings();
   const view = useUi((state) => state.view);
   const anchor = useUi((state) => state.anchor);
@@ -56,12 +56,12 @@ export function MiniMonth() {
     () =>
       markedDays(
         [
-          ...visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
+          ...visibleEvents(fetched, hidden, account.showDeclined),
           ...data.blocks.map((block) => ({ start: block.start_at, end: block.end_at })),
         ],
         zone,
       ),
-    [fetched, device.hiddenCalendars, account.showDeclined, data.blocks, zone],
+    [fetched, hidden, account.showDeclined, data.blocks, zone],
   );
   const hiddenWeekend = (day: DayKey) =>
     !account.showWeekends && (weekday(day) === 0 || weekday(day) === 6);

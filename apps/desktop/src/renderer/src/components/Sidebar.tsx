@@ -1,10 +1,11 @@
 import { useActions, useCal, useSettings } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
 import { type Area, byPosition, inList, isOpen, type Project } from "@cal/domain";
-import { Box, CalendarDays, ChevronDown, Plus, Repeat, Settings } from "lucide-react";
+import { Box, CalendarDays, Check, ChevronDown, Plus, Repeat, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
+import { setLabel, setName } from "../lib/calendarSets";
 import { byAccount, calendarColor, soloCalendar, withId } from "../lib/calendars";
 import { SMART_LISTS, SMART_TITLES } from "../lib/lists";
 import { useShortcut, withShortcut } from "../lib/shortcuts";
@@ -184,39 +185,50 @@ function Row({
  * shows only that one (again to show them all). The heading collapses the list.
  */
 function CalendarList() {
-  const { calendars, device } = useApp();
+  const { calendars, calendarSet, device } = useApp();
   const { setDevice } = useSettings();
   if (calendars.length === 0) return null;
   const open = device.showCalendarList;
   const hidden = device.hiddenCalendars;
   return (
     <section className="mt-5" data-calendar-list>
-      <button
-        type="button"
-        onClick={() => setDevice("showCalendarList", !open)}
-        aria-expanded={open}
-        className="group flex h-7 w-full items-center gap-1 px-2 text-left text-small text-ink-3"
-      >
-        Calendars
-        <ChevronDown
-          size={12}
-          strokeWidth={1.5}
-          absoluteStrokeWidth
-          className={open ? "invisible group-hover:visible" : "-rotate-90"}
-        />
-      </button>
+      <div className="flex h-7 items-center gap-1 pr-1">
+        <button
+          type="button"
+          onClick={() => setDevice("showCalendarList", !open)}
+          aria-expanded={open}
+          className="group flex h-7 min-w-0 flex-1 items-center gap-1 px-2 text-left text-small text-ink-3"
+        >
+          Calendars
+          <ChevronDown
+            size={12}
+            strokeWidth={1.5}
+            absoluteStrokeWidth
+            className={open ? "invisible group-hover:visible" : "-rotate-90"}
+          />
+        </button>
+        {device.calendarSets.length > 0 && <SetMenu />}
+      </div>
       {open && (
         <ul>
           {byAccount(calendars).flatMap(({ calendars: group }) =>
             group.map((calendar) => {
-              const shown = !hidden.includes(calendar.id);
+              // A calendar outside the set in force stays out of sight until the set changes.
+              const outside =
+                calendarSet !== undefined && !calendarSet.calendars.includes(calendar.id);
+              const shown = !outside && !hidden.includes(calendar.id);
               const color = calendarColor(calendar, device.calendarColors);
               return (
                 <li key={calendar.id}>
                   <button
                     type="button"
                     aria-pressed={shown}
-                    title={`${calendar.account} · ⌥-click to show only this calendar`}
+                    disabled={outside}
+                    title={
+                      outside
+                        ? `Not in ${setName(calendarSet)}`
+                        : `${calendar.account} · ⌥-click to show only this calendar`
+                    }
                     onClick={(event) =>
                       setDevice(
                         "hiddenCalendars",
@@ -225,7 +237,7 @@ function CalendarList() {
                           : withId(hidden, calendar.id, shown),
                       )
                     }
-                    className={`${ROW} hover:bg-hover ${shown ? "text-ink" : "text-ink-3"}`}
+                    className={`${ROW} enabled:hover:bg-hover ${shown ? "text-ink" : "text-ink-3"}`}
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                       <span
@@ -246,6 +258,79 @@ function CalendarList() {
         </ul>
       )}
     </section>
+  );
+}
+
+// Switches calendar sets; shown beside the Calendars heading once there is one.
+function SetMenu() {
+  const { calendarSet, device } = useApp();
+  const { setDevice } = useSettings();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
+  const choice = device.calendarSet;
+  const mark = (on: boolean) =>
+    on ? (
+      <Check size={14} strokeWidth={2} absoluteStrokeWidth className="text-accent" />
+    ) : (
+      <span className="w-3.5" />
+    );
+  return (
+    <div ref={ref} className="relative min-w-0">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Calendar set"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-6 max-w-full items-center gap-1 rounded-md px-1.5 text-small text-ink-2 hover:bg-hover"
+        data-set-menu
+      >
+        <span className="truncate">{setLabel(calendarSet, choice)}</span>
+        <ChevronDown
+          size={12}
+          strokeWidth={1.5}
+          absoluteStrokeWidth
+          className="shrink-0 text-ink-3"
+        />
+      </button>
+      {open && (
+        <PopMenu
+          label="Calendar sets"
+          onClose={close}
+          className="bottom-full right-0 mb-1 origin-bottom-right"
+          items={[
+            {
+              id: "auto",
+              label: "Automatic",
+              icon: mark(choice === "auto"),
+              run: () => setDevice("calendarSet", "auto"),
+            },
+            {
+              id: "all",
+              label: "All Calendars",
+              icon: mark(choice === "all"),
+              run: () => setDevice("calendarSet", "all"),
+            },
+            ...device.calendarSets.map((set, index) => ({
+              id: set.id,
+              label: setName(set),
+              icon: mark(choice === set.id),
+              divider: index === 0,
+              run: () => setDevice("calendarSet", set.id),
+            })),
+            {
+              id: "edit",
+              label: "Edit Sets…",
+              icon: mark(false),
+              divider: true,
+              run: () => openSettings("calendars"),
+            },
+          ]}
+        />
+      )}
+    </div>
   );
 }
 

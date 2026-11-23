@@ -1,4 +1,4 @@
-import type { AccountSettings, DeviceSettings } from "@cal/app-core";
+import type { AccountSettings, CalendarSet, DeviceSettings } from "@cal/app-core";
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
 import type { DayKey } from "@cal/domain";
 import type { ChipColors, Mode, Palette } from "@cal/theme";
@@ -13,6 +13,10 @@ import type { useData } from "./data";
 export interface AppState {
   data: ReturnType<typeof useData>;
   calendars: readonly DeviceCalendar[];
+  // The calendar set in force; undefined shows every calendar.
+  calendarSet: CalendarSet | undefined;
+  // Calendars not showing: hidden by hand, or outside the set.
+  hidden: readonly string[];
   // Chip colors by calendar id.
   palette: ReadonlyMap<string, ChipColors>;
   // The theme's colors as hex.

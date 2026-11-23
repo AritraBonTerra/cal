@@ -7,6 +7,7 @@ export {
   type TimedEntry,
   unscheduledByDay,
 } from "./agenda";
+export { activeSet, type CalendarSet, hiddenWith, type SetChoice } from "./calendarSets";
 export {
   type BoundCommand,
   bindingFor,

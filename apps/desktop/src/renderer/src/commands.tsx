@@ -3,6 +3,7 @@ import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain"
 import { useRef } from "react";
 import { type AuthState, CAPTURE_COMMAND } from "../../shared/api";
 import type { AppState } from "./lib/app";
+import { setName } from "./lib/calendarSets";
 import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
 import {
@@ -59,7 +60,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount, setDevice } = useSettings();
+  const { device, setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -803,6 +804,45 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
     ];
 
+    // ⌃1–9 by position, as listed in Settings; the registry re-lists on a settings change.
+    const sets: Command[] = [
+      {
+        id: "set.auto",
+        title: "Calendar Set: Automatic",
+        group: "Calendar",
+        when: "There are calendar sets",
+        aliases: ["calendar set", "schedule"],
+        enabled: () => latest.current.device.calendarSets.length > 0,
+        run: () => setDevice("calendarSet", "auto"),
+      },
+      {
+        id: "set.all",
+        title: "Calendar Set: All Calendars",
+        group: "Calendar",
+        when: "There are calendar sets",
+        keys: ["ctrl+0"],
+        aliases: ["calendar set", "show everything"],
+        enabled: () => latest.current.device.calendarSets.length > 0,
+        run: () => setDevice("calendarSet", "all"),
+      },
+      ...Array.from({ length: 9 }, (_, index): Command => {
+        const set = device.calendarSets[index];
+        return {
+          id: `set.${index + 1}`,
+          title: set ? `Calendar Set: ${setName(set)}` : `Calendar Set ${index + 1}`,
+          group: "Calendar",
+          when: "The calendar set exists",
+          keys: [`ctrl+${index + 1}`],
+          aliases: ["calendar set", "switch calendars"],
+          enabled: () => latest.current.device.calendarSets[index] !== undefined,
+          run: () => {
+            const set = latest.current.device.calendarSets[index];
+            if (set) setDevice("calendarSet", set.id);
+          },
+        };
+      }),
+    ];
+
     const general: Command[] = [
       {
         id: "palette.open",
@@ -872,6 +912,6 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
     ];
 
-    return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess, setAccount, setDevice]);
+    return [...views, ...navigate, ...todo, ...calendar, ...sets, ...general];
+  }, [actions, history, auth.status, requestAccess, setAccount, setDevice, device.calendarSets]);
 }

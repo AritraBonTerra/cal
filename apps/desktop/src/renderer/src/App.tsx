@@ -42,6 +42,7 @@ import { Welcome } from "./components/Welcome";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
 import { AppContext, type AppState } from "./lib/app";
+import { useCalendarSet } from "./lib/calendarSets";
 import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
@@ -201,6 +202,7 @@ export function App() {
   useGlobalKeyNotice();
   const calendars = useCalendars();
   const palette = useChipPalette(calendars, mode, device.calendarColors, colors.canvas);
+  const { set: calendarSet, hidden } = useCalendarSet(calendars, device);
   const { auth, sync } = useAccount();
   const { access, request } = useCalendarAccess();
   const view = useUi((state) => state.view);
@@ -242,8 +244,8 @@ export function App() {
     toOffsetIso(fromDayKey(addDays(last, 1 + margin))),
   );
   const events = useMemo(
-    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
-    [fetched, device.hiddenCalendars, account.showDeclined],
+    () => visibleEvents(fetched, hidden, account.showDeclined),
+    [fetched, hidden, account.showDeclined],
   );
 
   // What's ahead, whatever the view shows: the call ⌘J joins, and unanswered invitations.
@@ -252,11 +254,11 @@ export function App() {
     toOffsetIso(fromDayKey(addDays(today, UPCOMING_DAYS))),
   );
   const upcoming = useMemo(
-    () => visibleEvents(ahead, device.hiddenCalendars, account.showDeclined),
-    [ahead, device.hiddenCalendars, account.showDeclined],
+    () => visibleEvents(ahead, hidden, account.showDeclined),
+    [ahead, hidden, account.showDeclined],
   );
 
-  useDeskPrefs(account, device, device.hiddenCalendars);
+  useDeskPrefs(account, device, hidden);
   useReveal(gridToday, account.showWeekends, zone);
 
   const requestAccess = useCallback(() => void request(), [request]);
@@ -264,6 +266,8 @@ export function App() {
     () => ({
       data,
       calendars,
+      calendarSet,
+      hidden,
       palette,
       colors,
       events,
@@ -280,6 +284,8 @@ export function App() {
     [
       data,
       calendars,
+      calendarSet,
+      hidden,
       palette,
       colors,
       events,
