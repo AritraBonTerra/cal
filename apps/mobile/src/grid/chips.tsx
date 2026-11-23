@@ -64,9 +64,9 @@ interface EventChipProps {
   colors: ChipColors;
   frame: Frame;
   past: boolean;
-  // Narrow columns (3 days on a phone) drop the inline time and the place so titles stay
-  // readable.
-  narrow: boolean;
+  // The chip's width. Narrow ones (3 days on a phone) drop the inline time and the place
+  // so titles stay readable, and slivers the call icon too.
+  width: number;
   onPress: () => void;
 }
 
@@ -79,10 +79,12 @@ export function EventChip({
   colors,
   frame,
   past,
-  narrow,
+  width,
   onPress,
 }: EventChipProps) {
   const { height } = frame;
+  const narrow = width < 150;
+  const icon = call && width >= 56;
   const fill = past ? colors.pastFill : colors.fill;
   const text = past ? colors.pastTitle : colors.title;
   const time = past ? colors.pastTime : colors.time;
@@ -112,7 +114,7 @@ export function EventChip({
             >
               {title}
             </Text>
-            {call && (
+            {icon && (
               <View className="self-center">
                 <CallIcon color={text} />
               </View>
@@ -133,7 +135,7 @@ export function EventChip({
               >
                 {title}
               </Text>
-              {call && <CallIcon color={text} />}
+              {icon && <CallIcon color={text} />}
             </View>
             <View className="flex-row items-center gap-1">
               <Text className="text-caption" style={[{ color: time }, tnum]} numberOfLines={1}>

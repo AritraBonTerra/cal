@@ -11,14 +11,17 @@ import { AppProvider } from "../src/lib/app";
 import { ClockProvider, now } from "../src/lib/clock";
 import { IS_PAD } from "../src/lib/device";
 import { useColors } from "../src/lib/theme";
-import { view } from "../src/lib/view";
+import { showAgenda, view } from "../src/lib/view";
 import "../global.css";
 
 // Deep links to a sheet open it over the tabs rather than alone.
 export const unstable_settings = { anchor: "(tabs)" };
 
-// The calendar opens on today; the day count is set per device in the tabs layout.
-view.set({ anchor: toDayKey(now()) });
+// The calendar opens on today: the agenda on iPhone, days on iPad (how many is set per
+// window in the tabs layout).
+const today = toDayKey(now());
+if (IS_PAD) view.set({ anchor: today });
+else showAgenda(today);
 
 // iPhone is portrait only, like Things; iPad turns freely for the split view.
 if (Platform.OS === "ios" && !IS_PAD) void lockAsync(OrientationLock.PORTRAIT_UP);

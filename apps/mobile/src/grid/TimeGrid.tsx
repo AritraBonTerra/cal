@@ -264,7 +264,7 @@ export function TimeGrid({
                         colors={palette.get(item.event.calendarId) ?? graphite(mode)}
                         frame={frame}
                         past={past}
-                        narrow={width * slot.width < 150}
+                        width={width * slot.width}
                         onPress={() => openEvent(item.event, calendars)}
                       />
                     );
