@@ -1,4 +1,4 @@
-import type { DataSource } from "@cal/app-core";
+import type { CalendarSet, DataSource, SetChoice } from "@cal/app-core";
 import type { SyncedTable } from "@cal/backend/sync";
 import type { CalendarSource } from "@cal/calendar-source";
 import type { DayKey } from "@cal/domain";
@@ -47,7 +47,7 @@ export interface CalBridge {
   // isn't a call Cal knows.
   joinMeeting(url: string): Promise<boolean>;
   // Shows the event in Apple Calendar, which can answer its invitation (Cal can't).
-  openInCalendar(eventId: string): Promise<void>;
+  openInCalendar(target: CalendarTarget): Promise<void>;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
   // Gives the menu bar the commands' keys, replacing what it had; null makes the window
@@ -87,14 +87,24 @@ export interface CalBridge {
 
 // What the menu bar item, call notifications and the morning summary follow.
 export interface DeskPrefs {
-  // Calendars not shown right now, by id.
+  // Calendars hidden by hand, and the sets main picks from as their hours come round.
   hiddenCalendars: readonly string[];
+  calendarSets: readonly CalendarSet[];
+  calendarSet: SetChoice;
   showDeclined: boolean;
   hour12: boolean;
   menuBar: boolean;
   callNotices: boolean;
   // Minutes after midnight, or null for none.
   morningSummary: number | null;
+}
+
+// What names an event in Apple Calendar.
+export interface CalendarTarget {
+  itemId: string;
+  start: string;
+  recurring: boolean;
+  allDay: boolean;
 }
 
 // A day to show, and the event on it to open.

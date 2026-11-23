@@ -98,6 +98,36 @@ describe("parseIcs", () => {
     expect(read).toMatchObject({ exceptions: 2, skipped: 2 });
   });
 
+  test("a series in UTC keeps its zone, and a single event needs none", () => {
+    expect(only("DTSTART:20261028T170000Z", "RRULE:FREQ=WEEKLY")?.timeZone).toBe("UTC");
+    expect(only("DTSTART:20261028T170000Z")?.timeZone).toBeUndefined();
+  });
+
+  test("a day's length keeps the clock time across a DST change; hours don't", () => {
+    // New York falls back on 1 November 2026.
+    const start = "DTSTART;TZID=America/New_York:20261031T120000";
+    expect(ms(only(start, "DURATION:P1D")?.end)).toBe(Date.UTC(2026, 10, 1, 17));
+    expect(ms(only(start, "DURATION:PT24H")?.end)).toBe(Date.UTC(2026, 10, 1, 16));
+    expect(ms(only("DTSTART:20261028T170030Z")?.start)).toBe(Date.UTC(2026, 9, 28, 17, 0, 30));
+  });
+
+  test("reads an UNTIL in local time in the event's zone", () => {
+    expect(
+      only(
+        "DTSTART;TZID=America/New_York:20261028T090000",
+        "RRULE:FREQ=DAILY;UNTIL=20261030T090000",
+      )?.recurrence,
+    ).toBe("FREQ=DAILY;UNTIL=20261030T130000Z");
+  });
+
+  test("a rule a calendar can't keep brings the event once and is counted", () => {
+    for (const rule of ["FREQ=HOURLY", "FREQ=YEARLY;BYWEEKNO=20", "FREQ=YEARLY;BYYEARDAY=1"]) {
+      const read = parseIcs(file(...event("DTSTART:20261028T170000Z", `RRULE:${rule}`)));
+      expect(read.events[0]?.recurrence).toBeUndefined();
+      expect(read.exceptions).toBe(1);
+    }
+  });
+
   test("a cancellation brings nothing, and other text isn't a calendar", () => {
     expect(parseIcs(file("METHOD:CANCEL", ...event("DTSTART:20261028T170000Z")))).toMatchObject({
       events: [],

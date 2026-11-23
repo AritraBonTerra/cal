@@ -1,4 +1,5 @@
 import { meetingFromUrl } from "@cal/domain";
+import type { CalendarTarget } from "../shared/api";
 
 export interface JoinOptions {
   // The app macOS opens `url`'s scheme with; "" when there is none.
@@ -30,6 +31,16 @@ export function createJoin({ handlerFor, open }: JoinOptions) {
   };
 }
 
-// Apple Calendar's URL for an event. Occurrence ids carry their start after a "|".
-export const calendarUrl = (eventId: string) =>
-  `ical://ekevent/${encodeURIComponent(eventId.split("|")[0] ?? "")}?method=show&options=more`;
+const digits = (value: number) => String(value).padStart(2, "0");
+
+/**
+ * Apple Calendar's link to an event, by EventKit's item identifier. A repeating one also
+ * names the occurrence's start: in UTC, or an all-day event's own day.
+ */
+export function calendarUrl({ itemId, start, recurring, allDay }: CalendarTarget) {
+  const at = new Date(start);
+  const stamp = allDay
+    ? `${at.getFullYear()}${digits(at.getMonth() + 1)}${digits(at.getDate())}T000000Z`
+    : at.toISOString().replace(/[-:]|\.\d+/g, "");
+  return `ical://ekevent/${recurring ? `${stamp}/` : ""}${encodeURIComponent(itemId)}?method=show&options=more`;
+}

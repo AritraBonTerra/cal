@@ -21,9 +21,9 @@ import { IconButton } from "./ui";
  * the change and the invitation leaves the list.
  */
 export function Invitations() {
-  const { upcoming } = useApp();
+  const { invited } = useApp();
   const now = useNow();
-  const pending = useMemo(() => pendingInvitations(upcoming, now), [upcoming, now]);
+  const pending = useMemo(() => pendingInvitations(invited, now), [invited, now]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, open, () => setOpen(false));
@@ -123,8 +123,9 @@ function Invitation({ event, onClose }: { event: ExternalEvent; onClose: () => v
         type="button"
         onClick={() => {
           onClose();
+          const { itemId = event.id, start, recurring, allDay } = event;
           window.cal
-            .openInCalendar(event.id)
+            .openInCalendar({ itemId, start, recurring, allDay })
             .catch(() => showToast("Couldn't open Apple Calendar."));
         }}
         title="Answer in Apple Calendar"

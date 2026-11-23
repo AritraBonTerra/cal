@@ -20,6 +20,8 @@ export interface ExternalEvent {
   // Unique per occurrence, so each instance of a repeating event has its own id.
   id: string;
   calendarId: string;
+  // EventKit's item identifier, which Apple Calendar's own links use; Mac only.
+  itemId?: string;
   title: string;
   // ISO 8601 instants with offset. All-day events span local midnights.
   start: string;

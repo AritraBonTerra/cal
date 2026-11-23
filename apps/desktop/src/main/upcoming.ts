@@ -1,4 +1,4 @@
-import { agendaDays, type TimedEntry } from "@cal/app-core";
+import { activeSet, agendaDays, type TimedEntry } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
 import {
   addDays,
@@ -40,13 +40,17 @@ function lengthText(minutes: number) {
   return rest === 0 ? `${hours}h` : `${hours}h${String(rest).padStart(2, "0")}`;
 }
 
-// Events the user sees: not in a hidden calendar, and not declined unless those show.
-export const shownEvents = (events: readonly ExternalEvent[], prefs: DeskPrefs) =>
-  events.filter(
+// Events the user sees at `now`: in the calendar set in force, not in a calendar hidden by
+// hand, and not declined unless those show.
+export function shownEvents(events: readonly ExternalEvent[], prefs: DeskPrefs, now: Date) {
+  const set = activeSet(prefs.calendarSets, prefs.calendarSet, now);
+  return events.filter(
     (event) =>
+      (!set || set.calendars.includes(event.calendarId)) &&
       !prefs.hiddenCalendars.includes(event.calendarId) &&
       (prefs.showDeclined || event.myStatus !== "declined"),
   );
+}
 
 const timed = (events: readonly ExternalEvent[]) =>
   events.filter((event) => !event.allDay && event.myStatus !== "declined");
@@ -141,9 +145,12 @@ export function menuModel(data: DeskData, now: Date, hour12: boolean): MenuModel
   };
 }
 
+// How long after its start a call is still announced, to a Mac that was asleep for it.
+const LATE_MIN = 5;
+
 /**
- * Events whose call starts within the minute (or began within the last one, for a Mac
- * just woken), that aren't in `seen` yet. Keyed by start, so a moved event is new again.
+ * Events whose call starts within the minute, or started in the last few and is still on,
+ * that aren't in `seen` yet. Keyed by start, so a moved event is new again.
  */
 export function startingCalls(
   events: readonly ExternalEvent[],
@@ -154,7 +161,8 @@ export function startingCalls(
     const away = Date.parse(event.start) - now.getTime();
     return (
       away <= MINUTE &&
-      away > -MINUTE &&
+      away > -LATE_MIN * MINUTE &&
+      Date.parse(event.end) > now.getTime() &&
       !seen.has(callKey(event)) &&
       meetingOf(event) !== undefined
     );

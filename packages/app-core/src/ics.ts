@@ -19,7 +19,8 @@ export type IcsEvent = Omit<EventInput, "calendarId">;
 
 export interface IcsFile {
   events: IcsEvent[];
-  // Changed or left-out dates of a repeating event, which were not brought over.
+  // Repeats not brought over whole: changed or left-out dates, and rules a device calendar
+  // can't keep (the event then comes once).
   exceptions: number;
   // Canceled events and ones without a readable date.
   skipped: number;
@@ -31,7 +32,7 @@ interface Property {
   value: string;
 }
 
-// One event, whatever the file's size.
+// Beyond this it's a whole calendar, not something to add by a drop.
 const MAX_EVENTS = 2000;
 
 // Outlook names zones its own way; these are the common ones. Others read as this device's.
@@ -110,8 +111,9 @@ function parseLine(line: string): Property | undefined {
 const unescaped = (text: string) =>
   text.replace(/\\(.)/gs, (_, char: string) => (char.toLowerCase() === "n" ? "\n" : char));
 
-// "P1DT2H30M", "-PT15M", "P2W" in minutes.
-function durationMinutes(text: string) {
+// "P1DT2H30M", "-PT15M" or "P2W": whole days, which keep the clock time across a DST
+// change, and the rest in ms.
+function parseDuration(text: string) {
   const match = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(
     text,
   );
@@ -120,27 +122,80 @@ function durationMinutes(text: string) {
   const [weeks = 0, days = 0, hours = 0, minutes = 0, seconds = 0] = parts.map((part) =>
     Number(part ?? 0),
   );
-  const total = ((weeks * 7 + days) * 24 + hours) * 60 + minutes + Math.round(seconds / 60);
-  return sign === "-" ? -total : total;
+  const way = sign === "-" ? -1 : 1;
+  return {
+    days: way * (weeks * 7 + days),
+    ms: way * ((hours * 60 + minutes) * 60 + seconds) * 1000,
+  };
 }
 
 // A DTSTART or DTEND: a day, or an instant with the zone it was written in.
 function parseWhen({ value, params }: Property) {
   const match = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(value.trim());
   if (!match) return undefined;
-  const [, year, month, date, hour, minute, , utc] = match;
+  const [, year, month, date, hour, minute, second, utc] = match;
   const day = `${year}-${month}-${date}`;
   if (!isDayKey(day)) return undefined;
   if (hour === undefined) return { day, allDay: true as const };
   const zone = utc ? "UTC" : (zoneOf(params.get("TZID")) ?? localTimeZone());
-  const at = new Date(zonedInstant(day, Number(hour) * 60 + Number(minute), zone));
-  // A UTC stamp says nothing about where the event is; it's pinned to no zone.
-  return { at, allDay: false as const, zone: utc ? undefined : zone };
+  const minutes = Number(hour) * 60 + Number(minute);
+  const ms = Number(second) * 1000;
+  const at = new Date(zonedInstant(day, minutes, zone) + ms);
+  return { at, allDay: false as const, zone, day, minutes, ms };
 }
 
-const DEFAULT_MINUTES = 30;
+const DEFAULT_MS = 30 * 60_000;
 
-function readEvent(properties: readonly Property[], alarms: readonly number[]) {
+// Parts of a repeat rule a device calendar keeps. Any other would be dropped or refused,
+// leaving an event that repeats on the wrong days.
+const RULE_PARTS = new Set([
+  "FREQ",
+  "INTERVAL",
+  "COUNT",
+  "UNTIL",
+  "BYDAY",
+  "BYMONTHDAY",
+  "BYMONTH",
+  "BYSETPOS",
+  "WKST",
+]);
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/**
+ * A repeat rule as a device calendar takes it, with an UNTIL in local time moved to UTC,
+ * or null when the calendar can't keep it.
+ */
+function readRule(text: string, zone: string) {
+  const parts = text
+    .trim()
+    .toUpperCase()
+    .split(";")
+    .filter(Boolean)
+    .map((part) => part.split("="));
+  const freq = parts.find(([key]) => key === "FREQ")?.[1] ?? "";
+  if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(freq)) return null;
+  if (!parts.every(([key = "", value]) => RULE_PARTS.has(key) && value)) return null;
+  return parts
+    .map(([key = "", value = ""]) => {
+      const local = key === "UNTIL" && /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/.exec(value);
+      if (!local) return `${key}=${value}`;
+      const [, year, month, date, hour, minute, second] = local;
+      const at = new Date(
+        zonedInstant(`${year}-${month}-${date}`, Number(hour) * 60 + Number(minute), zone) +
+          Number(second) * 1000,
+      );
+      const day = `${at.getUTCFullYear()}${pad(at.getUTCMonth() + 1)}${pad(at.getUTCDate())}`;
+      const time = `${pad(at.getUTCHours())}${pad(at.getUTCMinutes())}${pad(at.getUTCSeconds())}`;
+      return `UNTIL=${day}T${time}Z`;
+    })
+    .join(";");
+}
+
+function readEvent(
+  properties: readonly Property[],
+  alarms: readonly number[],
+): { event: IcsEvent; ruleLost: boolean } | undefined {
   const get = (name: string) => properties.find((property) => property.name === name);
   const text = (name: string) => unescaped(get(name)?.value ?? "").trim() || undefined;
   const start = get("DTSTART");
@@ -148,38 +203,57 @@ function readEvent(properties: readonly Property[], alarms: readonly number[]) {
   if (!from) return undefined;
   const dtend = get("DTEND");
   const to = dtend && parseWhen(dtend);
-  const length = durationMinutes(get("DURATION")?.value.trim() ?? "");
+  const length = parseDuration(get("DURATION")?.value.trim() ?? "");
   const calls = [get("X-GOOGLE-CONFERENCE")?.value, get("X-MICROSOFT-SKYPETEAMSMEETINGURL")?.value];
+  const zone = from.allDay ? localTimeZone() : from.zone;
+  const rrule = get("RRULE")?.value;
+  const rule = rrule ? readRule(rrule, zone) : undefined;
   const event = {
     title: text("SUMMARY") ?? "Untitled event",
     location: text("LOCATION"),
     notes: text("DESCRIPTION"),
     url: text("URL") ?? calls.find((url) => url && meetingFromUrl(url)),
-    recurrence: get("RRULE")?.value.trim().toUpperCase() || undefined,
+    recurrence: rule ?? undefined,
     busy: get("TRANSP")?.value.trim().toUpperCase() !== "TRANSPARENT",
   };
   if (from.allDay) {
-    const days = length !== undefined ? Math.max(1, Math.round(length / (24 * 60))) : 1;
+    const days = Math.max(1, length?.days ?? 1);
     // The end is exclusive; one that isn't after the start means a single day.
     const last = to?.allDay && to.day > from.day ? to.day : addDays(from.day, days);
     return {
-      ...event,
-      allDay: true,
-      start: toOffsetIso(fromDayKey(from.day)),
-      end: toOffsetIso(fromDayKey(last)),
-      // All-day events are free unless the file says otherwise, as calendars make them.
-      busy: get("TRANSP")?.value.trim().toUpperCase() === "OPAQUE",
+      event: {
+        ...event,
+        allDay: true,
+        start: toOffsetIso(fromDayKey(from.day)),
+        end: toOffsetIso(fromDayKey(last)),
+        // All-day events are free unless the file says otherwise, as calendars make them.
+        busy: get("TRANSP")?.value.trim().toUpperCase() === "OPAQUE",
+      },
+      ruleLost: rule === null,
     };
   }
-  const startMs = from.at.getTime();
-  const endMs = to && !to.allDay ? to.at.getTime() : startMs + (length ?? DEFAULT_MINUTES) * 60_000;
+  const began = from.at.getTime();
+  const ends =
+    to && !to.allDay
+      ? to.at.getTime()
+      : length
+        ? zonedInstant(addDays(from.day, length.days), from.minutes, from.zone) +
+          from.ms +
+          length.ms
+        : began + DEFAULT_MS;
+  // A single event in UTC needs no zone; a series keeps it, or its times would move with
+  // this Mac's clock changes.
+  const pinned = from.zone !== "UTC" || rule ? from.zone : undefined;
   return {
-    ...event,
-    allDay: false,
-    start: toOffsetIso(from.at),
-    end: toOffsetIso(new Date(Math.max(startMs, endMs))),
-    ...(from.zone && { timeZone: from.zone }),
-    ...(alarms.length > 0 && { alarms: [...new Set(alarms)].sort((a, b) => a - b) }),
+    event: {
+      ...event,
+      allDay: false,
+      start: toOffsetIso(from.at),
+      end: toOffsetIso(new Date(Math.max(began, ends))),
+      ...(pinned && { timeZone: pinned }),
+      ...(alarms.length > 0 && { alarms: [...new Set(alarms)].sort((a, b) => a - b) }),
+    },
+    ruleLost: rule === null,
   };
 }
 
@@ -217,11 +291,11 @@ export function parseIcs(text: string): IcsFile {
       )
         file.skipped++;
       else {
-        const event = readEvent(properties, alarms);
-        if (!event || file.events.length >= MAX_EVENTS) file.skipped++;
+        const read = readEvent(properties, alarms);
+        if (!read || file.events.length >= MAX_EVENTS) file.skipped++;
         else {
-          file.events.push(event);
-          if (has("EXDATE") || has("RDATE")) file.exceptions++;
+          file.events.push(read.event);
+          if (read.ruleLost || has("EXDATE") || has("RDATE")) file.exceptions++;
         }
       }
       continue;
@@ -234,8 +308,9 @@ export function parseIcs(text: string): IcsFile {
       property.name === "TRIGGER" &&
       property.params.get("RELATED")?.toUpperCase() !== "END"
     ) {
-      const minutes = durationMinutes(value);
-      if (minutes !== undefined && minutes <= 0) alarms.push(-minutes);
+      const before = parseDuration(value);
+      const minutes = before && -(before.days * 24 * 60 + Math.round(before.ms / 60_000));
+      if (minutes !== undefined && minutes >= 0) alarms.push(minutes);
     }
   }
   return file;

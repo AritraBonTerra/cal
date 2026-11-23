@@ -701,7 +701,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         when: "The selected event's call, or the next one",
         keys: ["mod+j"],
         aliases: ["zoom", "google meet", "teams", "video", "meeting"],
-        run: () => joinCall(selectedEvent(), latest.current.upcoming),
+        run: () => joinCall(latest.current.events, latest.current.upcoming),
       },
       {
         id: "event.delete",

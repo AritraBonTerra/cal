@@ -99,6 +99,7 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
   var json: [String: Any] = [
     "id": eventId(event),
     "calendarId": event.calendar?.calendarIdentifier ?? "",
+    "itemId": event.calendarItemIdentifier,
     "title": event.title ?? "",
     "start": isoOut.string(from: event.startDate),
     "end": isoOut.string(from: event.endDate),

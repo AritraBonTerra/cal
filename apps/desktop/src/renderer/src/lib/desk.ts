@@ -11,26 +11,33 @@ import { closeOverlay, jumpTo, select } from "./ui";
  * the menu bar and notifications follow, shows what they ask for, and draws the Dock icon.
  */
 
-// Reports the settings the menu bar and notifications follow. `hidden` is the calendars
-// not showing right now.
-export function useDeskPrefs(
-  account: AccountSettings,
-  device: DeviceSettings,
-  hidden: readonly string[],
-) {
+// Reports the settings the menu bar and notifications follow.
+export function useDeskPrefs(account: AccountSettings, device: DeviceSettings) {
   const { showDeclined } = account;
-  const { menuBar, callNotices, morningSummary } = device;
+  const { hiddenCalendars, calendarSets, calendarSet, menuBar, callNotices, morningSummary } =
+    device;
   const hour12 = usesHour12();
   useEffect(() => {
     void window.cal.setDesk({
-      hiddenCalendars: hidden,
+      hiddenCalendars,
+      calendarSets,
+      calendarSet,
       showDeclined,
       hour12,
       menuBar,
       callNotices,
       morningSummary,
     });
-  }, [hidden, showDeclined, hour12, menuBar, callNotices, morningSummary]);
+  }, [
+    hiddenCalendars,
+    calendarSets,
+    calendarSet,
+    showDeclined,
+    hour12,
+    menuBar,
+    callNotices,
+    morningSummary,
+  ]);
 }
 
 // Shows the day (and opens the event) the menu bar or a notification was clicked for. The

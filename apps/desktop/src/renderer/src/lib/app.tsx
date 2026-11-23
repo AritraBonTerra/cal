@@ -23,8 +23,12 @@ export interface AppState {
   colors: Palette;
   // Visible events, already without hidden calendars and declined invitations.
   events: readonly ExternalEvent[];
+  // Whether `events` covers the days showing, not just the range before a move.
+  eventsCurrent: boolean;
   // Visible events from today on (two months' worth), whatever days the view shows.
   upcoming: readonly ExternalEvent[];
+  // The same span's events outside the calendar set too, for unanswered invitations.
+  invited: readonly ExternalEvent[];
   refreshEvents: () => Promise<void>;
   mode: Mode;
   // Today on this Mac: what to-dos and habits count as today.

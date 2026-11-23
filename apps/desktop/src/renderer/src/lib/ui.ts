@@ -78,6 +78,8 @@ export interface UiState {
   renaming: { uuid: string; back: ListId } | null;
   // Set after a jump (T, `.`) so the grid can flash the target day once.
   flashDay: DayKey | null;
+  // Counts jumps to a day, so the agenda goes back to its top on one to where it starts.
+  jumps: number;
   // First day of the week (0 = Sunday), mirrored from the account setting so view
   // helpers can read it without a settings handle.
   weekStart: number;
@@ -100,6 +102,7 @@ export const ui = createStore<UiState>({
   editing: null,
   renaming: null,
   flashDay: null,
+  jumps: 0,
   weekStart: 1,
   settingsSection: "general",
   zonePicker: { kind: "add" },
@@ -217,7 +220,8 @@ export function moveWeek(direction: 1 | -1) {
 // `T`: jump to today. `leftAlign` keeps the span but puts today first (also ⌥T). The mini
 // month jumps to any day the same way: the week holding it, or a span starting on it.
 export function goToday(today: DayKey, leftAlign = false) {
-  ui.set(({ view, weekStart }) => ({
+  ui.set(({ view, weekStart, jumps }) => ({
+    jumps: jumps + 1,
     anchor:
       view.kind === "days" && view.count === WEEK && !leftAlign
         ? startOfWeek(today, weekStart)

@@ -1460,6 +1460,14 @@ check(
 );
 await page.keyboard.press("t");
 await page.waitForTimeout(300);
+await page.locator("[data-agenda]").evaluate((list) => list.scrollTo({ top: 400 }));
+await page.keyboard.press("t");
+await page.waitForTimeout(200);
+check(
+  "T scrolls the agenda back up when it already starts on today",
+  (await page.locator("[data-agenda]").evaluate((list) => list.scrollTop)) === 0,
+);
+await page.waitForTimeout(700);
 check("T brings the agenda back to today", (await agendaDays())[0] === "2026-10-28");
 await page.keyboard.press("w");
 await page.waitForTimeout(200);
@@ -1510,7 +1518,7 @@ await page.click("[aria-label='Unanswered invitations'] >> text=Reply");
 await page.waitForTimeout(200);
 check(
   "Reply opens the event in Apple Calendar",
-  ((await openedCalls()).at(-1) ?? "").startsWith("ical://ekevent/fixture-"),
+  ((await openedCalls()).at(-1) ?? "").startsWith("ical://ekevent/"),
 );
 await page.click("[data-invitations]");
 await page.click("[aria-label='Unanswered invitations'] >> text=Vendor demo");
@@ -1634,6 +1642,14 @@ check(
 await page.keyboard.press("Meta+z");
 await page.waitForTimeout(500);
 check("one ⌘Z takes them all back", !(await gridText()).includes("Dropped"));
+await page.keyboard.press("Meta+Shift+z");
+await page.waitForTimeout(500);
+check(
+  "⇧⌘Z adds them again",
+  (await gridText()).includes("Dropped workshop") && (await gridText()).includes("Dropped dinner"),
+);
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(500);
 await drop("notes.txt", "hello");
 await page.waitForTimeout(300);
 check(

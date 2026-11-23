@@ -54,9 +54,19 @@ test("opens nothing that isn't a call", async () => {
   expect(opened).toEqual([]);
 });
 
-test("an event's Apple Calendar link names its series and nothing else", () => {
-  expect(calendarUrl("ABC:123|2026-10-28T10:00:00-07:00")).toBe(
-    "ical://ekevent/ABC%3A123?method=show&options=more",
+test("an event's Apple Calendar link names its item, and a repeat's occurrence", () => {
+  const target = {
+    itemId: "ABC-123",
+    start: "2026-10-28T10:00:00-07:00",
+    recurring: false,
+    allDay: false,
+  };
+  expect(calendarUrl(target)).toBe("ical://ekevent/ABC-123?method=show&options=more");
+  expect(calendarUrl({ ...target, recurring: true })).toBe(
+    "ical://ekevent/20261028T170000Z/ABC-123?method=show&options=more",
   );
-  expect(calendarUrl("x?y=1&z/../..")).not.toContain("z/");
+  expect(
+    calendarUrl({ ...target, start: "2026-10-28T00:00:00-07:00", recurring: true, allDay: true }),
+  ).toContain("/20261028T000000Z/");
+  expect(calendarUrl({ ...target, itemId: "x?y=1&z/../.." })).not.toContain("z/");
 });

@@ -23,6 +23,7 @@ import {
   type AuthCall,
   CAPTURE_COMMAND,
   type CalendarCall,
+  type CalendarTarget,
   channels,
   type DataCall,
   type DeskPrefs,
@@ -221,9 +222,7 @@ handleFrom(channels.calendar, (event, call: CalendarCall) => {
   }
 });
 
-handle(channels.openInCalendar, (eventId: string) => {
-  if (typeof eventId === "string") return openOutside(calendarUrl(eventId));
-});
+handle(channels.openInCalendar, (target: CalendarTarget) => openOutside(calendarUrl(target)));
 
 handle(channels.joinMeeting, (url: string) => joinMeeting(url));
 

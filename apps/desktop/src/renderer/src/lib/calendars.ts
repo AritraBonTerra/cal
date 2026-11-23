@@ -29,9 +29,10 @@ export function useCalendars() {
 
 // Events overlapping [start, end) as ISO strings; `loaded` is false until the first fetch.
 export function useEvents(start: string, end: string) {
-  const [state, setState] = useState<{ events: ExternalEvent[]; loaded: boolean }>({
+  const [state, setState] = useState<{ events: ExternalEvent[]; loaded: boolean; key: string }>({
     events: [],
     loaded: false,
+    key: "",
   });
   // The range on screen now. `refresh` is kept by undo steps long after the view moves
   // on, so it always reloads this range, and drops results for a range no longer shown.
@@ -42,7 +43,9 @@ export function useEvents(start: string, end: string) {
     const wanted = range.current;
     const events = await window.cal.calendar.events(wanted.start, wanted.end).catch(() => []);
     const now = range.current;
-    if (now.start === wanted.start && now.end === wanted.end) setState({ events, loaded: true });
+    if (now.start === wanted.start && now.end === wanted.end) {
+      setState({ events, loaded: true, key: `${now.start}/${now.end}` });
+    }
   }, []);
   // Without calendar access the fetch fails: the grid simply shows no device events.
   useEffect(() => {
@@ -52,7 +55,7 @@ export function useEvents(start: string, end: string) {
         .events(start, end)
         .catch(() => [])
         .then((events) => {
-          if (active) setState({ events, loaded: true });
+          if (active) setState({ events, loaded: true, key: `${start}/${end}` });
         });
     void load();
     const stop = window.cal.calendar.onChange(() => void load());
@@ -61,7 +64,13 @@ export function useEvents(start: string, end: string) {
       stop();
     };
   }, [start, end]);
-  return { ...state, refresh };
+  return {
+    events: state.events,
+    loaded: state.loaded,
+    // Whether the events are this range's, not the last one's.
+    current: state.key === `${start}/${end}`,
+    refresh,
+  };
 }
 
 /**

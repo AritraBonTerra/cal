@@ -72,7 +72,7 @@ export function createDesk(options: DeskOptions) {
     day: DayKey;
     eventId?: string;
   }) => {
-    record.notices.push(`${notice.title} | ${notice.body}`);
+    if (quiet) record.notices.push(`${notice.title} | ${notice.body}`);
     if (quiet || !Notification.isSupported()) return;
     const url = notice.join;
     const notification = new Notification({
@@ -162,7 +162,7 @@ export function createDesk(options: DeskOptions) {
       fetchedAt = at.getTime();
     }
     if (!prefs || stopped) return;
-    const desk = await read(shownEvents(fetched, prefs));
+    const desk = await read(shownEvents(fetched, prefs, at));
     if (stopped) return;
     if (prefs.menuBar) drawMenu(desk, at, prefs);
     else {
@@ -189,14 +189,38 @@ export function createDesk(options: DeskOptions) {
     }
   };
 
-  // Failures (a database closing on quit) leave the menu as it was until the next tick.
-  const run = (refetch: boolean) => void refresh(refetch).catch(() => undefined);
+  // One refresh at a time. What's asked for meanwhile runs after it, as one, so an older
+  // read can't draw over a newer one, and a wanted refetch is never lost.
+  let running = false;
+  let wanted: { refetch: boolean } | undefined;
+  const run = async (refetch: boolean) => {
+    if (running) {
+      wanted = { refetch: refetch || wanted?.refetch === true };
+      return;
+    }
+    running = true;
+    let next: { refetch: boolean } | undefined = { refetch };
+    while (next && !stopped) {
+      wanted = undefined;
+      // A failure (a database closing on quit) leaves the menu as it was until the next tick.
+      await refresh(next.refetch).catch(() => undefined);
+      next = wanted;
+    }
+    running = false;
+  };
+  let soonRefetch = false;
   const runSoon = (refetch: boolean) => {
+    if (stopped) return;
+    soonRefetch ||= refetch;
     clearTimeout(soon);
-    soon = setTimeout(() => run(refetch), 300);
+    soon = setTimeout(() => {
+      const wants = soonRefetch;
+      soonRefetch = false;
+      void run(wants);
+    }, 300);
   };
   const tick = () => {
-    run(false);
+    void run(false);
     timer = setTimeout(tick, 60_000 - (now().getTime() % 60_000) + 50);
   };
 

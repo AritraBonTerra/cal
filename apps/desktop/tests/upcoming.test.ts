@@ -118,6 +118,11 @@ test("a call is announced once, a minute before, and again if it moves", () => {
   expect(startingCalls([call], NOW, new Set([callKey(call)]))).toEqual([]);
   const moved = { ...call, start: "2026-10-28T10:40:30-07:00" };
   expect(startingCalls([moved], NOW, new Set([callKey(call)]))).toEqual([moved]);
+  // A Mac asleep at the start still hears of a call that's on, for a few minutes.
+  expect(startingCalls([call], at("10:45"), new Set())).toEqual([call]);
+  expect(startingCalls([call], at("10:46"), new Set())).toEqual([]);
+  const brief = { ...call, end: "2026-10-28T10:43:00-07:00" };
+  expect(startingCalls([brief], at("10:44"), new Set())).toEqual([]);
   expect(startingCalls([event("No call", "10:41", "11:00")], NOW, new Set())).toEqual([]);
   expect(startingCalls([{ ...call, myStatus: "declined" }], NOW, new Set())).toEqual([]);
 });
@@ -125,6 +130,15 @@ test("a call is announced once, a minute before, and again if it moves", () => {
 test("hidden calendars and declined events stay out", () => {
   const prefs: DeskPrefs = {
     hiddenCalendars: ["family"],
+    calendarSets: [
+      {
+        id: "s",
+        name: "Home",
+        calendars: ["home", "family"],
+        hours: { days: [3], start: 18 * 60, end: 22 * 60 },
+      },
+    ],
+    calendarSet: "auto",
     showDeclined: false,
     hour12: true,
     menuBar: true,
@@ -136,7 +150,10 @@ test("hidden calendars and declined events stay out", () => {
     event("Hidden", "11:00", "12:00", { calendarId: "family" }),
     event("No", "11:00", "12:00", { myStatus: "declined" }),
   ];
-  expect(shownEvents(events, prefs).map((each) => each.title)).toEqual(["Work"]);
+  expect(shownEvents(events, prefs, NOW).map((each) => each.title)).toEqual(["Work"]);
+  // Its hours come round with no window open: the set takes over by itself.
+  const home = event("Home", "19:00", "20:00", { calendarId: "home" });
+  expect(shownEvents([...events, home], prefs, at("19:00"))).toEqual([home]);
 });
 
 describe("morning summary", () => {

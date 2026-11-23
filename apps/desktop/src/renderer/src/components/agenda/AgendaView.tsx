@@ -46,9 +46,10 @@ import { Checkbox } from "../ui";
  * the end adds days. Click selects (an event opens its popover); ↑ and ↓ walk the list.
  */
 export function AgendaView() {
-  const { days, events, data, gridToday, today, zone } = useApp();
+  const { days, events, eventsCurrent, data, gridToday, today, zone } = useApp();
   const now = useNow();
   const flashDay = useUi((state) => state.flashDay);
+  const jumps = useUi((state) => state.jumps);
   const body = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -68,25 +69,27 @@ export function AgendaView() {
     [days, events, data, gridToday, today, zone],
   );
 
-  // A jump (T, the mini month, the arrows) starts the list again from its first day.
+  // A jump (T, the mini month, the arrows) starts the list again from its first day, also
+  // when that's the day it already starts on.
   const first = days[0];
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scrolls when the first day changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scrolls on a new first day or a jump.
   useEffect(() => {
     body.current?.scrollTo({ top: 0 });
-  }, [first]);
+  }, [first, jumps]);
 
   // Re-observed as the list grows, so a list still too short to scroll keeps growing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: as above.
   useEffect(() => {
     const mark = end.current;
-    if (!mark) return;
+    // One page at a time: not until the days already added have their events.
+    if (!mark || !eventsCurrent) return;
     const observer = new IntersectionObserver(
       (entries) => entries.some((entry) => entry.isIntersecting) && extendAgenda(),
       { root: body.current, rootMargin: "400px" },
     );
     observer.observe(mark);
     return () => observer.disconnect();
-  }, [days.length]);
+  }, [days.length, eventsCurrent]);
 
   useStepping(shown, now);
 
@@ -117,11 +120,13 @@ function useStepping(shown: readonly AgendaDay[], now: Date) {
     () =>
       shown.flatMap((day) => [
         ...day.allDay.map((event) => ({
+          day: day.day,
           key: `event:${event.id}`,
           event,
           end: new Date(event.end),
         })),
         ...day.timed.map((entry) => ({
+          day: day.day,
           key: entry.key,
           event: entry.kind === "event" ? entry.event : undefined,
           end: entry.end,
@@ -131,27 +136,31 @@ function useStepping(shown: readonly AgendaDay[], now: Date) {
   );
   const latest = useRef({ rows, now });
   latest.current = { rows, now };
+  // The day of the row last stepped to: something on several days has a row on each.
+  const at = useRef<DayKey | null>(null);
   useCommands(() => {
     const step = (direction: 1 | -1) => {
       const { rows, now } = latest.current;
       const key = keyOf(ui.get().selection);
-      const at = rows.findIndex((row) => row.key === key);
+      const onDay = rows.findIndex((row) => row.key === key && row.day === at.current);
+      const found = onDay === -1 ? rows.findIndex((row) => row.key === key) : onDay;
       const next =
-        at === -1
+        found === -1
           ? Math.max(
               0,
               rows.findIndex((row) => row.end.getTime() > now.getTime()),
             )
-          : Math.min(rows.length - 1, Math.max(0, at + direction));
+          : Math.min(rows.length - 1, Math.max(0, found + direction));
       const row = rows[next];
       if (!row) return;
+      at.current = row.day;
       select(
         row.event
           ? { kind: "event", id: row.event.id }
           : { kind: "block", uuid: row.key.slice("block:".length) },
       );
       document
-        .querySelector(`[data-row="${CSS.escape(row.key)}"]`)
+        .querySelector(`[data-agenda-day="${row.day}"] [data-row="${CSS.escape(row.key)}"]`)
         ?.scrollIntoView({ block: "nearest" });
     };
     // A selected to-do keeps the arrows for its own list.

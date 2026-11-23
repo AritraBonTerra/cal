@@ -31,7 +31,7 @@ const GAP = 12;
  * the title clear of the traffic lights and the pane toggles beside them.
  */
 export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
-  const { today, account, device } = useApp();
+  const { gridToday, account, device } = useApp();
   const sidebar = useUi((state) => state.sidebar);
   const tasks = useUi((state) => state.tasks);
   const spacer = sidebar || tasks ? 0 : paneTogglesEnd(device.uiScale) + GAP - PADDING;
@@ -94,7 +94,7 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
       <Invitations />
       <button
         type="button"
-        onClick={() => goToday(today)}
+        onClick={() => goToday(gridToday)}
         className="no-drag h-7 rounded-md px-2.5 text-small font-medium text-ink-2 shadow-[inset_0_0_0_1px_var(--cal-edge)] transition-colors duration-100 hover:bg-hover hover:duration-0 active:bg-active"
       >
         Today

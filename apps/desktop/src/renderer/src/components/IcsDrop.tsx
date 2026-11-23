@@ -56,6 +56,7 @@ export function IcsDrop() {
       if (!calendar) return showToast("No calendar here can take new events.");
       const read = (await Promise.all(wanted.map((file) => file.text()))).map(parseIcs);
       const events = read.flatMap((file) => file.events);
+      const skipped = read.reduce((total, file) => total + file.skipped, 0);
       const exceptions = read.reduce((total, file) => total + file.exceptions, 0);
       if (events.length === 0) return showToast("There are no events to add in that file.");
       const inputs: EventInput[] = events.map((event) => ({ ...event, calendarId: calendar.id }));
@@ -84,7 +85,8 @@ export function IcsDrop() {
           : `Added ${count(made.length, "event")} to ${calendar.title}`;
       const notes = [
         made.length < events.length && `${events.length - made.length} couldn't be added`,
-        exceptions > 0 && `${count(exceptions, "changed date")} left out`,
+        skipped > 0 && `${skipped} skipped`,
+        exceptions > 0 && "some repeats left out",
       ].filter(Boolean);
       const id = showToast([added, ...notes].join(" · "), {
         label: "Undo",

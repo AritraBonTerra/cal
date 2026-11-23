@@ -714,11 +714,16 @@ export function eventWriter(
             await tx.external(
               async () => {
                 const created = await api.createEvent(input);
+                const again = ref !== undefined;
                 if (ref) ids.recreated(ids.current(ref), created);
                 ref = ids.ref(created.id);
+                if (again) await refresh();
               },
+              // One event already gone (deleted elsewhere) doesn't stop the rest.
               async () => {
-                if (ref) await api.deleteEvent(ids.current(ref), input.recurrence ? "all" : "this");
+                if (!ref) return;
+                const span = input.recurrence ? "all" : "this";
+                await api.deleteEvent(ids.current(ref), span).catch(() => undefined);
                 await refresh();
               },
             );

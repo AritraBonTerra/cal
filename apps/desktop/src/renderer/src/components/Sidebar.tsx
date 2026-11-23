@@ -190,6 +190,15 @@ function CalendarList() {
   if (calendars.length === 0) return null;
   const open = device.showCalendarList;
   const hidden = device.hiddenCalendars;
+  // Solo among the calendars of the set in force; the others keep what they had.
+  const solo = (id: string) => {
+    const inSet = (each: string) => !calendarSet || calendarSet.calendars.includes(each);
+    const members = calendars.filter((calendar) => inSet(calendar.id));
+    return [
+      ...hidden.filter((each) => !inSet(each)),
+      ...soloCalendar(members, hidden.filter(inSet), id),
+    ];
+  };
   return (
     <section className="mt-5" data-calendar-list>
       <div className="flex h-7 items-center gap-1 pr-1">
@@ -232,9 +241,7 @@ function CalendarList() {
                     onClick={(event) =>
                       setDevice(
                         "hiddenCalendars",
-                        event.altKey
-                          ? soloCalendar(calendars, hidden, calendar.id)
-                          : withId(hidden, calendar.id, shown),
+                        event.altKey ? solo(calendar.id) : withId(hidden, calendar.id, shown),
                       )
                     }
                     className={`${ROW} enabled:hover:bg-hover ${shown ? "text-ink" : "text-ink-3"}`}

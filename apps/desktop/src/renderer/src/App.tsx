@@ -239,6 +239,7 @@ export function App() {
   const {
     events: fetched,
     loaded: eventsLoaded,
+    current: eventsCurrent,
     refresh,
   } = useEvents(
     toOffsetIso(fromDayKey(addDays(first, -margin))),
@@ -259,7 +260,12 @@ export function App() {
     [ahead, hidden, account.showDeclined],
   );
 
-  useDeskPrefs(account, device, hidden);
+  // Invitations come whatever set is showing; only calendars hidden by hand stay out.
+  const invited = useMemo(
+    () => visibleEvents(ahead, device.hiddenCalendars, true),
+    [ahead, device.hiddenCalendars],
+  );
+  useDeskPrefs(account, device);
   useReveal(gridToday, account.showWeekends, zone);
 
   const requestAccess = useCallback(() => void request(), [request]);
@@ -272,7 +278,9 @@ export function App() {
       palette,
       colors,
       events,
+      eventsCurrent,
       upcoming,
+      invited,
       refreshEvents: refresh,
       mode,
       today,
@@ -290,7 +298,9 @@ export function App() {
       palette,
       colors,
       events,
+      eventsCurrent,
       upcoming,
+      invited,
       refresh,
       mode,
       today,
