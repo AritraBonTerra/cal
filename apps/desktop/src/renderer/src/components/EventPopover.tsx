@@ -764,7 +764,7 @@ function Popover({ editor }: { editor: EditorState }) {
             <button
               type="button"
               onClick={close}
-              className="h-6 rounded-md px-2 text-small font-medium text-now hover:bg-hover"
+              className="h-6 rounded-md px-2 text-small font-medium text-danger hover:bg-hover"
             >
               Discard
             </button>

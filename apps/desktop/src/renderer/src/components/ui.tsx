@@ -186,7 +186,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               item.run();
             }}
             className={`flex h-7 w-full items-center rounded-md px-2 text-left text-body hover:bg-hover disabled:text-ink-3 disabled:hover:bg-transparent ${
-              item.danger ? "text-now" : "text-ink"
+              item.danger ? "text-danger" : "text-ink"
             }`}
           >
             {item.label}

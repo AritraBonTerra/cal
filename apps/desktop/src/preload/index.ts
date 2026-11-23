@@ -88,6 +88,7 @@ const bridge: CalBridge = {
     dismiss: () => ipcRenderer.invoke(channels.updateDismiss),
   },
   setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
+  setBackground: (color) => ipcRenderer.invoke(channels.background, color),
   onClosing: (listener) => {
     closing.add(listener);
     return () => {

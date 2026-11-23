@@ -221,6 +221,12 @@ handle(channels.theme, (theme: Theme) => {
   nativeTheme.themeSource = theme;
 });
 
+// The theme's canvas behind the page, so a resize shows it rather than another color.
+handleFrom(channels.background, (event, color: string) => {
+  if (!/^#[0-9a-f]{6}$/.test(color)) return;
+  BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(color);
+});
+
 // Interface size: the window zooms itself (preload); main keeps the traffic lights
 // centred on its top band, 52px tall at 100%, as `trafficLightPosition` does at launch.
 handleFrom(channels.scale, (event, percent: number) => {

@@ -54,6 +54,8 @@ export interface CalBridge {
   // Switches the window (and its `prefers-color-scheme`) between following the Mac,
   // light and dark.
   setTheme(theme: Theme): Promise<void>;
+  // Gives this window `color` (opaque hex) as its background.
+  setBackground(color: string): Promise<void>;
   // Runs `listener` when the window is about to close or the app to quit. The window
   // stays open until every listener's promise settles, so unsaved text can be written.
   onClosing(listener: () => Promise<void>): () => void;
@@ -137,6 +139,7 @@ export const channels = {
   calendar: "cal:calendar",
   calendarChanged: "cal:calendar-changed",
   theme: "cal:theme",
+  background: "cal:background",
   // Main asks the window to finish up before closing; the window answers when it has.
   closing: "cal:closing",
   closeReady: "cal:close-ready",

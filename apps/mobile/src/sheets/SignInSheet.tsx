@@ -58,7 +58,7 @@ export function SignInSheet() {
           </Text>
           <View className="mt-7 w-full gap-3">
             <GoogleButton busy={busy} onPress={() => void signIn()} />
-            {error && <Text className="text-center text-small text-now">{error}</Text>}
+            {error && <Text className="text-center text-small text-danger">{error}</Text>}
           </View>
         </View>
       </View>

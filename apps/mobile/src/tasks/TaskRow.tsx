@@ -83,12 +83,12 @@ export function TaskRow({ task }: { task: Task }) {
               <View className="flex-row items-center gap-1">
                 <Flag
                   size={12}
-                  color={overdue ? colors.now : colors["ink-3"]}
+                  color={overdue ? colors.danger : colors["ink-3"]}
                   strokeWidth={1.5}
                   absoluteStrokeWidth
                 />
                 <Text
-                  className={`text-small ${overdue ? "text-now" : "text-ink-3"}`}
+                  className={`text-small ${overdue ? "text-danger" : "text-ink-3"}`}
                   style={{ fontVariant: ["tabular-nums"] }}
                 >
                   {overdue ? "Overdue" : formatRelativeDay(task.deadline, today)}

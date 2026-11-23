@@ -498,7 +498,7 @@ function TaskLine({ task, day }: { task: Task; day: DayKey }) {
         due || project ? (
           <span className="flex items-center gap-1">
             {due && (
-              <span className={`flex items-center gap-1 ${overdue ? "text-now" : ""}`}>
+              <span className={`flex items-center gap-1 ${overdue ? "text-danger" : ""}`}>
                 <Flag size={11} strokeWidth={1.5} absoluteStrokeWidth />
                 {overdue ? "Overdue" : task.deadline === today ? "Due today" : "Due"}
               </span>

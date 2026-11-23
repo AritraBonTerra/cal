@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { CapturePanel } from "./components/CapturePanel";
 import { ClockProvider, now } from "./lib/clock";
+import { paintTheme, ThemePaint } from "./lib/scheme";
 import { ui } from "./lib/ui";
 import "./styles.css";
 
@@ -27,6 +28,7 @@ window.addEventListener("storage", (event) => {
 });
 // Before the first render, so the window never draws at the wrong size first.
 window.cal.setScale(cal.settings.device.uiScale);
+paintTheme(cal.settings.device);
 
 // The capture panel (Quick Entry over other apps) is this page with ?surface=capture.
 const capture = new URLSearchParams(window.location.search).get("surface") === "capture";
@@ -56,6 +58,7 @@ if (!root) throw new Error("No #root element");
 createRoot(root).render(
   <StrictMode>
     <CalProvider cal={cal}>
+      <ThemePaint />
       <ClockProvider>{capture ? <CapturePanel /> : <App />}</ClockProvider>
     </CalProvider>
   </StrictMode>,

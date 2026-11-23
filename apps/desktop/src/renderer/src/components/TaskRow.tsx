@@ -140,7 +140,7 @@ export function TaskRow({ task, slot, showNext = false, omit }: TaskRowProps) {
               {task.deadline && (
                 <span
                   className={`flex shrink-0 items-center gap-1 text-small tnum ${
-                    overdue ? "text-now" : "text-ink-3"
+                    overdue ? "text-danger" : "text-ink-3"
                   }`}
                 >
                   <Flag size={11} strokeWidth={1.5} absoluteStrokeWidth />

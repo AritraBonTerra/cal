@@ -166,7 +166,7 @@ function ActionRow({
       <View
         className={`min-h-11 flex-row items-center gap-3 pr-3 ${last ? "" : "border-b border-grid"}`}
       >
-        <Text className={`flex-1 text-body ${destructive ? "text-now" : "text-accent"}`}>
+        <Text className={`flex-1 text-body ${destructive ? "text-danger" : "text-accent"}`}>
           {title}
         </Text>
         {chevron && (

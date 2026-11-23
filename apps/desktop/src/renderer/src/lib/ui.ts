@@ -46,6 +46,7 @@ export type Overlay =
 
 export type SettingsSection =
   | "general"
+  | "appearance"
   | "grid"
   | "zones"
   | "calendars"

@@ -1,9 +1,9 @@
-import { UI_SCALE, useSettings } from "@cal/app-core";
+import { useSettings } from "@cal/app-core";
 import { useEffect, useState } from "react";
 import { CAPTURE_COMMAND } from "../../../../shared/api";
 import { shortcutText, useShortcut } from "../../lib/shortcuts";
 import { ui } from "../../lib/ui";
-import { Segmented, Select, Slider, Switch } from "../ui";
+import { Segmented, Select, Switch } from "../ui";
 import { Group, Row, RowButton } from "./controls";
 
 const WEEK_STARTS = [
@@ -29,10 +29,10 @@ function useOpenAtLogin() {
   return [open, change] as const;
 }
 
-// General: what the calendar shows, navigation, time format, theme, maps, startup, and
+// General: what the calendar shows, navigation, time format, maps, startup, and
 // the way back to the Welcome walkthrough.
 export function GeneralSection() {
-  const { account, device, setAccount, setDevice } = useSettings();
+  const { account, setAccount } = useSettings();
   const weekendsKey = useShortcut("view.weekends");
   const todayKey = useShortcut("nav.today");
   const todayLeftKey = useShortcut("nav.todayLeft");
@@ -93,19 +93,7 @@ export function GeneralSection() {
           />
         </Row>
       </Group>
-      <Group title="Appearance">
-        <Row label="Interface size" note="Text, panes and the calendar grow together">
-          <Slider
-            value={device.uiScale}
-            min={UI_SCALE.min}
-            max={UI_SCALE.max}
-            step={UI_SCALE.step}
-            onChange={(value) => setDevice("uiScale", value)}
-            label="Interface size"
-            format={(value) => `${value}%`}
-            reset={100}
-          />
-        </Row>
+      <Group title="Formats and links">
         <Row label="Time format">
           <Segmented
             value={account.timeFormat}
@@ -116,18 +104,6 @@ export function GeneralSection() {
             ]}
             onChange={(value) => void setAccount("timeFormat", value)}
             label="Time format"
-          />
-        </Row>
-        <Row label="Theme" note="Auto follows the Mac">
-          <Segmented
-            value={device.theme}
-            options={[
-              { value: "system", label: "Auto" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-            onChange={(value) => setDevice("theme", value)}
-            label="Theme"
           />
         </Row>
         <Row label="Open locations in">

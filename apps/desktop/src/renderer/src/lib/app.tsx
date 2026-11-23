@@ -1,7 +1,7 @@
 import type { AccountSettings, DeviceSettings } from "@cal/app-core";
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
 import type { DayKey } from "@cal/domain";
-import type { ChipColors, Mode } from "@cal/theme";
+import type { ChipColors, Mode, Palette } from "@cal/theme";
 import { createContext, useContext } from "react";
 import type { useData } from "./data";
 
@@ -13,7 +13,10 @@ import type { useData } from "./data";
 export interface AppState {
   data: ReturnType<typeof useData>;
   calendars: readonly DeviceCalendar[];
+  // Chip colors by calendar id.
   palette: ReadonlyMap<string, ChipColors>;
+  // The theme's colors as hex.
+  colors: Palette;
   // Visible events, already without hidden calendars and declined invitations.
   events: readonly ExternalEvent[];
   // Visible events from today on (two months' worth), whatever days the view shows.

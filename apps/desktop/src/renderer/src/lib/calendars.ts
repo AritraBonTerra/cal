@@ -94,20 +94,21 @@ export function eventsOnDay(events: readonly ExternalEvent[], day: DayKey) {
     );
 }
 
-// Chip colors per calendar for the current mode, computed once per calendar. A color
+// Chip colors per calendar for the current mode and theme, computed once per calendar. A color
 // override from Settings replaces the calendar's own color here, never in the calendar.
 export function useChipPalette(
   calendars: readonly DeviceCalendar[],
   mode: Mode,
   overrides: Readonly<Record<string, string>>,
+  canvas: string,
 ) {
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
     for (const calendar of calendars) {
-      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode));
+      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode, canvas));
     }
     return palette;
-  }, [calendars, mode, overrides]);
+  }, [calendars, mode, overrides, canvas]);
 }
 
 // A calendar's color in Cal: the override from Settings, else the calendar's own.

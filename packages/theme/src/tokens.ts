@@ -4,8 +4,8 @@ import { type Oklch, oklch } from "./color";
  * Cal's design values (PLAN §6, research/07 §7). Colors are authored in OKLCH and
  * compiled to opaque hex for both platforms by `scripts/build-css.ts` (Tailwind on the
  * Mac) and the TS exports below (Uniwind on iOS). Neutrals sit on hue 75 with almost no
- * chroma so calendar colors read true; blue is the one accent and red means "now". The
- * smart-list icon colors are the one exception in the chrome.
+ * chroma so calendar colors read true; blue is the one accent and red means "now".
+ * Themes and other accents are derived from these (themes.ts). The smart-list icon colors are the one exception in the chrome.
  */
 
 export type Mode = "light" | "dark";
@@ -34,8 +34,10 @@ export const colors = {
   accent: { light: oklch(0.55, 0.17, 255), dark: oklch(0.72, 0.13, 255) },
   "accent-solid": { light: oklch(0.55, 0.17, 255), dark: oklch(0.55, 0.17, 255) },
   "accent-soft": { light: oklch(0.95, 0.03, 255), dark: oklch(0.3, 0.06, 255) },
-  // Red only for "now": the now line, today badge, overdue deadlines, destructive.
+  // The now line and today's badge: red, or the accent when one other than blue is picked.
   now: { light: oklch(0.58, 0.21, 27), dark: oklch(0.68, 0.19, 27) },
+  // Always red: overdue deadlines, errors, destructive actions.
+  danger: { light: oklch(0.58, 0.21, 27), dark: oklch(0.68, 0.19, 27) },
   success: { light: oklch(0.55, 0.14, 150), dark: oklch(0.72, 0.14, 150) },
   warning: { light: oklch(0.7, 0.15, 70), dark: oklch(0.78, 0.14, 75) },
   white: { light: oklch(1, 0, 0), dark: oklch(1, 0, 0) },

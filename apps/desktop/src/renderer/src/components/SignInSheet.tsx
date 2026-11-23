@@ -112,7 +112,7 @@ export function SignInSheet() {
             </label>
           </form>
         )}
-        {error && <p className="text-small text-now">{error}</p>}
+        {error && <p className="text-small text-danger">{error}</p>}
         <div className="mt-2 flex justify-end gap-2">
           <button
             type="button"

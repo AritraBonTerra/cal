@@ -117,6 +117,43 @@ export const scenes: Scene[] = [
   { name: "agenda-dark", dark: true, keys: ["a"] },
   { name: "agenda-event", keys: ["a", "ArrowDown", "Enter"] },
   { name: "agenda-narrow", width: 760, height: 620, keys: ["a"] },
+  // Themes: a tinted light and dark one, accents other than blue, and the picker.
+  { name: "theme-sand", settings: { device: { lightTheme: "sand", accent: "brick" } } },
+  {
+    name: "theme-sage-agenda",
+    settings: { device: { lightTheme: "sage", accent: "green" } },
+    keys: ["a"],
+  },
+  {
+    name: "theme-lilac-month",
+    settings: { device: { lightTheme: "lilac", accent: "plum" } },
+    keys: ["m"],
+  },
+  { name: "theme-mist-ink", settings: { device: { lightTheme: "mist", accent: "ink" } } },
+  {
+    name: "theme-walnut",
+    dark: true,
+    settings: { device: { darkTheme: "walnut", accent: "ochre" } },
+  },
+  {
+    name: "theme-black-agenda",
+    dark: true,
+    settings: { device: { darkTheme: "black", accent: "brick" } },
+    keys: ["a"],
+  },
+  {
+    name: "theme-pine-ink",
+    dark: true,
+    settings: { device: { darkTheme: "pine", accent: "ink" } },
+  },
+  { name: "settings-appearance", keys: ["Meta+,"], click: "[data-section='appearance']" },
+  {
+    name: "settings-appearance-dark",
+    dark: true,
+    settings: { device: { darkTheme: "plum", accent: "plum" } },
+    keys: ["Meta+,"],
+    click: "[data-section='appearance']",
+  },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

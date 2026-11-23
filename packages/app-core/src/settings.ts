@@ -1,4 +1,5 @@
 import type { SyncedRow } from "@cal/backend/sync";
+import { type AccentId, accentIds, type ThemeId, themesFor } from "@cal/theme";
 import type { Keybindings } from "./commands";
 import type { DataSource } from "./data";
 
@@ -45,6 +46,10 @@ export const accountDefaults = {
 
 export const deviceDefaults = {
   theme: "system" as "system" | "light" | "dark",
+  // The theme drawn in each mode, and the accent over both.
+  lightTheme: "daylight" as ThemeId,
+  darkTheme: "charcoal" as ThemeId,
+  accent: "blue" as AccentId,
   // Pixels per hour; 0 fits the whole day in the window. The grid never goes below fit.
   hourHeight: 64,
   halfHourLines: false,
@@ -154,6 +159,9 @@ const accountChecks: { [K in keyof AccountSettings]: Check } = {
 
 const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   theme: oneOf("system", "light", "dark"),
+  lightTheme: oneOf(...themesFor("light")),
+  darkTheme: oneOf(...themesFor("dark")),
+  accent: oneOf(...accentIds),
   // Pinch and ⌥-scroll zoom leave fractional heights.
   hourHeight: (value) =>
     value === 0 ||

@@ -198,7 +198,7 @@ function Chips({ task, at }: { task: Task; at?: string }) {
         icon={Flag}
         label={task.deadline ? formatRelativeDay(task.deadline, today) : "Deadline"}
         quiet={!task.deadline}
-        tone={isOverdue(task, today) ? "text-now" : undefined}
+        tone={isOverdue(task, today) ? "text-danger" : undefined}
         open={menu === "deadline"}
         onClick={(event) => {
           opened(event);

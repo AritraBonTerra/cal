@@ -86,7 +86,7 @@ export function CapturePanel() {
         >
           {children}
           {error && (
-            <p role="alert" className="border-t border-grid px-4 py-2 text-small text-now">
+            <p role="alert" className="border-t border-grid px-4 py-2 text-small text-danger">
               {error}
             </p>
           )}

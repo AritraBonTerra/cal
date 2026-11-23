@@ -1464,5 +1464,38 @@ check("T brings the agenda back to today", (await agendaDays())[0] === "2026-10-
 await page.keyboard.press("w");
 await page.waitForTimeout(200);
 
+// Themes: the picker repaints the window at once, and the accent colors now.
+const cssColor = (token: string) =>
+  page.evaluate(
+    (name) => getComputedStyle(document.documentElement).getPropertyValue(`--cal-${name}`).trim(),
+    token,
+  );
+const redNow = await cssColor("now");
+await page.keyboard.press("Meta+,");
+await page.click("[data-section='appearance']");
+await page.click("[data-theme-choice='sand']");
+await page.waitForTimeout(150);
+check("picking a light theme repaints the canvas", (await cssColor("canvas")) === "#fcf4e5");
+await page.click("[role=radiogroup][aria-label='Accent'] [aria-label='Green']");
+await page.waitForTimeout(150);
+check(
+  "an accent colors now, and danger stays red",
+  (await cssColor("now")) !== redNow && (await cssColor("danger")) === redNow,
+);
+await page.click("[data-theme-choice='walnut']");
+await page.waitForTimeout(150);
+check("a dark theme waits for dark mode", (await cssColor("canvas")) === "#fcf4e5");
+await page.emulateMedia({ colorScheme: "dark" });
+await page.waitForTimeout(200);
+check("dark mode draws the dark theme", (await cssColor("canvas")) === "#1b1209");
+await page.emulateMedia({ colorScheme: "light" });
+await page.evaluate(() =>
+  window.calTest?.seed({
+    device: { lightTheme: "daylight", darkTheme: "charcoal", accent: "blue" },
+  }),
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

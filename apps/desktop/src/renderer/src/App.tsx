@@ -48,7 +48,7 @@ import { useData } from "./lib/data";
 import { useKeyboard } from "./lib/keyboard";
 import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
-import { useMode } from "./lib/scheme";
+import { useMode, usePalette } from "./lib/scheme";
 import { shortcutText, useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
 import { showToast } from "./lib/toast";
@@ -190,6 +190,7 @@ export function App() {
   const today = useToday();
   const now = useNow();
   const mode = useMode();
+  const colors = usePalette();
   const { account, device } = useSettings();
   useFirstRun(device.welcomed, cal.settings);
   useKeybindings(account.keybindings);
@@ -198,7 +199,7 @@ export function App() {
   useSettingsEffects(account, device, today);
   useGlobalKeyNotice();
   const calendars = useCalendars();
-  const palette = useChipPalette(calendars, mode, device.calendarColors);
+  const palette = useChipPalette(calendars, mode, device.calendarColors, colors.canvas);
   const { auth, sync } = useAccount();
   const { access, request } = useCalendarAccess();
   const view = useUi((state) => state.view);
@@ -260,6 +261,7 @@ export function App() {
       data,
       calendars,
       palette,
+      colors,
       events,
       upcoming,
       refreshEvents: refresh,
@@ -275,6 +277,7 @@ export function App() {
       data,
       calendars,
       palette,
+      colors,
       events,
       upcoming,
       refresh,

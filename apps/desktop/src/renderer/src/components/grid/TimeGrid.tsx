@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
 import { type DayKey, daysBetween, meetingOf, placeOf, toOffsetIso, weekday } from "@cal/domain";
-import { blockColors, mix, colors as tokens } from "@cal/theme";
+import { blockColors, fromHex, mix } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -92,6 +92,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
   const {
     gridToday: today,
     mode,
+    colors,
     palette,
     calendars,
     refreshEvents,
@@ -350,14 +351,14 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
   const draft = editor?.mode === "create" && !editor.form.allDay ? editor.form : null;
   const drafting = draft ? segments([draft], days, zone) : null;
   const nowMinute = minutesOf(now, zone);
-  const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
+  const nowFaded = mix(fromHex(colors.now), fromHex(colors.canvas), 0.65);
   const nowTop = px(nowMinute);
   const showNow = days.includes(today);
   // Labels of an extra column follow the main zone's hour lines on one reference day.
   const reference = days.includes(today) ? today : (days[0] ?? today);
   const hours = Array.from({ length: 23 }, (_, index) => index + 1);
   // Opaque hairline colors; half-hour lines sit halfway between the grid line and the canvas.
-  const halfLine = mix(tokens.grid[mode], tokens.canvas[mode], 0.5);
+  const halfLine = mix(fromHex(colors.grid), fromHex(colors.canvas), 0.5);
   const { start: workStart, end: workEnd } = account.workingHours;
   const lines = `repeating-linear-gradient(to bottom, var(--cal-grid) 0 1px, transparent 1px ${hour}px)`;
   const halfLines = device.halfHourLines

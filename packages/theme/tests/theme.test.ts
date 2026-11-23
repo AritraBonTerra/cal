@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  accentIds,
   chipColors,
   chipColorsFromHex,
   colors,
@@ -7,6 +8,11 @@ import {
   fromHex,
   mix,
   oklch,
+  type Palette,
+  paletteOf,
+  THEMES,
+  themeIds,
+  themesFor,
   toHex,
   type,
   typeMobile,
@@ -87,4 +93,120 @@ test("the mobile scale is one step up from the Mac scale and never below 11", ()
     expect(typeMobile[role].line).toBeGreaterThanOrEqual(typeMobile[role].size);
   }
   expect(typeMobile.caption.size).toBeGreaterThanOrEqual(11);
+});
+
+describe("themes", () => {
+  const modes = ["light", "dark"] as const;
+  const ratio = (a: string, b: string) => contrast(fromHex(a), fromHex(b));
+  const each = (check: (colors: Palette, name: string, mode: "light" | "dark") => void) => {
+    for (const theme of themeIds)
+      for (const accent of accentIds)
+        check(paletteOf(theme, accent), `${theme}/${accent}`, THEMES[theme].mode);
+  };
+
+  test("the first light and dark themes with blue are exactly the base tokens", () => {
+    for (const mode of modes) {
+      const base = Object.fromEntries(
+        Object.entries(colors).map(([name, value]) => [name, toHex(value[mode])]),
+      );
+      expect(paletteOf(themesFor(mode)[0] ?? "daylight", "blue")).toEqual(base as Palette);
+    }
+    expect(themesFor("light")).toHaveLength(6);
+    expect(themesFor("dark")).toHaveLength(6);
+  });
+
+  test("text reads on every surface it sits on, in every theme", () => {
+    each((palette, name) => {
+      for (const surface of ["canvas", "sidebar", "raised", "hover"] as const) {
+        expect([name, surface, ratio(palette.ink, palette[surface]) >= 10]).toEqual([
+          name,
+          surface,
+          true,
+        ]);
+        expect([name, surface, ratio(palette["ink-2"], palette[surface]) >= 5.5]).toEqual([
+          name,
+          surface,
+          true,
+        ]);
+        expect([name, surface, ratio(palette["ink-3"], palette[surface]) >= 4]).toEqual([
+          name,
+          surface,
+          true,
+        ]);
+      }
+    });
+  });
+
+  test("accents read as text and behind white", () => {
+    each((palette, name) => {
+      expect([name, "accent", ratio(palette.accent, palette.canvas) >= 4.2]).toEqual([
+        name,
+        "accent",
+        true,
+      ]);
+      expect([name, "solid", ratio("#ffffff", palette["accent-solid"]) >= 4.5]).toEqual([
+        name,
+        "solid",
+        true,
+      ]);
+      expect([name, "now", ratio("#ffffff", palette.now) >= 3]).toEqual([name, "now", true]);
+      expect([name, "line", ratio(palette.now, palette.canvas) >= 2.5]).toEqual([
+        name,
+        "line",
+        true,
+      ]);
+      // Selected rows keep readable text.
+      expect([name, "soft", ratio(palette.ink, palette["accent-soft"]) >= 7]).toEqual([
+        name,
+        "soft",
+        true,
+      ]);
+      expect([name, "danger", ratio(palette.danger, palette.canvas) >= 4]).toEqual([
+        name,
+        "danger",
+        true,
+      ]);
+    });
+  });
+
+  test("layers stay apart: raised off the canvas in the dark, hairlines visible", () => {
+    each((palette, name, mode) => {
+      expect([name, palette.hover !== palette.canvas]).toEqual([name, true]);
+      expect([name, palette.active !== palette.hover]).toEqual([name, true]);
+      expect([name, ratio(palette.grid, palette.canvas) >= 1.12]).toEqual([name, true]);
+      if (mode === "dark") expect([name, palette.raised !== palette.canvas]).toEqual([name, true]);
+    });
+  });
+
+  test("smart-list icons keep 3:1 in every theme", () => {
+    each((palette, name) => {
+      for (const list of ["inbox", "today", "upcoming", "anytime", "someday", "logbook"] as const)
+        for (const surface of ["sidebar", "canvas", "active"] as const)
+          expect([
+            name,
+            list,
+            surface,
+            ratio(palette[`list-${list}`], palette[surface]) >= 3,
+          ]).toEqual([name, list, surface, true]);
+    });
+  });
+
+  test("only blue leaves now red", () => {
+    for (const mode of modes) {
+      const theme = themesFor(mode)[0] ?? "daylight";
+      const red = toHex(colors.now[mode]);
+      for (const accent of accentIds) {
+        const palette = paletteOf(theme, accent);
+        expect(palette.now === red).toBe(accent === "blue");
+        expect(palette.danger).toBe(red);
+      }
+    }
+  });
+
+  test("past chips fade toward the theme's canvas", () => {
+    const { canvas } = paletteOf("walnut", "blue");
+    const past = chipColors(255, "dark", false, canvas);
+    expect(past.pastFill).not.toBe(chipColors(255, "dark").pastFill);
+    expect(past.fill).toBe(chipColors(255, "dark").fill);
+  });
 });

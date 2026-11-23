@@ -51,7 +51,7 @@ export function RowButton({
       onClick={onClick}
       disabled={disabled}
       className={`h-6 rounded-md px-2 text-small font-medium shadow-[inset_0_0_0_1px_var(--cal-edge)] transition-colors duration-100 hover:bg-hover hover:duration-0 disabled:opacity-50 disabled:hover:bg-transparent ${
-        danger ? "text-now" : "text-ink"
+        danger ? "text-danger" : "text-ink"
       }`}
     >
       {children}

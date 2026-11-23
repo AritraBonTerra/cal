@@ -5,6 +5,7 @@ import {
   Keyboard,
   LayoutGrid,
   type LucideIcon,
+  Palette,
   Settings2,
   User,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { closeOverlay, type SettingsSection, ui, useUi } from "../../lib/ui";
 import { Overlay } from "../ui";
 import { AboutSection } from "./AboutSection";
 import { AccountSection } from "./AccountSection";
+import { AppearanceSection } from "./AppearanceSection";
 import { CalendarsSection } from "./CalendarsSection";
 import { GeneralSection } from "./GeneralSection";
 import { GridSection } from "./GridSection";
@@ -26,6 +28,7 @@ import { ZonesSection } from "./ZonesSection";
 
 const SECTIONS: { id: SettingsSection; title: string; icon: LucideIcon }[] = [
   { id: "general", title: "General", icon: Settings2 },
+  { id: "appearance", title: "Appearance", icon: Palette },
   { id: "grid", title: "Grid", icon: LayoutGrid },
   { id: "zones", title: "Time zones", icon: Globe },
   { id: "calendars", title: "Calendars", icon: CalendarDays },
@@ -72,6 +75,7 @@ export function SettingsPanel({ auth, sync }: { auth: AuthState; sync: SyncStatu
         <div className="min-w-0 flex-1 overflow-y-auto px-6 pt-4 pb-6">
           <h2 className="mb-4 text-title-3 font-semibold text-ink">{current?.title}</h2>
           {section === "general" && <GeneralSection />}
+          {section === "appearance" && <AppearanceSection />}
           {section === "grid" && <GridSection />}
           {section === "zones" && <ZonesSection />}
           {section === "calendars" && <CalendarsSection />}
