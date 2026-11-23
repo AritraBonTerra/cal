@@ -32,7 +32,7 @@ import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { createCapture } from "./capture";
 import { openDatabase } from "./db";
-import { createJoin } from "./meetings";
+import { calendarUrl, createJoin } from "./meetings";
 import { encryptedFile } from "./session";
 import { createUpdates } from "./updater";
 
@@ -106,12 +106,13 @@ calendar.onChange(() => broadcast(channels.calendarChanged, null));
 // Fixture launches record what they would open, for the scripts to read.
 const opened: string[] = [];
 if (fixture) Object.assign(globalThis, { calOpened: opened });
+const openOutside = async (url: string) => {
+  if (fixture) opened.push(url);
+  else await shell.openExternal(url);
+};
 const joinMeeting = createJoin({
   handlerFor: (url) => app.getApplicationNameForProtocol(url),
-  open: async (url) => {
-    if (fixture) opened.push(url);
-    else await shell.openExternal(url);
-  },
+  open: openOutside,
 });
 
 const rendererFile = join(import.meta.dirname, "../renderer/index.html");
@@ -212,6 +213,10 @@ handleFrom(channels.calendar, (event, call: CalendarCall) => {
     case "deleteEvent":
       return written(event, calendar.deleteEvent(...call.args));
   }
+});
+
+handle(channels.openInCalendar, (eventId: string) => {
+  if (typeof eventId === "string") return openOutside(calendarUrl(eventId));
 });
 
 handle(channels.joinMeeting, (url: string) => joinMeeting(url));
@@ -329,17 +334,17 @@ function createWindow() {
   window.once("ready-to-show", () => window.show());
   holdClose(window);
   // The window only ever shows Cal; web links open in the browser instead.
-  const openOutside = (url: string) => {
+  const openLink = (url: string) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
   };
   window.webContents.setWindowOpenHandler(({ url }) => {
-    openOutside(url);
+    openLink(url);
     return { action: "deny" };
   });
   const stayInApp = (details: { url: string; preventDefault(): void }) => {
     if (isAppUrl(details.url)) return;
     details.preventDefault();
-    openOutside(details.url);
+    openLink(details.url);
   };
   window.webContents.on("will-navigate", stayInApp);
   window.webContents.on("will-redirect", stayInApp);

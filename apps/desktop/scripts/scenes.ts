@@ -154,6 +154,9 @@ export const scenes: Scene[] = [
     keys: ["Meta+,"],
     click: "[data-section='appearance']",
   },
+  // The envelope's list, and the unanswered event's dashed chip behind it.
+  { name: "invitations", click: "[data-invitations]" },
+  { name: "invitations-dark", dark: true, click: "[data-invitations]" },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

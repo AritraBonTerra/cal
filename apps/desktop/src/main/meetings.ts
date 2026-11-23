@@ -29,3 +29,7 @@ export function createJoin({ handlerFor, open }: JoinOptions) {
     return true;
   };
 }
+
+// Apple Calendar's URL for an event. Occurrence ids carry their start after a "|".
+export const calendarUrl = (eventId: string) =>
+  `ical://ekevent/${encodeURIComponent(eventId.split("|")[0] ?? "")}?method=show&options=more`;

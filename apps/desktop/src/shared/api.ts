@@ -45,6 +45,8 @@ export interface CalBridge {
   // Opens the call at `url` in its app (Zoom), else in the browser. False when `url`
   // isn't a call Cal knows.
   joinMeeting(url: string): Promise<boolean>;
+  // Shows the event in Apple Calendar, which can answer its invitation (Cal can't).
+  openInCalendar(eventId: string): Promise<void>;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
   // Gives the menu bar the commands' keys, replacing what it had; null makes the window
@@ -157,6 +159,7 @@ export const channels = {
   captureReset: "cal:capture-reset",
   openAtLogin: "cal:open-at-login",
   joinMeeting: "cal:join-meeting",
+  openInCalendar: "cal:open-in-calendar",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.

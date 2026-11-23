@@ -1497,5 +1497,30 @@ await page.evaluate(() =>
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
 
+// Invitations: the envelope lists unanswered ones; Reply goes to Apple Calendar.
+await page.click("[data-invitations]");
+await page.waitForTimeout(200);
+check(
+  "the envelope lists the unanswered invitation",
+  (await page.locator("[aria-label='Unanswered invitations']").textContent())?.includes(
+    "Vendor demo",
+  ) ?? false,
+);
+await page.click("[aria-label='Unanswered invitations'] >> text=Reply");
+await page.waitForTimeout(200);
+check(
+  "Reply opens the event in Apple Calendar",
+  ((await openedCalls()).at(-1) ?? "").startsWith("ical://ekevent/fixture-"),
+);
+await page.click("[data-invitations]");
+await page.click("[aria-label='Unanswered invitations'] >> text=Vendor demo");
+await page.waitForTimeout(400);
+check(
+  "a click on an invitation opens its event",
+  (await page.locator("[data-editor='edit'] [aria-label='Title']").inputValue()) === "Vendor demo",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

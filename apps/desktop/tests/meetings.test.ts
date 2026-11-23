@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createJoin } from "../src/main/meetings";
+import { calendarUrl, createJoin } from "../src/main/meetings";
 
 const ZOOM = "https://us02web.zoom.us/j/81234567890?pwd=abc";
 const APP = "zoommtg://us02web.zoom.us/join?action=join&confno=81234567890&pwd=abc";
@@ -52,4 +52,11 @@ test("opens nothing that isn't a call", async () => {
     expect(await join(url)).toBe(false);
   }
   expect(opened).toEqual([]);
+});
+
+test("an event's Apple Calendar link names its series and nothing else", () => {
+  expect(calendarUrl("ABC:123|2026-10-28T10:00:00-07:00")).toBe(
+    "ical://ekevent/ABC%3A123?method=show&options=more",
+  );
+  expect(calendarUrl("x?y=1&z/../..")).not.toContain("z/");
 });

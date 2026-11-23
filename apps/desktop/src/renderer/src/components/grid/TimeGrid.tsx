@@ -517,6 +517,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
                       past={past}
                       dragging={dragging}
                       writable={isWritable(item)}
+                      pending={item.event.myStatus === "pending"}
                     />
                   ) : (
                     <BlockChip

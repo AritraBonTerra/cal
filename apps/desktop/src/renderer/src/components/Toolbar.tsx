@@ -17,6 +17,7 @@ import {
   useUi,
 } from "../lib/ui";
 import { zoneCity } from "../lib/zones";
+import { Invitations } from "./Invitations";
 import { paneTogglesEnd } from "./PaneToggles";
 import { IconButton, Keycaps } from "./ui";
 
@@ -90,6 +91,7 @@ export function Toolbar({ first, last }: { first: DayKey; last: DayKey }) {
         </button>
       )}
       <div className="flex-1" />
+      <Invitations />
       <button
         type="button"
         onClick={() => goToday(today)}

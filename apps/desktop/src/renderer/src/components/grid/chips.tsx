@@ -66,6 +66,8 @@ interface EventChipProps {
   past: boolean;
   dragging: boolean;
   writable: boolean;
+  // An invitation not answered yet: outlined rather than filled.
+  pending?: boolean;
 }
 
 export function EventChip({
@@ -80,9 +82,16 @@ export function EventChip({
   past,
   dragging,
   writable,
+  pending = false,
 }: EventChipProps) {
   const { height } = frame;
-  const fill = selected ? colors.solid : past ? colors.pastFill : colors.fill;
+  const fill = selected
+    ? colors.solid
+    : pending
+      ? "var(--cal-canvas)"
+      : past
+        ? colors.pastFill
+        : colors.fill;
   const text = selected ? "#ffffff" : past ? colors.pastTitle : colors.title;
   const time = selected ? "oklch(1 0 0 / 0.85)" : past ? colors.pastTime : colors.time;
   return (
@@ -95,6 +104,8 @@ export function EventChip({
         background: fill,
         borderColor: selected ? colors.solid : past ? colors.pastTime : colors.bar,
         boxShadow: selected ? undefined : "0 0 0 1px var(--cal-canvas)",
+        outline: pending && !selected ? `1px dashed ${colors.bar}` : undefined,
+        outlineOffset: -1,
       }}
       data-selected={selected || undefined}
     >
