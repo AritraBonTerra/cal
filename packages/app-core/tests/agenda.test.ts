@@ -160,6 +160,12 @@ describe("agendaDays", () => {
     expect(days["30"]).toMatchObject({ tasks: ["Same day"], due: ["Invoice"] });
   });
 
+  test("a passed deadline shows in today alone", () => {
+    const days = titles({ tasks: [task("Pay rent", { deadline: "2026-10-27" })] });
+    expect(days["27"]?.due).toEqual([]);
+    expect(days["28"]?.tasks).toEqual(["Pay rent"]);
+  });
+
   test("shows today's habits only, without ones that are off today or archived", () => {
     const days = titles({
       habits: [

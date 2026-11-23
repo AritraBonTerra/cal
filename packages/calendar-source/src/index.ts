@@ -31,6 +31,8 @@ export interface ExternalEvent {
   notes?: string;
   url?: string;
   recurring: boolean;
+  // An occurrence edited on its own, so it no longer carries its series' rule.
+  detached?: boolean;
   // The repeat rule as an RRULE string without the "RRULE:" prefix, e.g.
   // "FREQ=WEEKLY;BYDAY=MO,WE". Absent for one-off events.
   recurrence?: string;

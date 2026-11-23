@@ -102,7 +102,8 @@ function accentColors(id: AccentId, mode: Mode): Partial<Record<ColorToken, Oklc
     const strong = mode === "light" ? color(0.3) : color(0.9);
     const solid = mode === "light" ? color(0.3) : color(0.48);
     const soft = mode === "light" ? color(0.92) : color(0.32);
-    return { accent: strong, "accent-solid": solid, "accent-soft": soft, now: solid };
+    const now = mode === "light" ? solid : color(0.6);
+    return { accent: strong, "accent-solid": solid, "accent-soft": soft, now };
   }
   return mode === "light"
     ? {

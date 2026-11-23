@@ -123,7 +123,8 @@ function Invitation({ event, onClose }: { event: ExternalEvent; onClose: () => v
         type="button"
         onClick={() => {
           onClose();
-          const { itemId = event.id, start, recurring, allDay } = event;
+          const { itemId = event.id, start, allDay } = event;
+          const recurring = event.recurring || event.detached === true;
           window.cal
             .openInCalendar({ itemId, start, recurring, allDay })
             .catch(() => showToast("Couldn't open Apple Calendar."));

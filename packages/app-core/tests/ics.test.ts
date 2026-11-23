@@ -128,6 +128,27 @@ describe("parseIcs", () => {
     }
   });
 
+  test("drops a week start that changes nothing, and counts one that would", () => {
+    const start = "DTSTART:20261028T170000Z";
+    expect(only(start, "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=MO")?.recurrence).toBe(
+      "FREQ=WEEKLY;BYDAY=MO",
+    );
+    expect(only(start, "RRULE:FREQ=WEEKLY;INTERVAL=2;WKST=SU;BYDAY=SU,TU")?.recurrence).toBe(
+      undefined,
+    );
+  });
+
+  test("an impossible length skips that event and keeps the rest", () => {
+    const read = parseIcs(
+      file(
+        ...event("SUMMARY:Bad", "DTSTART:20261028T170000Z", "DURATION:P100000000D"),
+        ...event("SUMMARY:Good", "DTSTART:20261028T170000Z"),
+      ),
+    );
+    expect(read.events.map((each) => each.title)).toEqual(["Good"]);
+    expect(read.skipped).toBe(1);
+  });
+
   test("a cancellation brings nothing, and other text isn't a calendar", () => {
     expect(parseIcs(file("METHOD:CANCEL", ...event("DTSTART:20261028T170000Z")))).toMatchObject({
       events: [],

@@ -678,6 +678,14 @@ export function eventWriter(
   api: CalendarSource = window.cal.calendar,
 ) {
   const ids = eventAliases(history);
+  // Whether an event created from `input` is still in the calendar under `id`.
+  const stillThere = async (id: string, input: EventInput) => {
+    const at = Date.parse(input.start);
+    const nearby = await api
+      .events(toOffsetIso(new Date(at - DAY)), toOffsetIso(new Date(at + DAY)))
+      .catch(() => []);
+    return nearby.some((each) => sameId(each.id, id));
+  };
   return {
     create(input: EventInput) {
       let ref: EventRef | undefined;
@@ -710,20 +718,27 @@ export function eventWriter(
         let failure: unknown;
         for (const input of inputs) {
           let ref: EventRef | undefined;
+          // Set when an undo couldn't delete the event, so a redo doesn't make a second one.
+          let kept = false;
           try {
             await tx.external(
               async () => {
+                if (kept) return;
                 const created = await api.createEvent(input);
                 const again = ref !== undefined;
                 if (ref) ids.recreated(ids.current(ref), created);
                 ref = ids.ref(created.id);
                 if (again) await refresh();
               },
-              // One event already gone (deleted elsewhere) doesn't stop the rest.
+              // One that won't go doesn't stop the rest; one already gone needs nothing.
               async () => {
                 if (!ref) return;
-                const span = input.recurrence ? "all" : "this";
-                await api.deleteEvent(ids.current(ref), span).catch(() => undefined);
+                const id = ids.current(ref);
+                kept = await api.deleteEvent(id, input.recurrence ? "all" : "this").then(
+                  () => false,
+                  () => stillThere(id, input),
+                );
+                if (kept) showToast(`Couldn't remove “${input.title}”`);
                 await refresh();
               },
             );

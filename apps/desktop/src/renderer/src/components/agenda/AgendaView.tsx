@@ -113,6 +113,10 @@ export function AgendaView() {
   );
 }
 
+// The day of the row last clicked or stepped to: something on several days has a row on
+// each, and all of them show as selected.
+const cursor: { day: DayKey | null } = { day: null };
+
 // ↑ and ↓ move the selection through the agenda's events and blocks. With nothing
 // selected, ↓ starts at what's on now or next.
 function useStepping(shown: readonly AgendaDay[], now: Date) {
@@ -136,13 +140,11 @@ function useStepping(shown: readonly AgendaDay[], now: Date) {
   );
   const latest = useRef({ rows, now });
   latest.current = { rows, now };
-  // The day of the row last stepped to: something on several days has a row on each.
-  const at = useRef<DayKey | null>(null);
   useCommands(() => {
     const step = (direction: 1 | -1) => {
       const { rows, now } = latest.current;
       const key = keyOf(ui.get().selection);
-      const onDay = rows.findIndex((row) => row.key === key && row.day === at.current);
+      const onDay = rows.findIndex((row) => row.key === key && row.day === cursor.day);
       const found = onDay === -1 ? rows.findIndex((row) => row.key === key) : onDay;
       const next =
         found === -1
@@ -153,7 +155,7 @@ function useStepping(shown: readonly AgendaDay[], now: Date) {
           : Math.min(rows.length - 1, Math.max(0, found + direction));
       const row = rows[next];
       if (!row) return;
-      at.current = row.day;
+      cursor.day = row.day;
       select(
         row.event
           ? { kind: "event", id: row.event.id }
@@ -379,6 +381,7 @@ function EventRow({
       selected={selected}
       past={past || declined}
       onClick={() => {
+        cursor.day = day;
         select({ kind: "event", id: event.id });
         openEdit(event, zone);
       }}
@@ -451,7 +454,10 @@ function BlockRow({
       rowKey={entry.key}
       selected={selected}
       past={past || done}
-      onClick={() => select({ kind: "block", uuid: block.uuid })}
+      onClick={() => {
+        cursor.day = day;
+        select({ kind: "block", uuid: block.uuid });
+      }}
       onDoubleClick={() => {
         if (!task) return;
         showTask(task, data.tasks, today);

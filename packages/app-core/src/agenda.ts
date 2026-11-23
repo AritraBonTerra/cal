@@ -190,9 +190,13 @@ export function agendaDays(days: readonly DayKey[], input: AgendaInput): AgendaD
         .filter(({ first, last }) => first <= day && day <= last)
         .map(({ event }) => event),
       tasks: todos.get(day) ?? [],
-      due: tasks
-        .filter((task) => isOpen(task) && task.deadline === day && !listed.has(task.uuid))
-        .sort(byPosition),
+      // A deadline that has passed is in Today, not on its day.
+      due:
+        day < gridToday
+          ? []
+          : tasks
+              .filter((task) => isOpen(task) && task.deadline === day && !listed.has(task.uuid))
+              .sort(byPosition),
       habits: day === today ? habitsFor(habits, entries, today) : [],
       timed: onDay,
     };

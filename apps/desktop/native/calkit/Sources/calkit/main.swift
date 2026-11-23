@@ -107,6 +107,7 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
     "recurring": event.hasRecurrenceRules,
     "busy": event.availability != .free,
   ]
+  if event.isDetached { json["detached"] = true }
   if let location = event.location, !location.isEmpty { json["location"] = location }
   if let notes = event.notes, !notes.isEmpty { json["notes"] = notes }
   if let url = event.url { json["url"] = url.absoluteString }

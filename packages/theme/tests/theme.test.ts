@@ -150,11 +150,7 @@ describe("themes", () => {
         true,
       ]);
       expect([name, "now", ratio("#ffffff", palette.now) >= 3]).toEqual([name, "now", true]);
-      expect([name, "line", ratio(palette.now, palette.canvas) >= 2.5]).toEqual([
-        name,
-        "line",
-        true,
-      ]);
+      expect([name, "line", ratio(palette.now, palette.canvas) >= 4]).toEqual([name, "line", true]);
       // Selected rows keep readable text.
       expect([name, "soft", ratio(palette.ink, palette["accent-soft"]) >= 7]).toEqual([
         name,

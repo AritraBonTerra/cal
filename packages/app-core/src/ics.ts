@@ -157,7 +157,6 @@ const RULE_PARTS = new Set([
   "BYMONTHDAY",
   "BYMONTH",
   "BYSETPOS",
-  "WKST",
 ]);
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -167,12 +166,18 @@ const pad = (value: number) => String(value).padStart(2, "0");
  * or null when the calendar can't keep it.
  */
 function readRule(text: string, zone: string) {
-  const parts = text
+  const all = text
     .trim()
     .toUpperCase()
     .split(";")
     .filter(Boolean)
     .map((part) => part.split("="));
+  // The week's first day only matters to every-N-weeks rules, and calendars here start it
+  // on Monday.
+  const wkst = all.find(([key]) => key === "WKST")?.[1] ?? "MO";
+  const spaced = all.some(([key, value]) => key === "INTERVAL" && value !== "1");
+  const parts = all.filter(([key]) => key !== "WKST");
+  if (wkst !== "MO" && spaced && all.some(([, value]) => value === "WEEKLY")) return null;
   const freq = parts.find(([key]) => key === "FREQ")?.[1] ?? "";
   if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(freq)) return null;
   if (!parts.every(([key = "", value]) => RULE_PARTS.has(key) && value)) return null;
@@ -257,6 +262,15 @@ function readEvent(
   };
 }
 
+// readEvent, with dates too far out to be dates read as no event.
+function readable(properties: readonly Property[], alarms: readonly number[]) {
+  try {
+    return readEvent(properties, alarms);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The events in an .ics file's text. Text that isn't one has no events. */
 export function parseIcs(text: string): IcsFile {
   const file: IcsFile = { events: [], exceptions: 0, skipped: 0 };
@@ -291,7 +305,7 @@ export function parseIcs(text: string): IcsFile {
       )
         file.skipped++;
       else {
-        const read = readEvent(properties, alarms);
+        const read = readable(properties, alarms);
         if (!read || file.events.length >= MAX_EVENTS) file.skipped++;
         else {
           file.events.push(read.event);
@@ -309,7 +323,7 @@ export function parseIcs(text: string): IcsFile {
       property.params.get("RELATED")?.toUpperCase() !== "END"
     ) {
       const before = parseDuration(value);
-      const minutes = before && -(before.days * 24 * 60 + Math.round(before.ms / 60_000));
+      const minutes = before && Math.round(-(before.days * 24 * 60 + before.ms / 60_000));
       if (minutes !== undefined && minutes >= 0) alarms.push(minutes);
     }
   }
