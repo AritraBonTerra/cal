@@ -144,7 +144,8 @@ export function AgendaScreen({ width }: { width: number }) {
               </Text>
             ))}
           </View>
-          <Animated.View accessibilityElementsHidden={!month} style={monthStyle}>
+          {/* Only what moves during a pull; the pagers over it are what VoiceOver reads. */}
+          <Animated.View accessibilityElementsHidden style={monthStyle}>
             <DayCells days={monthDays(current)} dots={dots} month={current.slice(0, 7)} />
           </Animated.View>
           {month && (

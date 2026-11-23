@@ -1,13 +1,23 @@
 import { agendaDays, isEmptyDay } from "@cal/app-core";
-import { addDays, dayRange, fromDayKey, localTimeZone, toOffsetIso } from "@cal/domain";
+import {
+  addDays,
+  type DayKey,
+  dayRange,
+  fromDayKey,
+  localTimeZone,
+  toOffsetIso,
+} from "@cal/domain";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useReducedMotion } from "react-native-reanimated";
 import { useApp } from "../lib/app";
 import { useEvents } from "../lib/calendars";
 import { useNow } from "../lib/clock";
 import { AGENDA_MAX, extendAgenda, followAgenda, useView, view } from "../lib/view";
 import { DaySection } from "./DaySection";
+
+// Fewer listed days than this after one may not fill the screen below it.
+const LAST_DAYS = 12;
 
 /*
  * The agenda's days as one list, each day an item. Days with nothing on them are left
@@ -47,6 +57,7 @@ export function AgendaList({ bottomInset = 0 }: { bottomInset?: number }) {
   const shown = days.filter((day) => day.day === today || day.day === pinned || !isEmptyDay(day));
 
   const pinnedAt = shown.findIndex((day) => day.day === pinned);
+  const nearEnd = pinnedAt >= 0 && pinnedAt >= shown.length - LAST_DAYS;
 
   // The list grew but shows nothing more: a stretch of empty days. Keep going, since the
   // end it already reached won't be reached again.
@@ -55,10 +66,16 @@ export function AgendaList({ bottomInset = 0 }: { bottomInset?: number }) {
     if (loaded && span < AGENDA_MAX && ended.current === shown.length) extendAgenda();
   }, [loaded, span, shown.length]);
 
-  // Whether a finger is doing the scrolling, so a jump doesn't select days on its way.
+  // Whether the user is doing the scrolling, so a jump doesn't select days on its way.
   const following = useRef(false);
   const latest = useRef(shown);
   latest.current = shown;
+
+  // Brings a listed day to the top.
+  const toDay = useCallback((day: DayKey, animated: boolean) => {
+    if (!latest.current.some((each) => each.day === day)) return;
+    void list.current?.scrollToKey({ key: day, animated, viewPosition: 0 });
+  }, []);
 
   // A jump within the list scrolls; the list opens at its first day by itself.
   const jumped = useRef(jumps);
@@ -66,9 +83,18 @@ export function AgendaList({ bottomInset = 0 }: { bottomInset?: number }) {
     if (jumps === jumped.current) return;
     jumped.current = jumps;
     following.current = false;
-    const index = latest.current.findIndex((day) => day.day === view.get().selected);
-    if (index >= 0) void list.current?.scrollToIndex({ index, animated: !still });
-  }, [jumps, still]);
+    toDay(view.get().selected, !still);
+  }, [jumps, still, toDay]);
+
+  // A list made again elsewhere (the iPad's split view changing) goes back to the day it
+  // was on, once its days are there.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!loaded || restored.current) return;
+    restored.current = true;
+    const { selected, anchor } = view.get();
+    if (selected !== anchor) toDay(selected, false);
+  }, [loaded, toDay]);
 
   return (
     <LegendList
@@ -81,15 +107,17 @@ export function AgendaList({ bottomInset = 0 }: { bottomInset?: number }) {
       recycleItems
       // The now line moves and past rows fade as the minute changes.
       extraData={now}
-      // Room under the last days, so one jumped to can always reach the top.
-      anchoredEndSpace={{ anchorIndex: Math.max(0, pinnedAt) }}
+      // Room under the last days, so one jumped to near the end can reach the top. Only
+      // there: every day from the anchor on stays mounted.
+      anchoredEndSpace={nearEnd ? { anchorIndex: pinnedAt } : undefined}
       onEndReached={() => {
         ended.current = shown.length;
         extendAgenda();
       }}
       onEndReachedThreshold={0.5}
       scrollEventThrottle={16}
-      onScrollBeginDrag={() => {
+      // A finger, VoiceOver or a tap on the status bar, but never a jump.
+      onUserScroll={() => {
         following.current = true;
       }}
       onScroll={() => {
