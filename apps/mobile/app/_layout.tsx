@@ -1,18 +1,22 @@
 import { CalProvider } from "@cal/app-core";
 import { toDayKey } from "@cal/domain";
-import { Stack } from "expo-router";
+import { accentIds, themesFor } from "@cal/theme";
+import { Stack, useGlobalSearchParams } from "expo-router";
 import { lockAsync, OrientationLock } from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { cal } from "../src/data/cal";
+import { cal, fixture } from "../src/data/cal";
 import { AppProvider } from "../src/lib/app";
 import { ClockProvider, now } from "../src/lib/clock";
 import { IS_PAD } from "../src/lib/device";
-import { useColors } from "../src/lib/theme";
+import { paintTheme, ThemeProvider, useColors } from "../src/lib/theme";
 import { showAgenda, view } from "../src/lib/view";
 import "../global.css";
+
+paintTheme(cal.settings.device);
 
 // Deep links to a sheet open it over the tabs rather than alone.
 export const unstable_settings = { anchor: "(tabs)" };
@@ -45,12 +49,15 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <CalProvider cal={cal}>
-          <ClockProvider>
-            <AppProvider>
-              <StatusBar style="auto" />
-              <Routes />
-            </AppProvider>
-          </ClockProvider>
+          <ThemeProvider>
+            <ClockProvider>
+              <AppProvider>
+                <StatusBar style="auto" />
+                {fixture && <SceneTheme />}
+                <Routes />
+              </AppProvider>
+            </ClockProvider>
+          </ThemeProvider>
         </CalProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -78,4 +85,28 @@ function Routes() {
       <Stack.Screen name="sign-in" options={signInSheet} />
     </Stack>
   );
+}
+
+/*
+ * Screenshot scenes pick a theme with `?mode=dark&light=sand&dark=pine&accent=green` on
+ * any route. Fixture mode only, where device settings aren't saved.
+ */
+function SceneTheme() {
+  const params =
+    useGlobalSearchParams<Partial<Record<"mode" | "light" | "dark" | "accent", string>>>();
+  const { mode, light, dark, accent } = params;
+  useEffect(() => {
+    const { settings } = cal;
+    const picked = <T extends string>(ids: readonly T[], value?: string) =>
+      ids.find((id) => id === value);
+    const theme = picked(["system", "light", "dark"], mode);
+    const lightTheme = picked(themesFor("light"), light);
+    const darkTheme = picked(themesFor("dark"), dark);
+    const accentId = picked(accentIds, accent);
+    if (theme) settings.setDevice("theme", theme);
+    if (lightTheme) settings.setDevice("lightTheme", lightTheme);
+    if (darkTheme) settings.setDevice("darkTheme", darkTheme);
+    if (accentId) settings.setDevice("accent", accentId);
+  }, [mode, light, dark, accent]);
+  return null;
 }

@@ -21,7 +21,10 @@ export default function TabsLayout() {
     setCount(wide ? (count === 1 ? 7 : count) : Math.min(count, 3));
   }, [wide]);
 
-  if (wide) return <Stack screenOptions={{ headerShown: false, animation: "none" }} />;
+  if (wide) {
+    const contentStyle = { backgroundColor: colors.canvas };
+    return <Stack screenOptions={{ headerShown: false, animation: "none", contentStyle }} />;
+  }
 
   const stroke = { strokeWidth: 1.5, absoluteStrokeWidth: true } as const;
   return (

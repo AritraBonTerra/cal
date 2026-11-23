@@ -1,6 +1,6 @@
 import { useActions } from "@cal/app-core";
 import { addDays, type DayKey, meetingOf, placeOf, toDayKey, weekday } from "@cal/domain";
-import { mix, colors as tokens } from "@cal/theme";
+import { fromHex, mix } from "@cal/theme";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { type GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
@@ -118,7 +118,7 @@ export function TimeGrid({
   const byDay = segments(shown, days);
   const nowMinute = minutesOf(now);
   const nowTop = pixelsFor(nowMinute);
-  const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
+  const nowFaded = mix(fromHex(theme.now), fromHex(theme.canvas), 0.65);
   const showsToday = days.includes(today);
 
   const change = (

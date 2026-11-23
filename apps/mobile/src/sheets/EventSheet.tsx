@@ -37,7 +37,7 @@ export function EventSheet({
   const { today, mode } = useApp();
   const colors = useColors();
   // Links may carry the color without "#", since "#" would start a URL fragment.
-  const chip = chipColorsFromHex(color.startsWith("#") ? color : `#${color}`, mode);
+  const chip = chipColorsFromHex(color.startsWith("#") ? color : `#${color}`, mode, colors.canvas);
   const from = new Date(start);
   const to = new Date(end);
   const day = toDayKey(from);

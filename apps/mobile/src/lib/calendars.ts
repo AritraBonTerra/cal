@@ -57,13 +57,13 @@ export function useEvents(start: string, end: string) {
   return { events: state.events, loaded: state.range === range, refresh };
 }
 
-// Chip colors per calendar for the current mode, computed once per calendar.
-export function useChipPalette(calendars: readonly DeviceCalendar[], mode: Mode) {
+// Chip colors per calendar for the current mode and theme, computed once per calendar.
+export function useChipPalette(calendars: readonly DeviceCalendar[], mode: Mode, canvas: string) {
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
-    for (const each of calendars) palette.set(each.id, chipColorsFromHex(each.color, mode));
+    for (const each of calendars) palette.set(each.id, chipColorsFromHex(each.color, mode, canvas));
     return palette;
-  }, [calendars, mode]);
+  }, [calendars, mode, canvas]);
 }
 
 // A fallback for events whose calendar isn't listed (shouldn't happen, but never crash).
