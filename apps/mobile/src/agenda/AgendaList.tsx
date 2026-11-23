@@ -116,9 +116,14 @@ export function AgendaList({ bottomInset = 0 }: { bottomInset?: number }) {
       }}
       onEndReachedThreshold={0.5}
       scrollEventThrottle={16}
-      // A finger, VoiceOver or a tap on the status bar, but never a jump.
+      // A finger or VoiceOver, but never a jump.
       onUserScroll={() => {
         following.current = true;
+      }}
+      // A tap on the status bar arrives once the list is already at its top.
+      onScrollToTop={() => {
+        const first = latest.current[0];
+        if (first) followAgenda(first.day);
       }}
       onScroll={() => {
         if (!following.current) return;
