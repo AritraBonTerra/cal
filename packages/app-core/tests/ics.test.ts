@@ -138,15 +138,31 @@ describe("parseIcs", () => {
     );
   });
 
+  test("every other week on one day keeps its repeat whatever the week start", () => {
+    expect(
+      only("DTSTART:20261028T170000Z", "RRULE:FREQ=WEEKLY;INTERVAL=2;WKST=SU")?.recurrence,
+    ).toBe("FREQ=WEEKLY;INTERVAL=2");
+  });
+
+  test("a reminder after the start isn't one, however soon after", () => {
+    const alarm = (trigger: string) =>
+      only("DTSTART:20261028T170000Z", "BEGIN:VALARM", `TRIGGER:${trigger}`, "END:VALARM")?.alarms;
+    expect(alarm("PT30S")).toBeUndefined();
+    expect(alarm("PT0S")).toEqual([0]);
+    expect(alarm("-PT90S")).toEqual([2]);
+  });
+
   test("an impossible length skips that event and keeps the rest", () => {
     const read = parseIcs(
       file(
         ...event("SUMMARY:Bad", "DTSTART:20261028T170000Z", "DURATION:P100000000D"),
+        ...event("SUMMARY:Bad", "DTSTART:20261028T170000Z", "DURATION:PT9999999999999H"),
+        ...event("SUMMARY:Bad", "DTSTART;VALUE=DATE:20261028", "DURATION:P100000000D"),
         ...event("SUMMARY:Good", "DTSTART:20261028T170000Z"),
       ),
     );
     expect(read.events.map((each) => each.title)).toEqual(["Good"]);
-    expect(read.skipped).toBe(1);
+    expect(read.skipped).toBe(3);
   });
 
   test("a cancellation brings nothing, and other text isn't a calendar", () => {

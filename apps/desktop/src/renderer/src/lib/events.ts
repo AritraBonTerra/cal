@@ -678,13 +678,14 @@ export function eventWriter(
   api: CalendarSource = window.cal.calendar,
 ) {
   const ids = eventAliases(history);
-  // Whether an event created from `input` is still in the calendar under `id`.
-  const stillThere = async (id: string, input: EventInput) => {
+  // Whether an event created from `input` may still be in the calendar under `id`: only
+  // a calendar that answers without it says it's gone.
+  const stillThere = (id: string, input: EventInput) => {
     const at = Date.parse(input.start);
-    const nearby = await api
-      .events(toOffsetIso(new Date(at - DAY)), toOffsetIso(new Date(at + DAY)))
-      .catch(() => []);
-    return nearby.some((each) => sameId(each.id, id));
+    return api.events(toOffsetIso(new Date(at - DAY)), toOffsetIso(new Date(at + DAY))).then(
+      (nearby) => nearby.some((each) => sameId(each.id, id)),
+      () => true,
+    );
   };
   return {
     create(input: EventInput) {

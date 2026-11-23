@@ -129,6 +129,12 @@ function parseDuration(text: string) {
   };
 }
 
+// Longer than any event: past this a length is nonsense, and soon no date at all.
+const MAX_DAYS = 3660;
+
+const tooLong = (length: { days: number; ms: number }) =>
+  Math.abs(length.days) + Math.abs(length.ms) / 86_400_000 > MAX_DAYS;
+
 // A DTSTART or DTEND: a day, or an instant with the zone it was written in.
 function parseWhen({ value, params }: Property) {
   const match = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(value.trim());
@@ -172,13 +178,14 @@ function readRule(text: string, zone: string) {
     .split(";")
     .filter(Boolean)
     .map((part) => part.split("="));
-  // The week's first day only matters to every-N-weeks rules, and calendars here start it
-  // on Monday.
+  // The week's first day only matters to every-N-weeks rules on several days, and calendars
+  // here start it on Monday.
   const wkst = all.find(([key]) => key === "WKST")?.[1] ?? "MO";
   const spaced = all.some(([key, value]) => key === "INTERVAL" && value !== "1");
   const parts = all.filter(([key]) => key !== "WKST");
-  if (wkst !== "MO" && spaced && all.some(([, value]) => value === "WEEKLY")) return null;
   const freq = parts.find(([key]) => key === "FREQ")?.[1] ?? "";
+  const severalDays = all.some(([key, value]) => key === "BYDAY" && value?.includes(","));
+  if (freq === "WEEKLY" && wkst !== "MO" && spaced && severalDays) return null;
   if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(freq)) return null;
   if (!parts.every(([key = "", value]) => RULE_PARTS.has(key) && value)) return null;
   return parts
@@ -209,6 +216,7 @@ function readEvent(
   const dtend = get("DTEND");
   const to = dtend && parseWhen(dtend);
   const length = parseDuration(get("DURATION")?.value.trim() ?? "");
+  if (length && tooLong(length)) return undefined;
   const calls = [get("X-GOOGLE-CONFERENCE")?.value, get("X-MICROSOFT-SKYPETEAMSMEETINGURL")?.value];
   const zone = from.allDay ? localTimeZone() : from.zone;
   const rrule = get("RRULE")?.value;
@@ -262,15 +270,6 @@ function readEvent(
   };
 }
 
-// readEvent, with dates too far out to be dates read as no event.
-function readable(properties: readonly Property[], alarms: readonly number[]) {
-  try {
-    return readEvent(properties, alarms);
-  } catch {
-    return undefined;
-  }
-}
-
 /** The events in an .ics file's text. Text that isn't one has no events. */
 export function parseIcs(text: string): IcsFile {
   const file: IcsFile = { events: [], exceptions: 0, skipped: 0 };
@@ -305,7 +304,7 @@ export function parseIcs(text: string): IcsFile {
       )
         file.skipped++;
       else {
-        const read = readable(properties, alarms);
+        const read = readEvent(properties, alarms);
         if (!read || file.events.length >= MAX_EVENTS) file.skipped++;
         else {
           file.events.push(read.event);
@@ -323,8 +322,9 @@ export function parseIcs(text: string): IcsFile {
       property.params.get("RELATED")?.toUpperCase() !== "END"
     ) {
       const before = parseDuration(value);
-      const minutes = before && Math.round(-(before.days * 24 * 60 + before.ms / 60_000));
-      if (minutes !== undefined && minutes >= 0) alarms.push(minutes);
+      const offset = before && before.days * 24 * 60 + before.ms / 60_000;
+      // Only reminders at or before the start.
+      if (offset !== undefined && offset <= 0) alarms.push(Math.round(Math.abs(offset)));
     }
   }
   return file;
