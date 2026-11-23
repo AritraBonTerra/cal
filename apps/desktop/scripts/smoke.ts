@@ -1544,5 +1544,102 @@ check(
   (await page.locator("[data-column='2026-10-29']").count()) === 1,
 );
 
+// Calendar sets: Automatic by the clock, ⌃ keys, and the calendars outside one.
+await page.keyboard.press("w");
+await page.keyboard.press("t");
+await page.evaluate(() =>
+  window.calTest?.seed({
+    device: {
+      calendarSet: "auto",
+      calendarSets: [
+        {
+          id: "s1",
+          name: "Work",
+          calendars: ["work"],
+          hours: { days: [1, 2, 3, 4, 5], start: 540, end: 1080 },
+        },
+        { id: "s2", name: "Family", calendars: ["family"] },
+      ],
+    },
+  }),
+);
+await page.waitForTimeout(300);
+const gridText = async () => (await page.locator("[data-grid-body]").textContent()) ?? "";
+check(
+  "Automatic shows the set whose hours it is",
+  (await gridText()).includes("All Hands") && !(await gridText()).includes("Soccer"),
+);
+await page.keyboard.press("Control+2");
+await page.waitForTimeout(300);
+check(
+  "⌃2 switches to the second set",
+  !(await gridText()).includes("All Hands") && (await gridText()).includes("Soccer"),
+);
+await page.waitForTimeout(500);
+check(
+  "the menu bar follows the set",
+  (await app.evaluate(() => globalThis.calDesk?.record))?.items.includes(
+    "Join Office hours (Zoom)",
+  ) === false,
+);
+await page.keyboard.press("Control+0");
+await page.waitForTimeout(300);
+check(
+  "⌃0 shows every calendar",
+  (await gridText()).includes("All Hands") && (await gridText()).includes("Soccer"),
+);
+await page.evaluate(() =>
+  window.calTest?.seed({ device: { calendarSets: [], calendarSet: "auto" } }),
+);
+
+// Dropping an .ics file adds its events as one step, and shows the first one's day.
+const drop = (name: string, text: string) =>
+  page.evaluate(
+    ([name, text]) => {
+      const files = new DataTransfer();
+      files.items.add(new File([text ?? ""], name ?? "", { type: "text/calendar" }));
+      window.dispatchEvent(
+        new DragEvent("dragover", { dataTransfer: files, bubbles: true, cancelable: true }),
+      );
+      window.dispatchEvent(
+        new DragEvent("drop", { dataTransfer: files, bubbles: true, cancelable: true }),
+      );
+    },
+    [name, text],
+  );
+const ICS = [
+  "BEGIN:VCALENDAR",
+  "BEGIN:VEVENT",
+  "SUMMARY:Dropped workshop",
+  "DTSTART:20261112T180000Z",
+  "DTEND:20261112T190000Z",
+  "END:VEVENT",
+  "BEGIN:VEVENT",
+  "SUMMARY:Dropped dinner",
+  "DTSTART:20261113T020000Z",
+  "DTEND:20261113T030000Z",
+  "END:VEVENT",
+  "END:VCALENDAR",
+].join("\r\n");
+await drop("invite.ics", ICS);
+await page.waitForTimeout(600);
+check(
+  "dropping an .ics file adds its events and shows their day",
+  (await gridText()).includes("Dropped workshop") && (await gridText()).includes("Dropped dinner"),
+);
+check(
+  "the toast says how many",
+  ((await page.locator("[data-toast]").textContent()) ?? "").includes("Added 2 events"),
+);
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(500);
+check("one ⌘Z takes them all back", !(await gridText()).includes("Dropped"));
+await drop("notes.txt", "hello");
+await page.waitForTimeout(300);
+check(
+  "another file is turned down",
+  ((await page.locator("[data-toast]").textContent()) ?? "").includes("no events"),
+);
+
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

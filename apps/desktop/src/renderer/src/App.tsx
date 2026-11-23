@@ -24,6 +24,7 @@ import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
 import { YearView } from "./components/grid/YearView";
+import { IcsDrop } from "./components/IcsDrop";
 import { NewHabit } from "./components/NewHabit";
 import { Palette } from "./components/Palette";
 import { Pane, useSidebarPeek } from "./components/Pane";
@@ -333,6 +334,7 @@ export function App() {
         */}
         <PaneToggles />
         <EventPopover />
+        <IcsDrop />
         <SpanDialog />
         <Toast />
         {overlay === "palette" && <Palette />}

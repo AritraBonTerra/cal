@@ -699,6 +699,39 @@ export function eventWriter(
         return ref && ids.current(ref);
       });
     },
+    /**
+     * Creates `inputs` as one step (an imported file), so one ⌘Z takes them all back. An
+     * event the calendar refuses is left out; throws only when it refused every one.
+     * Returns the ids made.
+     */
+    createAll(inputs: readonly EventInput[], label: string) {
+      return history.transact(label, async (tx) => {
+        const refs: EventRef[] = [];
+        let failure: unknown;
+        for (const input of inputs) {
+          let ref: EventRef | undefined;
+          try {
+            await tx.external(
+              async () => {
+                const created = await api.createEvent(input);
+                if (ref) ids.recreated(ids.current(ref), created);
+                ref = ids.ref(created.id);
+              },
+              async () => {
+                if (ref) await api.deleteEvent(ids.current(ref), input.recurrence ? "all" : "this");
+                await refresh();
+              },
+            );
+            if (ref) refs.push(ref);
+          } catch (error) {
+            failure = error;
+          }
+        }
+        await refresh();
+        if (refs.length === 0 && failure) throw failure;
+        return refs.map((ref) => ids.current(ref));
+      });
+    },
     update(
       event: ExternalEvent,
       patch: Partial<EventInput>,
