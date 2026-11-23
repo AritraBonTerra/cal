@@ -25,7 +25,7 @@ export function IcsDrop() {
   const app = useApp();
   const { history } = useCal();
   const [over, setOver] = useState(false);
-  const calendar = defaultCalendar(app.calendars, app.device.defaultCalendar);
+  const calendar = defaultCalendar(app.calendars, app.device.defaultCalendar, app.hidden);
   const latest = useRef({ app, calendar });
   latest.current = { app, calendar };
 
@@ -86,7 +86,7 @@ export function IcsDrop() {
       const notes = [
         made.length < events.length && `${events.length - made.length} couldn't be added`,
         skipped > 0 && `${skipped} skipped`,
-        exceptions > 0 && "some repeats left out",
+        exceptions > 0 && "repeats may differ from the file",
       ].filter(Boolean);
       const id = showToast([added, ...notes].join(" · "), {
         label: "Undo",

@@ -659,8 +659,8 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
             .catch(() => latest.current.events);
           // Any draft opened, edited or closed meanwhile (a drag on the grid) wins.
           if (editorStore.get() !== before) return;
-          const { calendars, device, account, data, gridToday, zone } = latest.current;
-          const calendar = defaultCalendar(calendars, device.defaultCalendar);
+          const { calendars, hidden, device, account, data, gridToday, zone } = latest.current;
+          const calendar = defaultCalendar(calendars, device.defaultCalendar, hidden);
           const busy = [
             ...events.filter(
               (event) =>

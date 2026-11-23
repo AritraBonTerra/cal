@@ -95,6 +95,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
     colors,
     palette,
     calendars,
+    hidden,
     refreshEvents,
     zone,
     account,
@@ -182,7 +183,8 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       if (!item) return;
       const edge = target?.closest<HTMLElement>("[data-edge]")?.dataset.edge;
       if (!isWritable(item)) {
-        openItem(item);
+        // After this press, which the popover would otherwise take as a click outside it.
+        setTimeout(() => openItem(item));
         return;
       }
       setLive({
@@ -272,7 +274,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       const end = current.moved
         ? current.end
         : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + clickLength * 60_000));
-      const calendar = defaultCalendar(calendars, device.defaultCalendar);
+      const calendar = defaultCalendar(calendars, device.defaultCalendar, hidden);
       openCreate(
         { start: current.start, end },
         {

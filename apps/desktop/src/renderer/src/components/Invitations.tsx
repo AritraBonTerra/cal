@@ -65,9 +65,13 @@ export function Invitations() {
           // Keys stay in the list, so Return never reaches the window's commands.
           onKeyDown={(event) => {
             event.stopPropagation();
-            if (event.key !== "Escape") return;
+            if (event.key === "Escape") {
+              setOpen(false);
+              ref.current?.querySelector("button")?.focus();
+            } else if (event.key === "ArrowDown") step(event.currentTarget, 1);
+            else if (event.key === "ArrowUp") step(event.currentTarget, -1);
+            else return;
             event.preventDefault();
-            setOpen(false);
           }}
           className="pop-in absolute top-8 right-0 z-30 flex max-h-96 w-80 origin-top-right flex-col overflow-y-auto rounded-lg bg-raised p-1 shadow-float"
         >
@@ -78,6 +82,13 @@ export function Invitations() {
       )}
     </div>
   );
+}
+
+// Moves the keyboard to the next or previous invitation, wrapping at the ends.
+function step(list: HTMLElement, by: 1 | -1) {
+  const rows = [...list.querySelectorAll<HTMLElement>("[data-invitation]")];
+  const at = rows.findIndex((row) => row === document.activeElement);
+  rows[(at + by + rows.length) % rows.length]?.focus();
 }
 
 // Puts the keyboard on the first invitation as the list opens.
@@ -106,6 +117,7 @@ function Invitation({ event, onClose }: { event: ExternalEvent; onClose: () => v
           select({ kind: "event", id: event.id });
           openEdit(event, zone);
         }}
+        data-invitation
         className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5 text-left"
       >
         <span

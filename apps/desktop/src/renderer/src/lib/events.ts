@@ -357,9 +357,13 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
 export function defaultCalendar(
   calendars: readonly DeviceCalendar[],
   preferred: string | null,
+  // Calendars not showing. A new event goes to one that is, so it doesn't vanish on save.
+  hidden: readonly string[] = [],
 ): DeviceCalendar | undefined {
   const writable = calendars.filter((calendar) => calendar.writable);
-  return writable.find((calendar) => calendar.id === preferred) ?? writable[0];
+  const showing = writable.filter((calendar) => !hidden.includes(calendar.id));
+  const from = showing.length > 0 ? showing : writable;
+  return from.find((calendar) => calendar.id === preferred) ?? from[0];
 }
 
 const MINUTE = 60_000;

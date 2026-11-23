@@ -2,7 +2,7 @@ import { useActions, useCal, useSettings } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
 import { type Area, byPosition, inList, isOpen, type Project } from "@cal/domain";
 import { Box, CalendarDays, Check, ChevronDown, Plus, Repeat, Settings } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import type { AuthState, SyncStatus } from "../../../shared/api";
 import { useApp } from "../lib/app";
 import { setLabel, setName } from "../lib/calendarSets";
@@ -268,6 +268,9 @@ function CalendarList() {
   );
 }
 
+// PopMenu's width (w-52) in px.
+const SET_MENU_WIDTH = 208;
+
 // Switches calendar sets; shown beside the Calendars heading once there is one.
 function SetMenu() {
   const { calendarSet, device } = useApp();
@@ -277,6 +280,14 @@ function SetMenu() {
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   const choice = device.calendarSet;
+  // Above the button, held inside the window: the sidebar's scrolling list would clip it.
+  const rect = open ? ref.current?.getBoundingClientRect() : undefined;
+  const place: CSSProperties = {
+    position: "fixed",
+    left: Math.max(8, (rect?.right ?? 0) - SET_MENU_WIDTH),
+    bottom: window.innerHeight - (rect?.top ?? 0) + 4,
+    maxHeight: Math.max(120, (rect?.top ?? 0) - 12),
+  };
   const mark = (on: boolean) =>
     on ? (
       <Check size={14} strokeWidth={2} absoluteStrokeWidth className="text-accent" />
@@ -306,7 +317,8 @@ function SetMenu() {
         <PopMenu
           label="Calendar sets"
           onClose={close}
-          className="bottom-full right-0 mb-1 origin-bottom-right"
+          className="origin-bottom-right"
+          style={place}
           items={[
             {
               id: "auto",

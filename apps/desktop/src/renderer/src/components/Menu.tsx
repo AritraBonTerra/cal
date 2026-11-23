@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { Keycaps } from "./ui";
 
 /*
@@ -26,9 +26,11 @@ interface PopMenuProps {
   onClose: () => void;
   // Placement and transform origin, e.g. "bottom-full left-0 mb-1 origin-bottom-left".
   className: string;
+  // A place in the window, for a menu whose container would clip it.
+  style?: CSSProperties;
 }
 
-export function PopMenu({ label, items, onClose, className }: PopMenuProps) {
+export function PopMenu({ label, items, onClose, className, style }: PopMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
@@ -46,6 +48,7 @@ export function PopMenu({ label, items, onClose, className }: PopMenuProps) {
       ref={ref}
       role="menu"
       aria-label={label}
+      style={style}
       // Keys stay inside the menu, so Enter and the arrows never reach the window's commands.
       onKeyDown={(event) => {
         event.stopPropagation();

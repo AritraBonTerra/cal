@@ -1590,6 +1590,19 @@ check(
     "Join Office hours (Zoom)",
   ) === false,
 );
+await page.keyboard.press("c");
+await page.waitForTimeout(400);
+check(
+  "a new event goes to a calendar the set shows",
+  (await page.locator("[data-editor='create'] [aria-label='Calendar']").textContent()) === "Family",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.click("[data-set-menu]");
+await page.waitForTimeout(200);
+const setMenu = await boxOf(page.locator("[role=menu][aria-label='Calendar sets']"));
+check("the set menu opens inside the window", setMenu.x >= 0 && setMenu.y >= 0);
+await page.keyboard.press("Escape");
 await page.keyboard.press("Control+0");
 await page.waitForTimeout(300);
 check(

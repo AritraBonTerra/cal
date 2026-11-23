@@ -240,7 +240,7 @@ export function App() {
     events: fetched,
     loaded: eventsLoaded,
     current: eventsCurrent,
-    refresh,
+    refresh: refreshShown,
   } = useEvents(
     toOffsetIso(fromDayKey(addDays(first, -margin))),
     toOffsetIso(fromDayKey(addDays(last, 1 + margin))),
@@ -251,7 +251,7 @@ export function App() {
   );
 
   // What's ahead, whatever the view shows: the call ⌘J joins, and unanswered invitations.
-  const { events: ahead } = useEvents(
+  const { events: ahead, refresh: refreshAhead } = useEvents(
     toOffsetIso(fromDayKey(today)),
     toOffsetIso(fromDayKey(addDays(today, UPCOMING_DAYS))),
   );
@@ -267,6 +267,11 @@ export function App() {
   );
   useDeskPrefs(account, device);
   useReveal(gridToday, account.showWeekends, zone);
+
+  // After a write from this window, everything read from the calendar.
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshShown(), refreshAhead()]);
+  }, [refreshShown, refreshAhead]);
 
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(
