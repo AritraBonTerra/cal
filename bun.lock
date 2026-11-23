@@ -93,9 +93,11 @@
       "name": "@cal/app-core",
       "dependencies": {
         "@cal/backend": "workspace:*",
+        "@cal/calendar-source": "workspace:*",
         "@cal/domain": "workspace:*",
         "@cal/nlp": "workspace:*",
         "@cal/sync": "workspace:*",
+        "@cal/theme": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.4",

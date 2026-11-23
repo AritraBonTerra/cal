@@ -1,7 +1,7 @@
-import type { AccountSettings, DeviceSettings } from "@cal/app-core";
+import type { AccountSettings, CalendarSet, DeviceSettings } from "@cal/app-core";
 import type { DeviceCalendar, ExternalEvent } from "@cal/calendar-source";
 import type { DayKey } from "@cal/domain";
-import type { ChipColors, Mode } from "@cal/theme";
+import type { ChipColors, Mode, Palette } from "@cal/theme";
 import { createContext, useContext } from "react";
 import type { useData } from "./data";
 
@@ -13,9 +13,22 @@ import type { useData } from "./data";
 export interface AppState {
   data: ReturnType<typeof useData>;
   calendars: readonly DeviceCalendar[];
+  // The calendar set in force; undefined shows every calendar.
+  calendarSet: CalendarSet | undefined;
+  // Calendars not showing: hidden by hand, or outside the set.
+  hidden: readonly string[];
+  // Chip colors by calendar id.
   palette: ReadonlyMap<string, ChipColors>;
+  // The theme's colors as hex.
+  colors: Palette;
   // Visible events, already without hidden calendars and declined invitations.
   events: readonly ExternalEvent[];
+  // Whether `events` covers the days showing, not just the range before a move.
+  eventsCurrent: boolean;
+  // Visible events from today on (two months' worth), whatever days the view shows.
+  upcoming: readonly ExternalEvent[];
+  // The same span's events outside the calendar set too, for unanswered invitations.
+  invited: readonly ExternalEvent[];
   refreshEvents: () => Promise<void>;
   mode: Mode;
   // Today on this Mac: what to-dos and habits count as today.

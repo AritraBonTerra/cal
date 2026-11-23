@@ -20,6 +20,8 @@ export interface ExternalEvent {
   // Unique per occurrence, so each instance of a repeating event has its own id.
   id: string;
   calendarId: string;
+  // EventKit's item identifier, which Apple Calendar's own links use; Mac only.
+  itemId?: string;
   title: string;
   // ISO 8601 instants with offset. All-day events span local midnights.
   start: string;
@@ -29,6 +31,8 @@ export interface ExternalEvent {
   notes?: string;
   url?: string;
   recurring: boolean;
+  // An occurrence edited on its own, so it no longer carries its series' rule.
+  detached?: boolean;
   // The repeat rule as an RRULE string without the "RRULE:" prefix, e.g.
   // "FREQ=WEEKLY;BYDAY=MO,WE". Absent for one-off events.
   recurrence?: string;

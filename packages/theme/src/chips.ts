@@ -20,10 +20,16 @@ export interface ChipColors {
   pastTime: string;
 }
 
-export function chipColors(hue: number, mode: Mode, neutral = false): ChipColors {
+export function chipColors(
+  hue: number,
+  mode: Mode,
+  neutral = false,
+  // The theme's canvas, which past chips fade toward.
+  canvas = toHex(colors.canvas[mode]),
+): ChipColors {
   const color = (l: number, c: number): Oklch => oklch(l, neutral ? 0 : c, hue);
-  const canvas = colors.canvas[mode];
-  const past = (value: Oklch) => mix(value, canvas, 0.5);
+  const paper = fromHex(canvas);
+  const past = (value: Oklch) => mix(value, paper, 0.5);
   const parts =
     mode === "light"
       ? {
@@ -51,9 +57,9 @@ export function chipColors(hue: number, mode: Mode, neutral = false): ChipColors
 }
 
 // Chip colors for a calendar's own hex color: its hue is kept, everything else is ours.
-export function chipColorsFromHex(hex: string, mode: Mode) {
+export function chipColorsFromHex(hex: string, mode: Mode, canvas?: string) {
   const { c, h } = fromHex(hex);
-  return chipColors(h, mode, c < 0.02);
+  return chipColors(h, mode, c < 0.02, canvas);
 }
 
 // Task-block outline and stripe for a project hue (research/07 §7.6).

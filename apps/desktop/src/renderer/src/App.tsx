@@ -19,10 +19,12 @@ import {
 } from "@cal/domain";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppCommands } from "./commands";
+import { AgendaView } from "./components/agenda/AgendaView";
 import { EventPopover } from "./components/EventPopover";
 import { DaysView } from "./components/grid/DaysView";
 import { MonthView } from "./components/grid/MonthView";
 import { YearView } from "./components/grid/YearView";
+import { IcsDrop } from "./components/IcsDrop";
 import { NewHabit } from "./components/NewHabit";
 import { Palette } from "./components/Palette";
 import { Pane, useSidebarPeek } from "./components/Pane";
@@ -41,13 +43,15 @@ import { Welcome } from "./components/Welcome";
 import { ZonePicker } from "./components/ZonePicker";
 import { useAccount, useCalendarAccess } from "./lib/account";
 import { AppContext, type AppState } from "./lib/app";
+import { useCalendarSet } from "./lib/calendarSets";
 import { useCalendars, useChipPalette, useEvents, visibleEvents } from "./lib/calendars";
 import { useNow, useToday } from "./lib/clock";
 import { useData } from "./lib/data";
+import { useDeskPrefs, useReveal } from "./lib/desk";
 import { useKeyboard } from "./lib/keyboard";
 import { isSmartList } from "./lib/lists";
 import { clampWidth } from "./lib/panes";
-import { useMode } from "./lib/scheme";
+import { useMode, usePalette } from "./lib/scheme";
 import { shortcutText, useKeybindings } from "./lib/shortcuts";
 import { setTimeFormat } from "./lib/time";
 import { showToast } from "./lib/toast";
@@ -65,6 +69,9 @@ import { deviceZone, zonedDayKey } from "./lib/zones";
 
 // Weeks shown by the month view: the one holding the 1st through the one holding the last day.
 const MONTH_ROWS = 6;
+
+// How many days ahead `upcoming` reaches.
+const UPCOMING_DAYS = 60;
 
 // Hides the to-do pane on narrow windows and the sidebar on very narrow ones, and
 // brings them back when the window grows; the user can still toggle either in between.
@@ -186,6 +193,7 @@ export function App() {
   const today = useToday();
   const now = useNow();
   const mode = useMode();
+  const colors = usePalette();
   const { account, device } = useSettings();
   useFirstRun(device.welcomed, cal.settings);
   useKeybindings(account.keybindings);
@@ -194,7 +202,8 @@ export function App() {
   useSettingsEffects(account, device, today);
   useGlobalKeyNotice();
   const calendars = useCalendars();
-  const palette = useChipPalette(calendars, mode, device.calendarColors);
+  const palette = useChipPalette(calendars, mode, device.calendarColors, colors.canvas);
+  const { set: calendarSet, hidden } = useCalendarSet(calendars, device);
   const { auth, sync } = useAccount();
   const { access, request } = useCalendarAccess();
   const view = useUi((state) => state.view);
@@ -217,7 +226,9 @@ export function App() {
         ? visibleDays(anchor, view.count, account.showWeekends)
         : view.kind === "year"
           ? yearDays(anchor)
-          : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
+          : view.kind === "agenda"
+            ? dayRange(anchor, view.span)
+            : dayRange(startOfWeek(startOfMonth(anchor), account.weekStart), MONTH_ROWS * 7),
     [view, anchor, account.showWeekends, account.weekStart],
   );
   useFollowToday(gridToday, zone, days);
@@ -228,23 +239,53 @@ export function App() {
   const {
     events: fetched,
     loaded: eventsLoaded,
-    refresh,
+    current: eventsCurrent,
+    refresh: refreshShown,
   } = useEvents(
     toOffsetIso(fromDayKey(addDays(first, -margin))),
     toOffsetIso(fromDayKey(addDays(last, 1 + margin))),
   );
   const events = useMemo(
-    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
-    [fetched, device.hiddenCalendars, account.showDeclined],
+    () => visibleEvents(fetched, hidden, account.showDeclined),
+    [fetched, hidden, account.showDeclined],
   );
+
+  // What's ahead, whatever the view shows: the call ⌘J joins, and unanswered invitations.
+  const { events: ahead, refresh: refreshAhead } = useEvents(
+    toOffsetIso(fromDayKey(today)),
+    toOffsetIso(fromDayKey(addDays(today, UPCOMING_DAYS))),
+  );
+  const upcoming = useMemo(
+    () => visibleEvents(ahead, hidden, account.showDeclined),
+    [ahead, hidden, account.showDeclined],
+  );
+
+  // Invitations come whatever set is showing; only calendars hidden by hand stay out.
+  const invited = useMemo(
+    () => visibleEvents(ahead, device.hiddenCalendars, true),
+    [ahead, device.hiddenCalendars],
+  );
+  useDeskPrefs(account, device);
+  useReveal(gridToday, account.showWeekends, zone);
+
+  // After a write from this window, everything read from the calendar.
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshShown(), refreshAhead()]);
+  }, [refreshShown, refreshAhead]);
 
   const requestAccess = useCallback(() => void request(), [request]);
   const app: AppState = useMemo(
     () => ({
       data,
       calendars,
+      calendarSet,
+      hidden,
       palette,
+      colors,
       events,
+      eventsCurrent,
+      upcoming,
+      invited,
       refreshEvents: refresh,
       mode,
       today,
@@ -257,8 +298,14 @@ export function App() {
     [
       data,
       calendars,
+      calendarSet,
+      hidden,
       palette,
+      colors,
       events,
+      eventsCurrent,
+      upcoming,
+      invited,
       refresh,
       mode,
       today,
@@ -289,6 +336,8 @@ export function App() {
             <DaysView />
           ) : view.kind === "month" ? (
             <MonthView />
+          ) : view.kind === "agenda" ? (
+            <AgendaView />
           ) : (
             <YearView />
           )}
@@ -300,6 +349,7 @@ export function App() {
         */}
         <PaneToggles />
         <EventPopover />
+        <IcsDrop />
         <SpanDialog />
         <Toast />
         {overlay === "palette" && <Palette />}

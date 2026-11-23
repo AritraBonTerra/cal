@@ -1,5 +1,6 @@
 import { useSettings } from "@cal/app-core";
 import type { CalendarAccess } from "@cal/calendar-source";
+import { ACCENTS, type AccentId } from "@cal/theme";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
@@ -9,6 +10,7 @@ import { session } from "../data/cal";
 import { syncLabel, useAccount, useCalendarAccess } from "../lib/account";
 import { useColors } from "../lib/theme";
 import { HeaderAction, Row, SectionLabel, SheetHeader } from "../ui/controls";
+import { Appearance } from "./Appearance";
 
 // 0 = Sunday … 6 = Saturday, the same three choices as the Mac's General settings.
 const WEEK_STARTS = [
@@ -26,13 +28,13 @@ const ACCESS_LABELS: Record<CalendarAccess, string> = {
 };
 
 /*
- * Settings, as a page sheet: the account (sign in, sync status, sign out), the week
- * start and calendar permission, and the version. Only what this app honors is here.
+ * Settings, as a page sheet: the account (sign in, sync status, sign out), light,
+ * dark and themes, the week start and calendar permission, and the version. Only what this app honors is here.
  */
 export function SettingsSheet() {
   const { auth, sync } = useAccount();
   const { access, request } = useCalendarAccess();
-  const { account, setAccount } = useSettings();
+  const { account, device, setAccount } = useSettings();
   const signIn = () => router.push("/sign-in");
 
   const signOut = () =>
@@ -88,6 +90,10 @@ export function SettingsSheet() {
             )}
           </Section>
 
+          <Section title="Appearance" note={accentNote(device.accent)}>
+            <Appearance />
+          </Section>
+
           <Section title="Calendar">
             <View className="gap-2.5 border-b border-grid px-4 py-3">
               <Text className="text-body text-ink">Start week on</Text>
@@ -135,6 +141,12 @@ export function SettingsSheet() {
   );
 }
 
+// What the accent colors besides buttons and links.
+const accentNote = (accent: AccentId) =>
+  accent === "blue"
+    ? "Auto follows the device. Blue keeps now and today in red."
+    : `Auto follows the device. ${ACCENTS[accent].label} also colors now and today.`;
+
 // A labelled group of rows on one card, with an optional footnote under it.
 function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   return (
@@ -166,7 +178,7 @@ function ActionRow({
       <View
         className={`min-h-11 flex-row items-center gap-3 pr-3 ${last ? "" : "border-b border-grid"}`}
       >
-        <Text className={`flex-1 text-body ${destructive ? "text-now" : "text-accent"}`}>
+        <Text className={`flex-1 text-body ${destructive ? "text-danger" : "text-accent"}`}>
           {title}
         </Text>
         {chevron && (

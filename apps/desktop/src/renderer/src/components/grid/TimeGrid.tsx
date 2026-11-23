@@ -1,6 +1,6 @@
 import { useActions, useCal } from "@cal/app-core";
-import { type DayKey, daysBetween, toOffsetIso, weekday } from "@cal/domain";
-import { blockColors, mix, colors as tokens } from "@cal/theme";
+import { type DayKey, daysBetween, meetingOf, placeOf, toOffsetIso, weekday } from "@cal/domain";
+import { blockColors, fromHex, mix } from "@cal/theme";
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -92,8 +92,10 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
   const {
     gridToday: today,
     mode,
+    colors,
     palette,
     calendars,
+    hidden,
     refreshEvents,
     zone,
     account,
@@ -181,7 +183,8 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       if (!item) return;
       const edge = target?.closest<HTMLElement>("[data-edge]")?.dataset.edge;
       if (!isWritable(item)) {
-        openItem(item);
+        // After this press, which the popover would otherwise take as a click outside it.
+        setTimeout(() => openItem(item));
         return;
       }
       setLive({
@@ -271,7 +274,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
       const end = current.moved
         ? current.end
         : new Date(Math.min(dayEnd.getTime(), current.start.getTime() + clickLength * 60_000));
-      const calendar = defaultCalendar(calendars, device.defaultCalendar);
+      const calendar = defaultCalendar(calendars, device.defaultCalendar, hidden);
       openCreate(
         { start: current.start, end },
         {
@@ -329,7 +332,13 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
         ...item,
         start: form.start,
         end: form.end,
-        event: { ...item.event, title: form.title || item.event.title, location: form.location },
+        event: {
+          ...item.event,
+          title: form.title || item.event.title,
+          location: form.location,
+          url: form.url,
+          notes: form.notes,
+        },
       };
     }
     return item;
@@ -344,14 +353,14 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
   const draft = editor?.mode === "create" && !editor.form.allDay ? editor.form : null;
   const drafting = draft ? segments([draft], days, zone) : null;
   const nowMinute = minutesOf(now, zone);
-  const nowFaded = mix(tokens.now[mode], tokens.canvas[mode], 0.65);
+  const nowFaded = mix(fromHex(colors.now), fromHex(colors.canvas), 0.65);
   const nowTop = px(nowMinute);
   const showNow = days.includes(today);
   // Labels of an extra column follow the main zone's hour lines on one reference day.
   const reference = days.includes(today) ? today : (days[0] ?? today);
   const hours = Array.from({ length: 23 }, (_, index) => index + 1);
   // Opaque hairline colors; half-hour lines sit halfway between the grid line and the canvas.
-  const halfLine = mix(tokens.grid[mode], tokens.canvas[mode], 0.5);
+  const halfLine = mix(fromHex(colors.grid), fromHex(colors.canvas), 0.5);
   const { start: workStart, end: workEnd } = account.workingHours;
   const lines = `repeating-linear-gradient(to bottom, var(--cal-grid) 0 1px, transparent 1px ${hour}px)`;
   const halfLines = device.halfHourLines
@@ -500,7 +509,8 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
                   {item.kind === "event" ? (
                     <EventChip
                       title={item.event.title}
-                      location={item.event.location}
+                      place={placeOf(item.event)}
+                      call={meetingOf(item.event) !== undefined}
                       start={start}
                       end={end}
                       colors={palette.get(item.event.calendarId) ?? graphite(mode)}
@@ -509,6 +519,7 @@ export function TimeGrid({ days, items, bodyRef, hour, fit }: TimeGridProps) {
                       past={past}
                       dragging={dragging}
                       writable={isWritable(item)}
+                      pending={item.event.myStatus === "pending"}
                     />
                   ) : (
                     <BlockChip
@@ -628,7 +639,8 @@ function DraftChip({
       <div data-item="draft" className="contents">
         <EventChip
           title={form.title || "New event"}
-          location={form.location || undefined}
+          place={placeOf(form)}
+          call={meetingOf(form) !== undefined}
           start={start}
           end={end}
           colors={palette.get(form.calendarId) ?? graphite(mode)}

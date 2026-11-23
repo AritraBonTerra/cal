@@ -10,6 +10,7 @@ import {
   type DataCall,
   type DataChanged,
   type MenuKeys,
+  type RevealTarget,
   type SyncStatus,
   type Theme,
   type UpdateState,
@@ -77,6 +78,8 @@ const bridge: CalBridge = {
     onChange: (listener) => listen<SyncStatus>(channels.syncChanged, listener),
   },
   calendar,
+  joinMeeting: (url) => ipcRenderer.invoke(channels.joinMeeting, url),
+  openInCalendar: (target) => ipcRenderer.invoke(channels.openInCalendar, target),
   onCommand: (listener) => listen<string>("cal:command", listener),
   setMenuKeys: (keys: MenuKeys | null) => ipcRenderer.invoke(channels.menuKeys, keys),
   updates: {
@@ -87,6 +90,16 @@ const bridge: CalBridge = {
     dismiss: () => ipcRenderer.invoke(channels.updateDismiss),
   },
   setTheme: (theme: Theme) => ipcRenderer.invoke(channels.theme, theme),
+  setBackground: (color) => ipcRenderer.invoke(channels.background, color),
+  setDesk: (prefs) => ipcRenderer.invoke(channels.desk, prefs),
+  setDockIcon: (dataUrl) => ipcRenderer.invoke(channels.dockIcon, dataUrl),
+  onReveal: (listener) => {
+    const stop = listen<RevealTarget>(channels.reveal, listener);
+    void ipcRenderer
+      .invoke(channels.revealTake)
+      .then((target: RevealTarget | undefined) => target && listener(target));
+    return stop;
+  },
   onClosing: (listener) => {
     closing.add(listener);
     return () => {

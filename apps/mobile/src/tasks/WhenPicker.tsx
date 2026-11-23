@@ -168,7 +168,7 @@ export function WhenPicker({ when, date, onChoose, deadline }: WhenPickerProps) 
             onPress={() => onChoose("deadline", undefined)}
             className="h-11 items-center justify-center rounded-md active:bg-hover"
           >
-            <Text className="text-body text-now">Remove deadline</Text>
+            <Text className="text-body text-danger">Remove deadline</Text>
           </Pressable>
         </View>
       )}

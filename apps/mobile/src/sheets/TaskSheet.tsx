@@ -130,7 +130,7 @@ export function TaskSheet({ task, section }: { task: Task; section?: "when" | "d
             />
           )}
           <Field
-            icon={<Flag size={18} color={colors.now} strokeWidth={1.5} absoluteStrokeWidth />}
+            icon={<Flag size={18} color={colors.danger} strokeWidth={1.5} absoluteStrokeWidth />}
             label="Deadline"
             value={task.deadline ? formatRelativeDay(task.deadline, today) : "None"}
             active={open === "deadline"}
@@ -206,7 +206,7 @@ export function TaskSheet({ task, section }: { task: Task; section?: "when" | "d
             title="Delete"
             kind="destructive"
             onPress={remove}
-            icon={<Trash2 size={18} color={colors.now} strokeWidth={1.5} absoluteStrokeWidth />}
+            icon={<Trash2 size={18} color={colors.danger} strokeWidth={1.5} absoluteStrokeWidth />}
           />
         </View>
       </ScrollView>

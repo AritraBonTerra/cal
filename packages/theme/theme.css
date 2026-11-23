@@ -18,6 +18,7 @@
   --cal-accent-solid: #1570d1;
   --cal-accent-soft: #e4f0ff;
   --cal-now: #db2c2b;
+  --cal-danger: #db2c2b;
   --cal-success: #1c8742;
   --cal-warning: #d98b09;
   --cal-white: #ffffff;
@@ -49,6 +50,7 @@
   --cal-accent-solid: #1570d1;
   --cal-accent-soft: #182e4b;
   --cal-now: #f75e54;
+  --cal-danger: #f75e54;
   --cal-success: #5bbd74;
   --cal-warning: #eba941;
   --cal-white: #ffffff;
@@ -121,6 +123,7 @@
   --color-accent-solid: var(--cal-accent-solid);
   --color-accent-soft: var(--cal-accent-soft);
   --color-now: var(--cal-now);
+  --color-danger: var(--cal-danger);
   --color-success: var(--cal-success);
   --color-warning: var(--cal-warning);
   --color-white: var(--cal-white);

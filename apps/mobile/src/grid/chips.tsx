@@ -1,6 +1,6 @@
 import type { Project, Task, TimeBlock } from "@cal/domain";
 import { blockColors, type ChipColors } from "@cal/theme";
-import { Lock, MapPin } from "lucide-react-native";
+import { Lock, MapPin, Video } from "lucide-react-native";
 import { useLayoutEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
@@ -48,31 +48,43 @@ function frameStyle({ top, height, left, width, z }: Frame) {
   };
 }
 
+// Marks an event with a call to join.
+const CallIcon = ({ color }: { color: string }) => (
+  <Video size={12} color={color} strokeWidth={1.5} absoluteStrokeWidth />
+);
+
 interface EventChipProps {
   title: string;
-  location?: string;
+  // Where it happens, with a call's link named ("Zoom") rather than spelled out.
+  place?: string;
+  // Whether it has a call to join.
+  call: boolean;
   start: Date;
   end: Date;
   colors: ChipColors;
   frame: Frame;
   past: boolean;
-  // Narrow columns (3 days on a phone) drop the inline time so titles stay readable.
-  narrow: boolean;
+  // The chip's width. Narrow ones (3 days on a phone) drop the inline time and the place
+  // so titles stay readable, and slivers the call icon too.
+  width: number;
   onPress: () => void;
 }
 
 export function EventChip({
   title,
-  location,
+  place,
+  call,
   start,
   end,
   colors,
   frame,
   past,
-  narrow,
+  width,
   onPress,
 }: EventChipProps) {
   const { height } = frame;
+  const narrow = width < 150;
+  const icon = call && width >= 56;
   const fill = past ? colors.pastFill : colors.fill;
   const text = past ? colors.pastTitle : colors.title;
   const time = past ? colors.pastTime : colors.time;
@@ -81,7 +93,7 @@ export function EventChip({
     <View style={frameStyle(frame)} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${title}, ${formatRange(start, end)}`}
+        accessibilityLabel={`${title}, ${formatRange(start, end)}${call ? ", video call" : ""}`}
         onPress={onPress}
         className="flex-1 overflow-hidden rounded-sm"
         style={{
@@ -102,6 +114,11 @@ export function EventChip({
             >
               {title}
             </Text>
+            {icon && (
+              <View className="self-center">
+                <CallIcon color={text} />
+              </View>
+            )}
             {height >= 20 && !narrow && (
               <Text className="text-caption" style={[{ color: time }, tnum]} numberOfLines={1}>
                 {formatTime(start)}
@@ -110,18 +127,25 @@ export function EventChip({
           </View>
         ) : (
           <>
-            <Text numberOfLines={1} className="text-small font-medium" style={{ color: text }}>
-              {title}
-            </Text>
+            <View className="flex-row items-center gap-1">
+              <Text
+                numberOfLines={1}
+                className="shrink text-small font-medium"
+                style={{ color: text }}
+              >
+                {title}
+              </Text>
+              {icon && <CallIcon color={text} />}
+            </View>
             <View className="flex-row items-center gap-1">
               <Text className="text-caption" style={[{ color: time }, tnum]} numberOfLines={1}>
                 {formatRange(start, end)}
               </Text>
-              {location && height >= 52 && (
+              {place && height >= 52 && !narrow && (
                 <>
                   <MapPin size={11} color={time} strokeWidth={1.5} absoluteStrokeWidth />
                   <Text className="shrink text-caption" style={{ color: time }} numberOfLines={1}>
-                    {location}
+                    {place}
                   </Text>
                 </>
               )}

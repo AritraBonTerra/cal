@@ -28,17 +28,16 @@ export function useCalendars() {
   return calendars;
 }
 
-// Events overlapping [start, end) as ISO strings; `loaded` is false until the first fetch.
+// Events overlapping [start, end) as ISO strings. A new range keeps the last one's events
+// until its own arrive; `loaded` says whether they have.
 export function useEvents(start: string, end: string) {
-  const [state, setState] = useState<{ events: ExternalEvent[]; loaded: boolean }>({
-    events: [],
-    loaded: false,
-  });
+  const range = `${start}/${end}`;
+  const [state, setState] = useState<{ events: ExternalEvent[]; range?: string }>({ events: [] });
   // Without calendar access the fetch fails: the grid simply shows no device events.
   const refresh = useCallback(async () => {
     const events = await calendar.events(start, end).catch(() => []);
-    setState({ events, loaded: true });
-  }, [start, end]);
+    setState({ events, range });
+  }, [start, end, range]);
   useEffect(() => {
     let active = true;
     const load = () =>
@@ -46,7 +45,7 @@ export function useEvents(start: string, end: string) {
         .events(start, end)
         .catch(() => [])
         .then((events) => {
-          if (active) setState({ events, loaded: true });
+          if (active) setState({ events, range });
         });
     void load();
     const stop = calendar.onChange(() => void load());
@@ -54,17 +53,17 @@ export function useEvents(start: string, end: string) {
       active = false;
       stop();
     };
-  }, [start, end]);
-  return { ...state, refresh };
+  }, [start, end, range]);
+  return { events: state.events, loaded: state.range === range, refresh };
 }
 
-// Chip colors per calendar for the current mode, computed once per calendar.
-export function useChipPalette(calendars: readonly DeviceCalendar[], mode: Mode) {
+// Chip colors per calendar for the current mode and theme, computed once per calendar.
+export function useChipPalette(calendars: readonly DeviceCalendar[], mode: Mode, canvas: string) {
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
-    for (const each of calendars) palette.set(each.id, chipColorsFromHex(each.color, mode));
+    for (const each of calendars) palette.set(each.id, chipColorsFromHex(each.color, mode, canvas));
     return palette;
-  }, [calendars, mode]);
+  }, [calendars, mode, canvas]);
 }
 
 // A fallback for events whose calendar isn't listed (shouldn't happen, but never crash).

@@ -1,6 +1,7 @@
-import type { DataSource } from "@cal/app-core";
+import type { CalendarSet, DataSource, SetChoice } from "@cal/app-core";
 import type { SyncedTable } from "@cal/backend/sync";
 import type { CalendarSource } from "@cal/calendar-source";
+import type { DayKey } from "@cal/domain";
 
 import type { AuthState, SyncStatus } from "@cal/sync";
 
@@ -42,6 +43,11 @@ export interface CalBridge {
     onChange(listener: (status: SyncStatus) => void): () => void;
   };
   calendar: CalendarSource;
+  // Opens the call at `url` in its app (Zoom), else in the browser. False when `url`
+  // isn't a call Cal knows.
+  joinMeeting(url: string): Promise<boolean>;
+  // Shows the event in Apple Calendar, which can answer its invitation (Cal can't).
+  openInCalendar(target: CalendarTarget): Promise<void>;
   // Menu items (Undo, ⌘K, New To-Do) arrive as command ids for the window's registry.
   onCommand(listener: (id: string) => void): () => void;
   // Gives the menu bar the commands' keys, replacing what it had; null makes the window
@@ -51,6 +57,15 @@ export interface CalBridge {
   // Switches the window (and its `prefers-color-scheme`) between following the Mac,
   // light and dark.
   setTheme(theme: Theme): Promise<void>;
+  // Gives this window `color` (opaque hex) as its background.
+  setBackground(color: string): Promise<void>;
+  // Tells main what the menu bar and notifications should show (main/desk.ts).
+  setDesk(prefs: DeskPrefs): Promise<void>;
+  // Puts a PNG data URL on the Dock as Cal's icon, until Cal quits.
+  setDockIcon(dataUrl: string): Promise<void>;
+  // Runs `listener` when the menu bar or a notification asks the window for a day, and
+  // at once with one asked for before the window was there.
+  onReveal(listener: (target: RevealTarget) => void): () => void;
   // Runs `listener` when the window is about to close or the app to quit. The window
   // stays open until every listener's promise settles, so unsaved text can be written.
   onClosing(listener: () => Promise<void>): () => void;
@@ -68,6 +83,34 @@ export interface CalBridge {
     // Resolves with the state macOS reports after the change.
     set(open: boolean): Promise<boolean>;
   };
+}
+
+// What the menu bar item, call notifications and the morning summary follow.
+export interface DeskPrefs {
+  // Calendars hidden by hand, and the sets main picks from as their hours come round.
+  hiddenCalendars: readonly string[];
+  calendarSets: readonly CalendarSet[];
+  calendarSet: SetChoice;
+  showDeclined: boolean;
+  hour12: boolean;
+  menuBar: boolean;
+  callNotices: boolean;
+  // Minutes after midnight, or null for none.
+  morningSummary: number | null;
+}
+
+// What names an event in Apple Calendar.
+export interface CalendarTarget {
+  itemId: string;
+  start: string;
+  recurring: boolean;
+  allDay: boolean;
+}
+
+// A day to show, and the event on it to open.
+export interface RevealTarget {
+  day: DayKey;
+  eventId?: string;
 }
 
 /*
@@ -134,6 +177,7 @@ export const channels = {
   calendar: "cal:calendar",
   calendarChanged: "cal:calendar-changed",
   theme: "cal:theme",
+  background: "cal:background",
   // Main asks the window to finish up before closing; the window answers when it has.
   closing: "cal:closing",
   closeReady: "cal:close-ready",
@@ -150,6 +194,13 @@ export const channels = {
   captureSize: "cal:capture-size",
   captureReset: "cal:capture-reset",
   openAtLogin: "cal:open-at-login",
+  joinMeeting: "cal:join-meeting",
+  openInCalendar: "cal:open-in-calendar",
+  desk: "cal:desk",
+  dockIcon: "cal:dock-icon",
+  reveal: "cal:reveal",
+  // The window asks for a reveal made before it was listening.
+  revealTake: "cal:reveal-take",
 } as const;
 
 // A DataSource call sent over IPC: the method name and its arguments.

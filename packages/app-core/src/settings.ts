@@ -1,4 +1,6 @@
 import type { SyncedRow } from "@cal/backend/sync";
+import { type AccentId, accentIds, type ThemeId, themesFor } from "@cal/theme";
+import type { CalendarSet, SetChoice } from "./calendarSets";
 import type { Keybindings } from "./commands";
 import type { DataSource } from "./data";
 
@@ -45,6 +47,10 @@ export const accountDefaults = {
 
 export const deviceDefaults = {
   theme: "system" as "system" | "light" | "dark",
+  // The theme drawn in each mode, and the accent over both.
+  lightTheme: "daylight" as ThemeId,
+  darkTheme: "charcoal" as ThemeId,
+  accent: "blue" as AccentId,
   // Pixels per hour; 0 fits the whole day in the window. The grid never goes below fit.
   hourHeight: 64,
   halfHourLines: false,
@@ -52,6 +58,9 @@ export const deviceDefaults = {
   workloadBar: true,
   // Device calendars hidden from the grid, by calendar id.
   hiddenCalendars: [] as string[],
+  // Groups of calendars to switch between, and which one shows (see calendarSets.ts).
+  calendarSets: [] as CalendarSet[],
+  calendarSet: "auto" as SetChoice,
   // Color overrides by calendar id (hex), kept in Cal rather than written to the calendar.
   calendarColors: {} as Record<string, string>,
   // Calendars whose events don't count as busy for scheduling.
@@ -69,6 +78,13 @@ export const deviceDefaults = {
   // Whether the sidebar's mini month and calendar list are expanded.
   showMiniMonth: true,
   showCalendarList: true,
+  // The Mac's menu bar item (the next event and Join) and today's date on the Dock icon.
+  menuBar: true,
+  dockDate: true,
+  // A notification with Join as a call starts.
+  callNotices: true,
+  // When the morning summary comes, in minutes after midnight; null for none.
+  morningSummary: null as number | null,
   // Whether this device has shown the Welcome walkthrough, which opens once by itself.
   welcomed: false,
 };
@@ -122,6 +138,18 @@ const isZone: Check = (value) => {
   }
 };
 
+const isCalendarSet: Check = (set) =>
+  isRecord(set) &&
+  isString(set.id) &&
+  typeof set.name === "string" &&
+  arrayOf(isString, 1000)(set.calendars) &&
+  (set.hours === undefined ||
+    (isRecord(set.hours) &&
+      arrayOf(isInt(0, 6), 7)(set.hours.days) &&
+      isInt(0, 24 * 60)(set.hours.start) &&
+      isInt(0, 24 * 60)(set.hours.end) &&
+      Number(set.hours.start) < Number(set.hours.end)));
+
 /*
  * A check per setting, so a value from another app version or a bad write is ignored
  * (the default stands) instead of reaching the UI with the wrong shape.
@@ -154,6 +182,9 @@ const accountChecks: { [K in keyof AccountSettings]: Check } = {
 
 const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   theme: oneOf("system", "light", "dark"),
+  lightTheme: oneOf(...themesFor("light")),
+  darkTheme: oneOf(...themesFor("dark")),
+  accent: oneOf(...accentIds),
   // Pinch and ⌥-scroll zoom leave fractional heights.
   hourHeight: (value) =>
     value === 0 ||
@@ -161,6 +192,8 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   halfHourLines: isBool,
   workloadBar: isBool,
   hiddenCalendars: arrayOf(isString, 1000),
+  calendarSets: arrayOf(isCalendarSet, 20),
+  calendarSet: isString,
   calendarColors: (value) => isRecord(value) && Object.values(value).every(isHex),
   freeCalendars: arrayOf(isString, 1000),
   defaultCalendar: nullable(isString),
@@ -171,6 +204,10 @@ const deviceChecks: { [K in keyof DeviceSettings]: Check } = {
   tasksWidth: isInt(0, 2000),
   showMiniMonth: isBool,
   showCalendarList: isBool,
+  menuBar: isBool,
+  dockDate: isBool,
+  callNotices: isBool,
+  morningSummary: nullable(isInt(0, 24 * 60 - 1)),
   welcomed: isBool,
 };
 

@@ -14,6 +14,7 @@ import {
   ipcMain,
   Menu,
   type MenuItemConstructorOptions,
+  nativeImage,
   nativeTheme,
   shell,
   type WebContents,
@@ -22,9 +23,12 @@ import {
   type AuthCall,
   CAPTURE_COMMAND,
   type CalendarCall,
+  type CalendarTarget,
   channels,
   type DataCall,
+  type DeskPrefs,
   type MenuKeys,
+  type RevealTarget,
   type Theme,
 } from "../shared/api";
 import { menuAccelerator } from "./accelerator";
@@ -32,6 +36,8 @@ import { createDesktopAuth, SCHEME } from "./auth";
 import { Calkit } from "./calkit";
 import { createCapture } from "./capture";
 import { openDatabase } from "./db";
+import { createDesk } from "./desk";
+import { calendarUrl, createJoin } from "./meetings";
 import { encryptedFile } from "./session";
 import { createUpdates } from "./updater";
 
@@ -49,6 +55,7 @@ const profile = process.env.CAL_PROFILE;
 if (fixture) app.setPath("userData", mkdtempSync(join(tmpdir(), "cal-fixture-")));
 else if (profile) app.setPath("userData", `${app.getPath("userData")}-${profile}`);
 
+const launchedAt = Date.now();
 const dataDir = app.getPath("userData");
 mkdirSync(dataDir, { recursive: true });
 const store = new LocalStore(openDatabase(join(dataDir, "cal.sqlite")));
@@ -101,6 +108,18 @@ app.on("open-url", (event, url) => {
 
 data.subscribe((tables) => broadcast(channels.dataChanged, tables));
 calendar.onChange(() => broadcast(channels.calendarChanged, null));
+
+// Fixture launches record what they would open, for the scripts to read.
+const opened: string[] = [];
+if (fixture) Object.assign(globalThis, { calOpened: opened });
+const openOutside = async (url: string) => {
+  if (fixture) opened.push(url);
+  else await shell.openExternal(url);
+};
+const joinMeeting = createJoin({
+  handlerFor: (url) => app.getApplicationNameForProtocol(url),
+  open: openOutside,
+});
 
 const rendererFile = join(import.meta.dirname, "../renderer/index.html");
 
@@ -177,6 +196,7 @@ handle(channels.syncStatus, () => session.status());
 // the writer refreshes itself, and fixture calendars never report changes on their own.
 async function written<T>(event: IpcMainInvokeEvent, write: Promise<T>) {
   const result = await write;
+  desk.changed();
   for (const window of BrowserWindow.getAllWindows()) {
     if (window.webContents !== event.sender) window.webContents.send(channels.calendarChanged);
   }
@@ -202,9 +222,60 @@ handleFrom(channels.calendar, (event, call: CalendarCall) => {
   }
 });
 
+handle(channels.openInCalendar, (target: CalendarTarget) => openOutside(calendarUrl(target)));
+
+handle(channels.joinMeeting, (url: string) => joinMeeting(url));
+
 // The window's theme setting. Electron re-evaluates `prefers-color-scheme` from this.
 handle(channels.theme, (theme: Theme) => {
   nativeTheme.themeSource = theme;
+});
+
+// The theme's canvas behind the page, so a resize shows it rather than another color.
+handleFrom(channels.background, (event, color: string) => {
+  if (!/^#[0-9a-f]{6}$/.test(color)) return;
+  BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(color);
+});
+
+// The menu bar item and notifications, from the settings the main window reports.
+const desk = createDesk({
+  data,
+  calendar,
+  now: () => new Date(Date.now() + (fixture ? FIXTURE_NOW.getTime() - launchedAt : 0)),
+  join: joinMeeting,
+  reveal: (day, eventId) => reveal({ day, eventId }),
+  quickEntry: () => capture?.show(),
+  file: join(dataDir, "desk.json"),
+  // CAL_DESK=1 shows the real menu bar item in a fixture launch.
+  quiet: fixture && process.env.CAL_DESK !== "1",
+});
+if (fixture) Object.assign(globalThis, { calDesk: desk });
+
+handle(channels.desk, (prefs: DeskPrefs) => desk.setPrefs(prefs));
+
+handle(channels.dockIcon, (dataUrl: string) => {
+  if (fixture || typeof dataUrl !== "string") return;
+  const icon = nativeImage.createFromDataURL(dataUrl);
+  if (!icon.isEmpty()) app.dock?.setIcon(icon);
+});
+
+// A reveal asked for while no window was listening; the next window takes it.
+let pendingReveal: RevealTarget | undefined;
+
+// Brings up the main window on a day. A window still loading asks for it once it's ready.
+function reveal(target: RevealTarget) {
+  const open = mainWindows()[0];
+  const listening = open !== undefined && !open.webContents.isLoading();
+  if (!listening) pendingReveal = target;
+  revealMain();
+  if (listening) open.webContents.send(channels.reveal, target);
+}
+
+handleFrom(channels.revealTake, (event) => {
+  if (capture?.owns(event.sender)) return undefined;
+  const target = pendingReveal;
+  pendingReveal = undefined;
+  return target;
 });
 
 // Interface size: the window zooms itself (preload); main keeps the traffic lights
@@ -309,17 +380,17 @@ function createWindow() {
   window.once("ready-to-show", () => window.show());
   holdClose(window);
   // The window only ever shows Cal; web links open in the browser instead.
-  const openOutside = (url: string) => {
+  const openLink = (url: string) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
   };
   window.webContents.setWindowOpenHandler(({ url }) => {
-    openOutside(url);
+    openLink(url);
     return { action: "deny" };
   });
   const stayInApp = (details: { url: string; preventDefault(): void }) => {
     if (isAppUrl(details.url)) return;
     details.preventDefault();
-    openOutside(details.url);
+    openLink(details.url);
   };
   window.webContents.on("will-navigate", stayInApp);
   window.webContents.on("will-redirect", stayInApp);
@@ -462,6 +533,8 @@ function buildMenu() {
         command("New To-Do", "task.new"),
         command("Quick Entry", "task.quickEntry"),
         command("Quick Entry from Any App", CAPTURE_COMMAND),
+        command("Join Call", "event.join"),
+        { type: "separator" },
         command("New Project", "project.new"),
         command("New Area", "area.new"),
         command("New Habit…", "habit.new"),
@@ -547,6 +620,7 @@ app.on("before-quit", (event) => {
   }
   if (quitting) return;
   quitting = true;
+  desk.stop();
   void session.close();
 });
 

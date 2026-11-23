@@ -41,7 +41,7 @@ export function Workspace({ initial }: { initial: Pane }) {
         )}
       </View>
       <View className="flex-1">
-        <CalendarScreen counts={[1, 3, 7]} />
+        <CalendarScreen views={["agenda", 1, 3, 7]} />
       </View>
     </View>
   );

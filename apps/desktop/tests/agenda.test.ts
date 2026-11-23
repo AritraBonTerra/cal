@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { unscheduledByDay } from "@cal/app-core";
 import type { ExternalEvent } from "@cal/calendar-source";
 import { type DayKey, type Project, type Task, type TimeBlock, toOffsetIso } from "@cal/domain";
 import {
@@ -6,7 +7,6 @@ import {
   listShowing,
   overMinutes,
   plannedMinutes,
-  unscheduledByDay,
   type WorkloadInput,
   workloadDetail,
   workloadLabel,

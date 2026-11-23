@@ -357,9 +357,13 @@ export function applyEntry(base: EventForm, entry: QuickEntry): EventForm {
 export function defaultCalendar(
   calendars: readonly DeviceCalendar[],
   preferred: string | null,
+  // Calendars not showing. A new event goes to one that is, so it doesn't vanish on save.
+  hidden: readonly string[] = [],
 ): DeviceCalendar | undefined {
   const writable = calendars.filter((calendar) => calendar.writable);
-  return writable.find((calendar) => calendar.id === preferred) ?? writable[0];
+  const showing = writable.filter((calendar) => !hidden.includes(calendar.id));
+  const from = showing.length > 0 ? showing : writable;
+  return from.find((calendar) => calendar.id === preferred) ?? from[0];
 }
 
 const MINUTE = 60_000;
@@ -678,6 +682,15 @@ export function eventWriter(
   api: CalendarSource = window.cal.calendar,
 ) {
   const ids = eventAliases(history);
+  // Whether an event created from `input` may still be in the calendar under `id`: only
+  // a calendar that answers without it says it's gone.
+  const stillThere = (id: string, input: EventInput) => {
+    const at = Date.parse(input.start);
+    return api.events(toOffsetIso(new Date(at - DAY)), toOffsetIso(new Date(at + DAY))).then(
+      (nearby) => nearby.some((each) => sameId(each.id, id)),
+      () => true,
+    );
+  };
   return {
     create(input: EventInput) {
       let ref: EventRef | undefined;
@@ -697,6 +710,51 @@ export function eventWriter(
           },
         );
         return ref && ids.current(ref);
+      });
+    },
+    /**
+     * Creates `inputs` as one step (an imported file), so one ⌘Z takes them all back. An
+     * event the calendar refuses is left out; throws only when it refused every one.
+     * Returns the ids made.
+     */
+    createAll(inputs: readonly EventInput[], label: string) {
+      return history.transact(label, async (tx) => {
+        const refs: EventRef[] = [];
+        let failure: unknown;
+        for (const input of inputs) {
+          let ref: EventRef | undefined;
+          // Set when an undo couldn't delete the event, so a redo doesn't make a second one.
+          let kept = false;
+          try {
+            await tx.external(
+              async () => {
+                if (kept) return;
+                const created = await api.createEvent(input);
+                const again = ref !== undefined;
+                if (ref) ids.recreated(ids.current(ref), created);
+                ref = ids.ref(created.id);
+                if (again) await refresh();
+              },
+              // One that won't go doesn't stop the rest; one already gone needs nothing.
+              async () => {
+                if (!ref) return;
+                const id = ids.current(ref);
+                kept = await api.deleteEvent(id, input.recurrence ? "all" : "this").then(
+                  () => false,
+                  () => stillThere(id, input),
+                );
+                if (kept) showToast(`Couldn't remove “${input.title}”`);
+                await refresh();
+              },
+            );
+            if (ref) refs.push(ref);
+          } catch (error) {
+            failure = error;
+          }
+        }
+        await refresh();
+        if (refs.length === 0 && failure) throw failure;
+        return refs.map((ref) => ids.current(ref));
       });
     },
     update(

@@ -1259,7 +1259,7 @@ check(
   (await page.locator("[data-recording]").count()) === 0 && (await settingsOpen()) === 1,
 );
 await paletteKey.click();
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(300);
 check(
   "a recorded key saves without running anything",
@@ -1269,12 +1269,12 @@ check(
 );
 check(
   "the menu follows the new binding",
-  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+J",
+  (await menuAccelerator("Command Menu")) === "CmdOrCtrl+U",
 );
 await page.fill("[aria-label='Search shortcuts']", "new to-do");
 await page.hover("[data-command='task.new']");
 await page.click("[data-command='task.new'] [data-add]");
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(300);
 check(
   "a shared key warns but saves",
@@ -1283,7 +1283,7 @@ check(
   ) && (await page.locator("[data-command='task.new'] [data-key]").count()) === 2,
 );
 await page.hover("[data-command='task.new']");
-await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘J']");
+await page.click("[data-command='task.new'] [aria-label='Remove shortcut ⌘U']");
 await page.waitForTimeout(300);
 check(
   "removing the extra key clears the change",
@@ -1295,7 +1295,7 @@ await page.click("[aria-label='Search shortcuts']");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
-await page.keyboard.press("Meta+j");
+await page.keyboard.press("Meta+u");
 await page.waitForTimeout(200);
 check("the new binding opens the command menu", (await paletteOpen()) === 1);
 await page.keyboard.press("Escape");
@@ -1377,6 +1377,298 @@ check(
 );
 check("125% moves the traffic lights down", lights?.y === 25);
 await page.evaluate(() => window.calTest?.seed({ device: { uiScale: 100 } }));
+
+// Calls: ⌘J joins the one coming up, a selected event's call, and the popover's Join.
+const ZOOM_CALL =
+  /^(zoommtg:|https:)\/\/us02web\.zoom\.us\/j(oin\?action=join&confno=|\/)81234567890[&?]pwd=abc$/;
+const openedCalls = () => app.evaluate(() => globalThis.calOpened ?? []);
+await page.keyboard.press("Escape");
+await page.keyboard.press("w");
+await page.keyboard.press("t");
+await page.waitForTimeout(300);
+await page.keyboard.press("Meta+j");
+await page.waitForTimeout(300);
+check("⌘J joins the next call", ZOOM_CALL.test((await openedCalls()).at(-1) ?? ""));
+const review = page.locator("[data-item^='event:'] > div", { hasText: "Design review" });
+await review.click();
+await page.waitForTimeout(300);
+await page.click("[data-join]");
+await page.waitForTimeout(200);
+check(
+  "Join in the popover joins that event's call",
+  (await openedCalls()).at(-1) === "https://meet.google.com/abc-defg-hij",
+);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+check(
+  "a chip names the call instead of showing its URL",
+  (await page.locator("[data-grid-body]").textContent())?.includes("https://") === false,
+);
+
+// The agenda (A): its rows, ↑/↓, Join, a checked to-do, growing on scroll.
+await page.keyboard.press("a");
+await page.waitForTimeout(300);
+check(
+  "A shows the agenda from today",
+  (await page.locator("[data-agenda-day]").first().getAttribute("data-agenda-day")) ===
+    "2026-10-28",
+);
+const agendaRow = (text: string) => page.locator("[data-row]", { hasText: text }).first();
+check(
+  "past events are faded and upcoming ones aren't",
+  (await agendaRow("Standup").getAttribute("data-past")) === "true" &&
+    (await agendaRow("All Hands").getAttribute("data-past")) === null,
+);
+// The panes may hold a selected to-do from earlier, which keeps the arrows.
+await page.keyboard.press("Escape");
+await page.keyboard.press("ArrowDown");
+await page.waitForTimeout(150);
+check(
+  "↓ starts at what's on now or next",
+  (await agendaRow("Office hours").getAttribute("data-selected")) === "true",
+);
+await page.keyboard.press("ArrowDown");
+await page.waitForTimeout(150);
+check(
+  "↓ moves on",
+  (await page.locator("[data-row][data-selected]").count()) === 1 &&
+    (await agendaRow("Office hours").getAttribute("data-selected")) === null,
+);
+await page.keyboard.press("ArrowUp");
+await page.waitForTimeout(150);
+await page.keyboard.press("Enter");
+await page.waitForTimeout(300);
+check(
+  "Return opens the selected event",
+  (await page.locator("[data-editor='edit'] [aria-label='Title']").inputValue()) === "Office hours",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.click("[data-agenda-join]");
+await page.waitForTimeout(200);
+check("the agenda's Join joins", ZOOM_CALL.test((await openedCalls()).at(-1) ?? ""));
+const agendaDays = () =>
+  page
+    .locator("[data-agenda-day]")
+    .evaluateAll((days) => days.map((day) => day.getAttribute("data-agenda-day") ?? ""));
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(400);
+check(
+  "→ moves the agenda a week",
+  ((await agendaDays())[0] ?? "") >= "2026-11-04" || (await agendaDays()).length === 0,
+);
+await page.keyboard.press("t");
+await page.waitForTimeout(300);
+await page.locator("[data-agenda]").evaluate((list) => list.scrollTo({ top: 400 }));
+await page.keyboard.press("t");
+await page.waitForTimeout(200);
+check(
+  "T scrolls the agenda back up when it already starts on today",
+  (await page.locator("[data-agenda]").evaluate((list) => list.scrollTop)) === 0,
+);
+await page.waitForTimeout(700);
+check("T brings the agenda back to today", (await agendaDays())[0] === "2026-10-28");
+await page.keyboard.press("w");
+await page.waitForTimeout(200);
+
+// Themes: the picker repaints the window at once, and the accent colors now.
+const cssColor = (token: string) =>
+  page.evaluate(
+    (name) => getComputedStyle(document.documentElement).getPropertyValue(`--cal-${name}`).trim(),
+    token,
+  );
+const redNow = await cssColor("now");
+await page.keyboard.press("Meta+,");
+await page.click("[data-section='appearance']");
+await page.click("[data-theme-choice='sand']");
+await page.waitForTimeout(150);
+check("picking a light theme repaints the canvas", (await cssColor("canvas")) === "#fcf4e5");
+await page.click("[role=radiogroup][aria-label='Accent'] [aria-label='Green']");
+await page.waitForTimeout(150);
+check(
+  "an accent colors now, and danger stays red",
+  (await cssColor("now")) !== redNow && (await cssColor("danger")) === redNow,
+);
+await page.click("[data-theme-choice='walnut']");
+await page.waitForTimeout(150);
+check("a dark theme waits for dark mode", (await cssColor("canvas")) === "#fcf4e5");
+await page.emulateMedia({ colorScheme: "dark" });
+await page.waitForTimeout(200);
+check("dark mode draws the dark theme", (await cssColor("canvas")) === "#1b1209");
+await page.emulateMedia({ colorScheme: "light" });
+await page.evaluate(() =>
+  window.calTest?.seed({
+    device: { lightTheme: "daylight", darkTheme: "charcoal", accent: "blue" },
+  }),
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
+// Invitations: the envelope lists unanswered ones; Reply goes to Apple Calendar.
+await page.click("[data-invitations]");
+await page.waitForTimeout(200);
+check(
+  "the envelope lists the unanswered invitation",
+  (await page.locator("[aria-label='Unanswered invitations']").textContent())?.includes(
+    "Vendor demo",
+  ) ?? false,
+);
+await page.click("[aria-label='Unanswered invitations'] >> text=Reply");
+await page.waitForTimeout(200);
+check(
+  "Reply opens the event in Apple Calendar",
+  ((await openedCalls()).at(-1) ?? "").startsWith("ical://ekevent/"),
+);
+await page.click("[data-invitations]");
+await page.click("[aria-label='Unanswered invitations'] >> text=Vendor demo");
+await page.waitForTimeout(400);
+check(
+  "a click on an invitation opens its event",
+  (await page.locator("[data-editor='edit'] [aria-label='Title']").inputValue()) === "Vendor demo",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+
+// Outside the window: the menu bar's text and menu, and a click on one of its rows.
+const desk = await app.evaluate(() => globalThis.calDesk?.record);
+check(
+  "the menu bar counts down to the next event",
+  /^Office hours in \dm$/.test(desk?.title ?? ""),
+);
+check(
+  "its menu offers the call first",
+  desk?.items[0] === "Join Office hours (Zoom)" && desk.items.includes("Quick Entry…"),
+);
+await page.keyboard.press("1");
+await app.evaluate(({ BrowserWindow }) =>
+  BrowserWindow.getAllWindows()
+    .find((window) => !window.webContents.getURL().includes("surface=capture"))
+    ?.webContents.send("cal:reveal", { day: "2026-10-29" }),
+);
+await page.waitForTimeout(300);
+check(
+  "a menu bar click shows its day",
+  (await page.locator("[data-column='2026-10-29']").count()) === 1,
+);
+
+// Calendar sets: Automatic by the clock, ⌃ keys, and the calendars outside one.
+await page.keyboard.press("w");
+await page.keyboard.press("t");
+await page.evaluate(() =>
+  window.calTest?.seed({
+    device: {
+      calendarSet: "auto",
+      calendarSets: [
+        {
+          id: "s1",
+          name: "Work",
+          calendars: ["work"],
+          hours: { days: [1, 2, 3, 4, 5], start: 540, end: 1080 },
+        },
+        { id: "s2", name: "Family", calendars: ["family"] },
+      ],
+    },
+  }),
+);
+await page.waitForTimeout(300);
+const gridText = async () => (await page.locator("[data-grid-body]").textContent()) ?? "";
+check(
+  "Automatic shows the set whose hours it is",
+  (await gridText()).includes("All Hands") && !(await gridText()).includes("Soccer"),
+);
+await page.keyboard.press("Control+2");
+await page.waitForTimeout(300);
+check(
+  "⌃2 switches to the second set",
+  !(await gridText()).includes("All Hands") && (await gridText()).includes("Soccer"),
+);
+await page.waitForTimeout(500);
+check(
+  "the menu bar follows the set",
+  (await app.evaluate(() => globalThis.calDesk?.record))?.items.includes(
+    "Join Office hours (Zoom)",
+  ) === false,
+);
+await page.keyboard.press("c");
+await page.waitForTimeout(400);
+check(
+  "a new event goes to a calendar the set shows",
+  (await page.locator("[data-editor='create'] [aria-label='Calendar']").textContent()) === "Family",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.click("[data-set-menu]");
+await page.waitForTimeout(200);
+const setMenu = await boxOf(page.locator("[role=menu][aria-label='Calendar sets']"));
+check("the set menu opens inside the window", setMenu.x >= 0 && setMenu.y >= 0);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+0");
+await page.waitForTimeout(300);
+check(
+  "⌃0 shows every calendar",
+  (await gridText()).includes("All Hands") && (await gridText()).includes("Soccer"),
+);
+await page.evaluate(() =>
+  window.calTest?.seed({ device: { calendarSets: [], calendarSet: "auto" } }),
+);
+
+// Dropping an .ics file adds its events as one step, and shows the first one's day.
+const drop = (name: string, text: string) =>
+  page.evaluate(
+    ([name, text]) => {
+      const files = new DataTransfer();
+      files.items.add(new File([text ?? ""], name ?? "", { type: "text/calendar" }));
+      window.dispatchEvent(
+        new DragEvent("dragover", { dataTransfer: files, bubbles: true, cancelable: true }),
+      );
+      window.dispatchEvent(
+        new DragEvent("drop", { dataTransfer: files, bubbles: true, cancelable: true }),
+      );
+    },
+    [name, text],
+  );
+const ICS = [
+  "BEGIN:VCALENDAR",
+  "BEGIN:VEVENT",
+  "SUMMARY:Dropped workshop",
+  "DTSTART:20261112T180000Z",
+  "DTEND:20261112T190000Z",
+  "END:VEVENT",
+  "BEGIN:VEVENT",
+  "SUMMARY:Dropped dinner",
+  "DTSTART:20261113T020000Z",
+  "DTEND:20261113T030000Z",
+  "END:VEVENT",
+  "END:VCALENDAR",
+].join("\r\n");
+await drop("invite.ics", ICS);
+await page.waitForTimeout(600);
+check(
+  "dropping an .ics file adds its events and shows their day",
+  (await gridText()).includes("Dropped workshop") && (await gridText()).includes("Dropped dinner"),
+);
+check(
+  "the toast says how many",
+  ((await page.locator("[data-toast]").textContent()) ?? "").includes("Added 2 events"),
+);
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(500);
+check("one ⌘Z takes them all back", !(await gridText()).includes("Dropped"));
+await page.keyboard.press("Meta+Shift+z");
+await page.waitForTimeout(500);
+check(
+  "⇧⌘Z adds them again",
+  (await gridText()).includes("Dropped workshop") && (await gridText()).includes("Dropped dinner"),
+);
+await page.keyboard.press("Meta+z");
+await page.waitForTimeout(500);
+await drop("notes.txt", "hello");
+await page.waitForTimeout(300);
+check(
+  "another file is turned down",
+  ((await page.locator("[data-toast]").textContent()) ?? "").includes("no events"),
+);
 
 await app.close();
 if (results.some((line) => line.startsWith("FAIL"))) process.exit(1);

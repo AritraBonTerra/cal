@@ -1,7 +1,7 @@
 import { useActions } from "@cal/app-core";
 import type { Project, Task, TimeBlock } from "@cal/domain";
 import { blockColors, type ChipColors } from "@cal/theme";
-import { Lock, MapPin } from "lucide-react";
+import { Lock, MapPin, Video } from "lucide-react";
 import { useApp } from "../../lib/app";
 import { hueFor } from "../../lib/data";
 import { formatMinuteRange, formatMinutes } from "../../lib/time";
@@ -41,9 +41,23 @@ function Handles() {
   );
 }
 
+// Marks an event with a call to join, where a chip has a line for its title alone.
+const CallIcon = () => (
+  <Video
+    size={11}
+    strokeWidth={1.5}
+    absoluteStrokeWidth
+    aria-label="Video call"
+    className="shrink-0"
+  />
+);
+
 interface EventChipProps {
   title: string;
-  location?: string;
+  // Where it happens, with a call's link named ("Zoom") rather than spelled out.
+  place?: string;
+  // Whether it has a call to join.
+  call: boolean;
   start: number;
   end: number;
   colors: ChipColors;
@@ -52,11 +66,14 @@ interface EventChipProps {
   past: boolean;
   dragging: boolean;
   writable: boolean;
+  // An invitation not answered yet: outlined rather than filled.
+  pending?: boolean;
 }
 
 export function EventChip({
   title,
-  location,
+  place,
+  call,
   start,
   end,
   colors,
@@ -65,9 +82,16 @@ export function EventChip({
   past,
   dragging,
   writable,
+  pending = false,
 }: EventChipProps) {
   const { height } = frame;
-  const fill = selected ? colors.solid : past ? colors.pastFill : colors.fill;
+  const fill = selected
+    ? colors.solid
+    : pending
+      ? "var(--cal-canvas)"
+      : past
+        ? colors.pastFill
+        : colors.fill;
   const text = selected ? "#ffffff" : past ? colors.pastTitle : colors.title;
   const time = selected ? "oklch(1 0 0 / 0.85)" : past ? colors.pastTime : colors.time;
   return (
@@ -80,6 +104,8 @@ export function EventChip({
         background: fill,
         borderColor: selected ? colors.solid : past ? colors.pastTime : colors.bar,
         boxShadow: selected ? undefined : "0 0 0 1px var(--cal-canvas)",
+        outline: pending && !selected ? `1px dashed ${colors.bar}` : undefined,
+        outlineOffset: -1,
       }}
       data-selected={selected || undefined}
     >
@@ -97,15 +123,19 @@ export function EventChip({
         </div>
       ) : (
         <>
-          <div className="truncate text-small font-medium leading-4" style={{ color: text }}>
-            {title}
+          <div
+            className="flex items-center gap-1 text-small font-medium leading-4"
+            style={{ color: text }}
+          >
+            <span className="truncate">{title}</span>
+            {call && <CallIcon />}
           </div>
           <div
             className="flex items-center gap-1 truncate text-caption tnum"
             style={{ color: time }}
           >
             {formatMinuteRange(start, end)}
-            {location && height >= 48 && (
+            {place && height >= 48 && (
               <>
                 <MapPin
                   size={11}
@@ -113,7 +143,7 @@ export function EventChip({
                   absoluteStrokeWidth
                   className="ml-0.5 shrink-0"
                 />
-                <span className="truncate">{location}</span>
+                <span className="truncate">{place}</span>
               </>
             )}
           </div>

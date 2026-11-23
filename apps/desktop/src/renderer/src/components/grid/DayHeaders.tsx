@@ -110,7 +110,7 @@ function DeadlineFlag({
         title={`${count} ${count === 1 ? "deadline" : "deadlines"}`}
         data-deadlines={day}
         onClick={() => setOpen((state) => !state)}
-        className="flex h-5 items-center gap-0.5 rounded-sm px-1 text-caption font-medium text-now tnum hover:bg-hover"
+        className="flex h-5 items-center gap-0.5 rounded-sm px-1 text-caption font-medium text-danger tnum hover:bg-hover"
       >
         <Flag size={12} strokeWidth={1.5} absoluteStrokeWidth />
         {count}

@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@cal/backend": "workspace:*",
+    "@cal/calendar-source": "workspace:*",
     "@cal/domain": "workspace:*",
     "@cal/nlp": "workspace:*",
-    "@cal/sync": "workspace:*"
+    "@cal/sync": "workspace:*",
+    "@cal/theme": "workspace:*"
   },
   "peerDependencies": {
     "react": "19.3.0"

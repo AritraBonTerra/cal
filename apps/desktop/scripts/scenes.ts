@@ -62,6 +62,17 @@ const SHORTCUT_CHANGES = {
 // A to-do in Today with notes, tags, a deadline and an estimate.
 const PRICING = "li:has-text('Update pricing page copy')";
 
+// A set with hours (in force at the fixture's Wednesday 10:40) and one without.
+const SETS = [
+  {
+    id: "set-work",
+    name: "Work",
+    calendars: ["work"],
+    hours: { days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 },
+  },
+  { id: "set-home", name: "Home", calendars: ["personal", "family"] },
+];
+
 export const scenes: Scene[] = [
   { name: "week-light" },
   { name: "week-dark", dark: true },
@@ -107,6 +118,73 @@ export const scenes: Scene[] = [
   { name: "year-narrow-panes", width: 860, height: 700, keys: ["y", "Meta+\\", "Meta+/"] },
   { name: "year-tight", width: 760, height: 520, keys: ["y"] },
   { name: "year-tight-sidebar-dark", dark: true, width: 760, height: 520, keys: ["y", "Meta+\\"] },
+  // An event with a Zoom call: the chip's camera, the place by name, and Join.
+  {
+    name: "event-call",
+    click: "[data-item^='event:'] > div:has-text('Office hours')",
+  },
+  // The agenda: today from the top, the now line, Join on the call about to start.
+  { name: "agenda", keys: ["a"] },
+  { name: "agenda-dark", dark: true, keys: ["a"] },
+  { name: "agenda-event", keys: ["a", "ArrowDown", "Enter"] },
+  { name: "agenda-narrow", width: 760, height: 620, keys: ["a"] },
+  // Themes: a tinted light and dark one, accents other than blue, and the picker.
+  { name: "theme-sand", settings: { device: { lightTheme: "sand", accent: "brick" } } },
+  {
+    name: "theme-sage-agenda",
+    settings: { device: { lightTheme: "sage", accent: "green" } },
+    keys: ["a"],
+  },
+  {
+    name: "theme-lilac-month",
+    settings: { device: { lightTheme: "lilac", accent: "plum" } },
+    keys: ["m"],
+  },
+  { name: "theme-mist-ink", settings: { device: { lightTheme: "mist", accent: "ink" } } },
+  {
+    name: "theme-walnut",
+    dark: true,
+    settings: { device: { darkTheme: "walnut", accent: "ochre" } },
+  },
+  {
+    name: "theme-black-agenda",
+    dark: true,
+    settings: { device: { darkTheme: "black", accent: "brick" } },
+    keys: ["a"],
+  },
+  {
+    name: "theme-pine-ink",
+    dark: true,
+    settings: { device: { darkTheme: "pine", accent: "ink" } },
+  },
+  { name: "settings-appearance", keys: ["Meta+,"], click: "[data-section='appearance']" },
+  {
+    name: "settings-appearance-dark",
+    dark: true,
+    settings: { device: { darkTheme: "plum", accent: "plum" } },
+    keys: ["Meta+,"],
+    click: "[data-section='appearance']",
+  },
+  // The envelope's list, and the unanswered event's dashed chip behind it.
+  { name: "invitations", click: "[data-invitations]" },
+  { name: "invitations-dark", dark: true, click: "[data-invitations]" },
+  {
+    name: "settings-outside",
+    keys: ["Meta+,"],
+    steps: [{ reveal: "h3:has-text('Outside the window')" }],
+  },
+  // Calendar sets: the menu beside Calendars, one in force, and the editor.
+  {
+    name: "calendar-sets",
+    settings: { device: { calendarSets: SETS } },
+    steps: [{ reveal: "[data-calendar-list]" }, { click: "[data-set-menu]" }],
+  },
+  {
+    name: "settings-calendar-sets",
+    settings: { device: { calendarSets: SETS } },
+    keys: ["Meta+,"],
+    steps: [{ click: "[data-section='calendars']" }, { reveal: "h3:has-text('Calendar sets')" }],
+  },
   { name: "palette", keys: ["Meta+k"] },
   // The Welcome walkthrough, opened from ⌘K; → steps through its six steps.
   ...["calendars", "entry", "plan", "habits", "keys", "sync"].map(

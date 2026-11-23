@@ -30,6 +30,8 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSCalendarsFullAccessUsageDescription: Cal shows and edits the events in your calendars.
+    # Notifications stay on screen with their Join button until dismissed.
+    NSUserNotificationAlertStyle: alert
     NSCalendarsUsageDescription: Cal shows and edits the events in your calendars.
 dmg:
   title: Cal

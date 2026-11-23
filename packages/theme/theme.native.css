@@ -50,6 +50,7 @@
       --color-accent-solid: #1570d1;
       --color-accent-soft: #e4f0ff;
       --color-now: #db2c2b;
+      --color-danger: #db2c2b;
       --color-success: #1c8742;
       --color-warning: #d98b09;
       --color-white: #ffffff;
@@ -77,6 +78,7 @@
       --color-accent-solid: #1570d1;
       --color-accent-soft: #182e4b;
       --color-now: #f75e54;
+      --color-danger: #f75e54;
       --color-success: #5bbd74;
       --color-warning: #eba941;
       --color-white: #ffffff;

@@ -169,15 +169,15 @@ export function TaskPane() {
 // Upcoming's day sections list that day's calendar events above its to-dos, so the
 // pane fetches the coming week's events itself (the grid may show another week).
 function UpcomingSections({ sections }: { sections: Section[] }) {
-  const { today, account, device } = useApp();
+  const { today, account, hidden } = useApp();
   const from = addDays(today, 1);
   const { events: fetched } = useEvents(
     toOffsetIso(fromDayKey(from)),
     toOffsetIso(fromDayKey(addDays(from, UPCOMING_DAYS))),
   );
   const events = useMemo(
-    () => visibleEvents(fetched, device.hiddenCalendars, account.showDeclined),
-    [fetched, device.hiddenCalendars, account.showDeclined],
+    () => visibleEvents(fetched, hidden, account.showDeclined),
+    [fetched, hidden, account.showDeclined],
   );
   return sections.map((section) => (
     <SectionRows key={sectionKey(section)} section={section} showNext events={events} />

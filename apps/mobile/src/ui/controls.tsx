@@ -141,7 +141,7 @@ export function Button({ title, onPress, kind = "secondary", disabled, icon }: B
     kind === "primary"
       ? "text-white"
       : kind === "destructive"
-        ? "text-now"
+        ? "text-danger"
         : kind === "plain"
           ? "text-accent"
           : "text-ink";

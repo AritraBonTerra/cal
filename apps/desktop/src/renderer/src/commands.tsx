@@ -3,6 +3,7 @@ import { addDays, fromDayKey, isOpen, toDayKey, toOffsetIso } from "@cal/domain"
 import { useRef } from "react";
 import { type AuthState, CAPTURE_COMMAND } from "../../shared/api";
 import type { AppState } from "./lib/app";
+import { setName } from "./lib/calendarSets";
 import { closeCard, openCard } from "./lib/card";
 import { now } from "./lib/clock";
 import {
@@ -24,6 +25,7 @@ import {
   SMART_TITLES,
   tasksIn,
 } from "./lib/lists";
+import { joinCall } from "./lib/meetings";
 import { PANES } from "./lib/panes";
 import { revealBlock } from "./lib/reveal";
 import {
@@ -35,6 +37,7 @@ import {
   openSettings,
   openZonePicker,
   select,
+  showAgenda,
   showDays,
   showList,
   showMonth,
@@ -57,7 +60,7 @@ const NUDGE = 15;
 export function useAppCommands(app: AppState, auth: AuthState, requestAccess: () => void) {
   const actions = useActions();
   const { history } = useHistory();
-  const { setAccount, setDevice } = useSettings();
+  const { device, setAccount, setDevice } = useSettings();
   const latest = useRef(app);
   latest.current = app;
 
@@ -79,6 +82,9 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       if (selection?.kind !== "event") return undefined;
       return latest.current.events.find((event) => event.id === selection.id);
     };
+    // The agenda's own ↑ and ↓ walk its rows (AgendaView); a selected to-do keeps them.
+    const agendaArrows = () =>
+      ui.get().view.kind === "agenda" && ui.get().selection?.kind !== "task";
     const hasEvent = () => ui.get().selection?.kind === "event" && !editorStore.get().editor;
     const writer = () => eventWriter(history, latest.current.refreshEvents);
 
@@ -161,6 +167,14 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "View",
         keys: ["y"],
         run: () => showYear(latest.current.gridToday),
+      },
+      {
+        id: "view.agenda",
+        title: "Agenda",
+        group: "View",
+        keys: ["a"],
+        aliases: ["list", "schedule", "day by day"],
+        run: () => showAgenda(latest.current.gridToday),
       },
       ...Array.from({ length: 22 }, (_, index) => index + 10).map(
         (count): Command => ({
@@ -610,7 +624,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         when: "The to-do list is showing",
         keys: ["arrowup"],
-        enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
+        enabled: () => !hasBlock() && !agendaArrows() && !ui.get().editing && ui.get().tasks,
         run: () => step(-1),
       },
       {
@@ -619,7 +633,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "To-Do",
         when: "The to-do list is showing",
         keys: ["arrowdown"],
-        enabled: () => !hasBlock() && !ui.get().editing && ui.get().tasks,
+        enabled: () => !hasBlock() && !agendaArrows() && !ui.get().editing && ui.get().tasks,
         run: () => step(1),
       },
     ];
@@ -645,8 +659,8 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
             .catch(() => latest.current.events);
           // Any draft opened, edited or closed meanwhile (a drag on the grid) wins.
           if (editorStore.get() !== before) return;
-          const { calendars, device, account, data, gridToday, zone } = latest.current;
-          const calendar = defaultCalendar(calendars, device.defaultCalendar);
+          const { calendars, hidden, device, account, data, gridToday, zone } = latest.current;
+          const calendar = defaultCalendar(calendars, device.defaultCalendar, hidden);
           const busy = [
             ...events.filter(
               (event) =>
@@ -679,6 +693,15 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
           const event = selectedEvent();
           if (event) openEdit(event, latest.current.zone);
         },
+      },
+      {
+        id: "event.join",
+        title: "Join Call",
+        group: "Calendar",
+        when: "The selected event's call, or the next one",
+        keys: ["mod+j"],
+        aliases: ["zoom", "google meet", "teams", "video", "meeting"],
+        run: () => joinCall(latest.current.events, latest.current.upcoming),
       },
       {
         id: "event.delete",
@@ -734,7 +757,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Calendar",
         when: "A block is selected",
         keys: ["arrowup"],
-        enabled: hasBlock,
+        enabled: () => hasBlock() && !agendaArrows(),
         run: () => nudgeBlock(-NUDGE, false),
       },
       {
@@ -743,7 +766,7 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         group: "Calendar",
         when: "A block is selected",
         keys: ["arrowdown"],
-        enabled: hasBlock,
+        enabled: () => hasBlock() && !agendaArrows(),
         run: () => nudgeBlock(NUDGE, false),
       },
       {
@@ -779,6 +802,45 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
         enabled: () => ui.get().selection !== null || ui.get().editing !== null,
         run: () => select(null),
       },
+    ];
+
+    // ⌃1–9 by position, as listed in Settings; the registry re-lists on a settings change.
+    const sets: Command[] = [
+      {
+        id: "set.auto",
+        title: "Calendar Set: Automatic",
+        group: "Calendar",
+        when: "There are calendar sets",
+        aliases: ["calendar set", "schedule"],
+        enabled: () => latest.current.device.calendarSets.length > 0,
+        run: () => setDevice("calendarSet", "auto"),
+      },
+      {
+        id: "set.all",
+        title: "Calendar Set: All Calendars",
+        group: "Calendar",
+        when: "There are calendar sets",
+        keys: ["ctrl+0"],
+        aliases: ["calendar set", "show everything"],
+        enabled: () => latest.current.device.calendarSets.length > 0,
+        run: () => setDevice("calendarSet", "all"),
+      },
+      ...Array.from({ length: 9 }, (_, index): Command => {
+        const set = device.calendarSets[index];
+        return {
+          id: `set.${index + 1}`,
+          title: set ? `Calendar Set: ${setName(set)}` : `Calendar Set ${index + 1}`,
+          group: "Calendar",
+          when: "The calendar set exists",
+          keys: [`ctrl+${index + 1}`],
+          aliases: ["calendar set", "switch calendars"],
+          enabled: () => latest.current.device.calendarSets[index] !== undefined,
+          run: () => {
+            const set = latest.current.device.calendarSets[index];
+            if (set) setDevice("calendarSet", set.id);
+          },
+        };
+      }),
     ];
 
     const general: Command[] = [
@@ -850,6 +912,6 @@ export function useAppCommands(app: AppState, auth: AuthState, requestAccess: ()
       },
     ];
 
-    return [...views, ...navigate, ...todo, ...calendar, ...general];
-  }, [actions, history, auth.status, requestAccess, setAccount, setDevice]);
+    return [...views, ...navigate, ...todo, ...calendar, ...sets, ...general];
+  }, [actions, history, auth.status, requestAccess, setAccount, setDevice, device.calendarSets]);
 }

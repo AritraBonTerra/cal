@@ -29,9 +29,10 @@ export function useCalendars() {
 
 // Events overlapping [start, end) as ISO strings; `loaded` is false until the first fetch.
 export function useEvents(start: string, end: string) {
-  const [state, setState] = useState<{ events: ExternalEvent[]; loaded: boolean }>({
+  const [state, setState] = useState<{ events: ExternalEvent[]; loaded: boolean; key: string }>({
     events: [],
     loaded: false,
+    key: "",
   });
   // The range on screen now. `refresh` is kept by undo steps long after the view moves
   // on, so it always reloads this range, and drops results for a range no longer shown.
@@ -42,7 +43,9 @@ export function useEvents(start: string, end: string) {
     const wanted = range.current;
     const events = await window.cal.calendar.events(wanted.start, wanted.end).catch(() => []);
     const now = range.current;
-    if (now.start === wanted.start && now.end === wanted.end) setState({ events, loaded: true });
+    if (now.start === wanted.start && now.end === wanted.end) {
+      setState({ events, loaded: true, key: `${now.start}/${now.end}` });
+    }
   }, []);
   // Without calendar access the fetch fails: the grid simply shows no device events.
   useEffect(() => {
@@ -52,7 +55,7 @@ export function useEvents(start: string, end: string) {
         .events(start, end)
         .catch(() => [])
         .then((events) => {
-          if (active) setState({ events, loaded: true });
+          if (active) setState({ events, loaded: true, key: `${start}/${end}` });
         });
     void load();
     const stop = window.cal.calendar.onChange(() => void load());
@@ -61,7 +64,13 @@ export function useEvents(start: string, end: string) {
       stop();
     };
   }, [start, end]);
-  return { ...state, refresh };
+  return {
+    events: state.events,
+    loaded: state.loaded,
+    // Whether the events are this range's, not the last one's.
+    current: state.key === `${start}/${end}`,
+    refresh,
+  };
 }
 
 /**
@@ -94,20 +103,21 @@ export function eventsOnDay(events: readonly ExternalEvent[], day: DayKey) {
     );
 }
 
-// Chip colors per calendar for the current mode, computed once per calendar. A color
+// Chip colors per calendar for the current mode and theme, computed once per calendar. A color
 // override from Settings replaces the calendar's own color here, never in the calendar.
 export function useChipPalette(
   calendars: readonly DeviceCalendar[],
   mode: Mode,
   overrides: Readonly<Record<string, string>>,
+  canvas: string,
 ) {
   return useMemo(() => {
     const palette = new Map<string, ChipColors>();
     for (const calendar of calendars) {
-      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode));
+      palette.set(calendar.id, chipColorsFromHex(calendarColor(calendar, overrides), mode, canvas));
     }
     return palette;
-  }, [calendars, mode, overrides]);
+  }, [calendars, mode, overrides, canvas]);
 }
 
 // A calendar's color in Cal: the override from Settings, else the calendar's own.

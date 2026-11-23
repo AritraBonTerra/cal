@@ -74,7 +74,7 @@ export function BlockSheet({ block }: { block: TimeBlock }) {
             title="Remove from calendar"
             kind="destructive"
             onPress={() => run(() => actions.deleteBlock(block.uuid))}
-            icon={<Trash2 size={18} color={colors.now} strokeWidth={1.5} absoluteStrokeWidth />}
+            icon={<Trash2 size={18} color={colors.danger} strokeWidth={1.5} absoluteStrokeWidth />}
           />
         </View>
       </View>

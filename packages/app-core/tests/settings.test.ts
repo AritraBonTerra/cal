@@ -152,6 +152,19 @@ describe("settings", () => {
     expect(read).toMatchObject({ showMiniMonth: false, showCalendarList: true });
   });
 
+  test("a theme is only taken for its own mode", () => {
+    const { values, settings } = setup();
+    values.set("cal.lightTheme", '"black"');
+    values.set("cal.darkTheme", '"walnut"');
+    values.set("cal.accent", '"neon"');
+    settings.reload();
+    expect(settings.device).toMatchObject({
+      lightTheme: "daylight",
+      darkTheme: "walnut",
+      accent: "blue",
+    });
+  });
+
   test("the Welcome walkthrough is unseen at first and stays seen across launches", () => {
     const { settings, values } = setup();
     expect(settings.device.welcomed).toBe(false);

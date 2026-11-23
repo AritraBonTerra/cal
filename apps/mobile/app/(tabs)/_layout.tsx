@@ -3,7 +3,7 @@ import { CalendarDays, List, Repeat, Star } from "lucide-react-native";
 import { useEffect } from "react";
 import { useIsWide } from "../../src/lib/device";
 import { useColors } from "../../src/lib/theme";
-import { showDays, view } from "../../src/lib/view";
+import { setCount, view } from "../../src/lib/view";
 
 /*
  * iPhone: four tabs (Calendar, Today, Lists, Habits). iPad: the same routes in a
@@ -17,11 +17,14 @@ export default function TabsLayout() {
   // A week fits on iPad; a day on iPhone. A week page starts on the account's week start,
   // so the iPad opens on this week rather than a week beginning today.
   useEffect(() => {
-    const { count, anchor } = view.get();
-    showDays(wide ? (count === 1 ? 7 : count) : Math.min(count, 3), anchor);
+    const { count } = view.get();
+    setCount(wide ? (count === 1 ? 7 : count) : Math.min(count, 3));
   }, [wide]);
 
-  if (wide) return <Stack screenOptions={{ headerShown: false, animation: "none" }} />;
+  if (wide) {
+    const contentStyle = { backgroundColor: colors.canvas };
+    return <Stack screenOptions={{ headerShown: false, animation: "none", contentStyle }} />;
+  }
 
   const stroke = { strokeWidth: 1.5, absoluteStrokeWidth: true } as const;
   return (

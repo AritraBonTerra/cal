@@ -69,13 +69,13 @@ export function WorkloadRow({
                 style={{ width: `${(load.meetings / scale) * 100}%` }}
               />
               <div
-                className={`h-full shrink-0 ${over ? "bg-now" : "bg-accent"}`}
+                className={`h-full shrink-0 ${over ? "bg-danger" : "bg-accent"}`}
                 style={{ width: `${(planned / scale) * 100}%` }}
               />
             </div>
             {labelled && label && (
               <span
-                className={`min-w-0 truncate text-caption tnum ${over ? "text-now" : "text-ink-3"}`}
+                className={`min-w-0 truncate text-caption tnum ${over ? "text-danger" : "text-ink-3"}`}
               >
                 {label}
               </span>

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../../lib/app";
 import { byAccount, calendarColor, withId } from "../../lib/calendars";
 import { Select, Switch } from "../ui";
+import { CalendarSets } from "./CalendarSets";
 import { Group, Row } from "./controls";
 
 /*
@@ -79,6 +80,7 @@ export function CalendarsSection() {
           ))}
         </Group>
       ))}
+      <CalendarSets />
       <Group title="New events">
         <Row label="Default reminder" note="Added to timed events Cal creates">
           <Select

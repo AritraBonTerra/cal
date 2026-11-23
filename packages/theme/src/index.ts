@@ -2,6 +2,17 @@ export { blockColors, type ChipColors, chipColors, chipColorsFromHex, habitColor
 export { clampChroma, contrast, fromHex, mix, type Oklch, oklch, toHex } from "./color";
 export { renderCss, renderNativeCss } from "./css";
 export {
+  ACCENTS,
+  type AccentId,
+  accentIds,
+  type Palette,
+  paletteOf,
+  THEMES,
+  type ThemeId,
+  themeIds,
+  themesFor,
+} from "./themes";
+export {
   type ColorToken,
   colors,
   grid,

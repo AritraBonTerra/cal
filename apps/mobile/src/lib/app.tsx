@@ -6,7 +6,7 @@ import { createContext, type ReactNode, useContext, useEffect } from "react";
 import { useCalendars, useChipPalette } from "./calendars";
 import { useToday } from "./clock";
 import { useData } from "./data";
-import { useMode } from "./theme";
+import { useColors, useMode } from "./theme";
 import { setWeekStart } from "./view";
 
 /*
@@ -27,7 +27,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const data = useData();
   const calendars = useCalendars();
   const mode = useMode();
-  const palette = useChipPalette(calendars, mode);
+  const palette = useChipPalette(calendars, mode, useColors().canvas);
   const today = useToday();
   const { weekStart } = useSettings().account;
   // A new day re-runs this too, which leaves the page where it is.

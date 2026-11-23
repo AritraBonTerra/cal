@@ -46,10 +46,17 @@ export function formatDuration(minutes: number) {
 }
 
 const weekdayShort = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const weekdayNarrow = new Intl.DateTimeFormat(undefined, { weekday: "narrow" });
 const weekdayLong = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+const monthLong = new Intl.DateTimeFormat(undefined, { month: "long" });
 const monthYear = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const monthShort = new Intl.DateTimeFormat(undefined, { month: "short" });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const fullDate = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+});
 const weekdayMonthDay = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
   month: "short",
@@ -58,6 +65,12 @@ const weekdayMonthDay = new Intl.DateTimeFormat(undefined, {
 
 export const formatWeekday = (day: DayKey, long = false) =>
   (long ? weekdayLong : weekdayShort).format(fromDayKey(day));
+
+// "M", for the column heads of a month.
+export const weekdayLetter = (day: DayKey) => weekdayNarrow.format(fromDayKey(day));
+
+// "Wednesday, October 28", for VoiceOver.
+export const formatFullDate = (day: DayKey) => fullDate.format(fromDayKey(day));
 
 export const formatMonthYear = (day: DayKey) => monthYear.format(fromDayKey(day));
 
@@ -70,6 +83,17 @@ export function formatSpan(first: DayKey, last: DayKey) {
     return `${monthShort.format(a)} – ${monthShort.format(b)} ${b.getFullYear()}`;
   }
   return `${monthShort.format(a)} ${a.getFullYear()} – ${monthShort.format(b)} ${b.getFullYear()}`;
+}
+
+// The same for a phone's narrow header: no year while it's this year's ("October").
+export function formatShortSpan(first: DayKey, last: DayKey, today: DayKey) {
+  if (first.slice(0, 4) !== today.slice(0, 4) || last.slice(0, 4) !== today.slice(0, 4)) {
+    const short = `${monthShort.format(fromDayKey(first))} ${first.slice(0, 4)}`;
+    return first.slice(0, 7) === last.slice(0, 7) ? short : formatSpan(first, last);
+  }
+  return first.slice(0, 7) === last.slice(0, 7)
+    ? monthLong.format(fromDayKey(first))
+    : `${monthShort.format(fromDayKey(first))} – ${monthShort.format(fromDayKey(last))}`;
 }
 
 export const formatMonthDay = (day: DayKey) => monthDay.format(fromDayKey(day));

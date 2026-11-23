@@ -1,9 +1,9 @@
 import type { ExternalEvent } from "@cal/calendar-source";
 import { type DayKey, toDayKey } from "@cal/domain";
-import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { useApp } from "../lib/app";
 import { graphite } from "../lib/calendars";
+import { openEvent } from "../lib/events";
 import { assignLanes } from "../lib/layout";
 
 const LANE = 25;
@@ -37,27 +37,11 @@ export function AllDayRow({
     <View className="relative" style={{ height: lanes * LANE + 4 }}>
       {placed.map(({ item, lane }) => {
         const colors = palette.get(item.event.calendarId) ?? graphite(mode);
-        const calendar = calendars.find((each) => each.id === item.event.calendarId);
         return (
           <Pressable
             accessibilityRole="button"
             key={item.event.id}
-            onPress={() =>
-              router.push({
-                pathname: "/event/[id]",
-                params: {
-                  id: item.event.id,
-                  title: item.event.title,
-                  start: item.event.start,
-                  end: item.event.end,
-                  allDay: "1",
-                  location: item.event.location ?? "",
-                  notes: item.event.notes ?? "",
-                  calendar: calendar?.title ?? "",
-                  color: calendar?.color ?? "#888888",
-                },
-              })
-            }
+            onPress={() => openEvent(item.event, calendars)}
             className="absolute h-6"
             style={{
               top: lane * LANE + 2,

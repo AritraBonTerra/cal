@@ -99,6 +99,7 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
   var json: [String: Any] = [
     "id": eventId(event),
     "calendarId": event.calendar?.calendarIdentifier ?? "",
+    "itemId": event.calendarItemIdentifier,
     "title": event.title ?? "",
     "start": isoOut.string(from: event.startDate),
     "end": isoOut.string(from: event.endDate),
@@ -106,6 +107,7 @@ func eventJSON(_ event: EKEvent) -> [String: Any] {
     "recurring": event.hasRecurrenceRules,
     "busy": event.availability != .free,
   ]
+  if event.isDetached { json["detached"] = true }
   if let location = event.location, !location.isEmpty { json["location"] = location }
   if let notes = event.notes, !notes.isEmpty { json["notes"] = notes }
   if let url = event.url { json["url"] = url.absoluteString }

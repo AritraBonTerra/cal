@@ -84,11 +84,39 @@ const seeds: Seed[] = [
       myStatus: "accepted",
     },
   ],
+  // Five minutes away at the fixture's 10:40, so its Join shows. Free, so planning
+  // still finds the slot.
+  [
+    "work",
+    "Office hours",
+    at(day(2), 10, 45),
+    at(day(2), 11, 15),
+    {
+      busy: false,
+      location: "https://us02web.zoom.us/j/81234567890?pwd=abc",
+      notes: "Dial in by phone instead: https://us02web.zoom.us/u/kdXyZ",
+    },
+  ],
   ["work", "1:1 with Sam", at(day(2), 11, 30), at(day(2), 12)],
   ["work", "Prep for All Hands", at(day(2), 13), at(day(2), 13, 30)],
   ["work", "All Hands", at(day(2), 16), at(day(2), 17), { location: "Zoom" }],
   ["work", "Interview: frontend", at(day(3), 10), at(day(3), 11)],
   ["work", "Interview: frontend", at(day(3), 10, 30), at(day(3), 11, 30)],
+  // An invitation not answered yet. Free until it is, like a device calendar's.
+  [
+    "work",
+    "Vendor demo",
+    at(day(4), 13),
+    at(day(4), 13, 30),
+    {
+      busy: false,
+      url: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_demo%40thread.v2/0",
+      attendees: [
+        { name: "Dana Ruiz", email: "dana@vendor.com", status: "accepted", organizer: true },
+      ],
+      myStatus: "pending",
+    },
+  ],
   ["work", "Retro", at(day(4), 15), at(day(4), 16)],
   ["personal", "Gym", at(day(0), 7), at(day(0), 8)],
   ["personal", "Gym", at(day(2), 7), at(day(2), 8)],
