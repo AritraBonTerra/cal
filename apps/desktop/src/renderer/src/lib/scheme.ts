@@ -1,18 +1,12 @@
 import { type DeviceSettings, useSettings } from "@cal/app-core";
 import { type Mode, type Palette, paletteOf } from "@cal/theme";
 import { useLayoutEffect, useSyncExternalStore } from "react";
+import { modeStore } from "./mode";
 
-const query = window.matchMedia("(prefers-color-scheme: dark)");
-
-const subscribe = (listener: () => void) => {
-  query.addEventListener("change", listener);
-  return () => query.removeEventListener("change", listener);
-};
-
-const currentMode = (): Mode => (query.matches ? "dark" : "light");
+const systemMode = modeStore(window.matchMedia("(prefers-color-scheme: dark)"));
 
 // "light" or "dark", following the system. Chip colors are derived per mode.
-export const useMode = (): Mode => useSyncExternalStore(subscribe, currentMode);
+export const useMode = (): Mode => useSyncExternalStore(systemMode.subscribe, systemMode.current);
 
 type ThemeSettings = Pick<DeviceSettings, "lightTheme" | "darkTheme" | "accent">;
 
@@ -31,7 +25,8 @@ function paint(palette: Palette) {
 }
 
 // Paints the saved theme before the first render, so the window never shows another.
-export const paintTheme = (settings: ThemeSettings) => paint(paletteIn(currentMode(), settings));
+export const paintTheme = (settings: ThemeSettings) =>
+  paint(paletteIn(systemMode.current(), settings));
 
 // Repaints when the mode, a theme or the accent changes; every window has one.
 export function ThemePaint() {
